@@ -4,9 +4,11 @@ const http = require('http');
 const { execSync } = require('child_process');
 const { chromium } = require('playwright');
 
-const GEMINI_API_KEY   = (process.env.GEMINI_API_KEY || '').trim();
-const TELEGRAM_TOKEN   = (process.env.TELEGRAM_TOKEN || '').trim();
-const TELEGRAM_CHAT_ID = (process.env.TELEGRAM_CHAT_ID || '').trim();
+const GEMINI_API_KEY      = (process.env.GEMINI_API_KEY || '').trim();
+const TELEGRAM_TOKEN      = (process.env.TELEGRAM_TOKEN || '').trim();
+const TELEGRAM_CHAT_ID    = (process.env.TELEGRAM_CHAT_ID || '').trim();
+const ELEVENLABS_API_KEY  = (process.env.ELEVENLABS_API_KEY || '').trim();
+const ELEVENLABS_VOICE_ID = (process.env.ELEVENLABS_VOICE_ID || 'nPczCjzI2devNBz1zQrb').trim();
 
 const JUDUL  = (process.env.INPUT_JUDUL  || "Kenapa Kita Merem Saat Bersin?").trim();
 const UKURAN = (process.env.INPUT_UKURAN || "9:16").trim();
@@ -44,6 +46,46 @@ function pilihSuaraTTS(bahasa) {
     return { langCode: 'es-ES', voice: 'es-ES-AlvaroNeural' };
   }
   return { langCode: 'id-ID', voice: 'id-ID-ArdiNeural' };
+}
+
+async function generateVoiceOver(teksBersih, ttsInfo) {
+  if (ELEVENLABS_API_KEY) {
+    try {
+      console.log(`Membuat VO dengan ElevenLabs (Voice ID: ${ELEVENLABS_VOICE_ID})...`);
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`, {
+        method: 'POST',
+        headers: {
+          'xi-api-key': ELEVENLABS_API_KEY,
+          'Content-Type': 'application/json',
+          'Accept': 'audio/mpeg'
+        },
+        body: JSON.stringify({
+          text: teksBersih,
+          model_id: 'eleven_multilingual_v2',
+          voice_settings: {
+            stability: 0.45,
+            similarity_boost: 0.80,
+            style: 0.35,
+            use_speaker_boost: true
+          }
+        })
+      });
+      if (res.ok) {
+        const buf = Buffer.from(await res.arrayBuffer());
+        fs.writeFileSync('vo.mp3', buf);
+        console.log('VO ElevenLabs berhasil dibuat!');
+        return;
+      }
+      const errText = await res.text();
+      console.log('ElevenLabs gagal/limit, pindah ke Edge-TTS cadangan ->', errText);
+    } catch (e) {
+      console.log('Error koneksi ElevenLabs, pindah ke Edge-TTS cadangan ->', e.message);
+    }
+  }
+
+  console.log(`Membuat VO dengan Edge-TTS (${ttsInfo.voice}, pitch netral)...`);
+  fs.writeFileSync('naskah_vo.txt', teksBersih, 'utf8');
+  execSync(`edge-tts --voice "${ttsInfo.voice}" --rate="+4%" --pitch="+0Hz" --file naskah_vo.txt --write-media vo.mp3`, { stdio: 'inherit' });
 }
 
 async function kirimPesanTelegram(teks) {
@@ -198,8 +240,7 @@ async function main() {
 
   console.log('2/4 Membuat suara Voice Over (VO)...');
   const teksBersih = videoData.lines.map(l => l[2].replace(/\*/g, '')).join(' ');
-  fs.writeFileSync('naskah_vo.txt', teksBersih, 'utf8');
-  execSync(`edge-tts --voice "${ttsInfo.voice}" --rate="+6%" --pitch="+2Hz" --file naskah_vo.txt --write-media vo.mp3`, { stdio: 'inherit' });
+  await generateVoiceOver(teksBersih, ttsInfo);
 
   console.log('3/4 Merakit file HTML V8.8...');
   let html = fs.readFileSync('template.html', 'utf8');
