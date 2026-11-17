@@ -199,7 +199,7 @@ async function main() {
   console.log('2/4 Membuat suara Voice Over (VO)...');
   const teksBersih = videoData.lines.map(l => l[2].replace(/\*/g, '')).join(' ');
   fs.writeFileSync('naskah_vo.txt', teksBersih, 'utf8');
-  execSync(`edge-tts --voice "${ttsInfo.voice}" --rate="-4%" --file naskah_vo.txt --write-media vo.mp3`, { stdio: 'inherit' });
+  execSync(`edge-tts --voice "${ttsInfo.voice}" --rate="+6%" --pitch="+2Hz" --file naskah_vo.txt --write-media vo.mp3`, { stdio: 'inherit' });
 
   console.log('3/4 Merakit file HTML V8.8...');
   let html = fs.readFileSync('template.html', 'utf8');
@@ -208,7 +208,7 @@ async function main() {
   html = html.replace('__VIDEO_DATA_JSON__', JSON.stringify(videoData));
   fs.writeFileSync('render_siap.html', html, 'utf8');
 
-  console.log('4/4 Merender video 60 FPS di cloud...');
+  console.log('4/4 Merender video di cloud...');
   const server = http.createServer((req, res) => {
     const reqUrl = req.url.split('?')[0];
     const filePath = path.join(__dirname, reqUrl === '/' ? 'render_siap.html' : reqUrl);
@@ -221,7 +221,7 @@ async function main() {
   await new Promise(r => server.listen(8080, r));
 
   const browser = await chromium.launch({
-    args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required', '--use-gl=angle', '--use-angle=swiftshader']
+    args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required', '--disable-dev-shm-usage']
   });
   const context = await browser.newContext({
     viewport: { width: dim.width, height: dim.height },
@@ -237,8 +237,8 @@ async function main() {
   await browser.close();
   server.close();
 
-  console.log('Mengemas MP4 final (H.264 + AAC)...');
-  execSync(`ffmpeg -y -i hasil_mentah.webm -i vo.mp3 -filter_complex "[0:a][1:a]amix=inputs=2:duration=first:weights=0.35 1.0[aout]" -map 0:v -map "[aout]" -c:v libx264 -preset fast -crf 20 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart video_jadi.mp4`, { stdio: 'inherit' });
+  console.log('Mengemas MP4 final (H.264 + AAC jernih tanpa gema)...');
+  execSync(`ffmpeg -y -i hasil_mentah.webm -i vo.mp3 -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -crf 21 -r 30 -pix_fmt yuv420p -c:a aac -b:a 192k -shortest -movflags +faststart video_jadi.mp4`, { stdio: 'inherit' });
 
   const infoYoutube = `🎬 VIDEO SELESAI DIRENDER!\n\n📌 Judul:\n${videoData.title}\n\n📝 Deskripsi:\n${videoData.desc}\n\n📚 Sumber:\n${videoData.src.map(s => '- ' + s).join('\n')}\n\n🏷️ Tags:\n${videoData.tags}`;
   await kirimVideoTelegram('video_jadi.mp4', infoYoutube);
