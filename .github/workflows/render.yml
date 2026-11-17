@@ -54,3 +54,13 @@ jobs:
           INPUT_BAHASA: ${{ github.event.inputs.bahasa }}
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1280x1280x24" node buat_video.js
+  
+      - name: Upload ke YouTube Shorts
+        env:
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+        run: |
+          pip install -q google-api-python-client google-auth-oauthlib
+          python upload_youtube.py output.mp4 data.json
+          
