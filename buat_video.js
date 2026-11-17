@@ -48,44 +48,39 @@ function pilihSuaraTTS(bahasa) {
   return { langCode: 'id-ID', voice: 'id-ID-ArdiNeural' };
 }
 
-async function generateVoiceOver(teksBersih, ttsInfo) {
-  if (ELEVENLABS_API_KEY) {
-    try {
-      console.log(`Membuat VO dengan ElevenLabs (Voice ID: ${ELEVENLABS_VOICE_ID})...`);
-      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`, {
-        method: 'POST',
-        headers: {
-          'xi-api-key': ELEVENLABS_API_KEY,
-          'Content-Type': 'application/json',
-          'Accept': 'audio/mpeg'
-        },
-        body: JSON.stringify({
-          text: teksBersih,
-          model_id: 'eleven_multilingual_v2',
-          voice_settings: {
-            stability: 0.45,
-            similarity_boost: 0.80,
-            style: 0.35,
-            use_speaker_boost: true
-          }
-        })
-      });
-      if (res.ok) {
-        const buf = Buffer.from(await res.arrayBuffer());
-        fs.writeFileSync('vo.mp3', buf);
-        console.log('VO ElevenLabs berhasil dibuat!');
-        return;
-      }
-      const errText = await res.text();
-      console.log('ElevenLabs gagal/limit, pindah ke Edge-TTS cadangan ->', errText);
-    } catch (e) {
-      console.log('Error koneksi ElevenLabs, pindah ke Edge-TTS cadangan ->', e.message);
-    }
+async function generateVoiceOver(teksBersih) {
+  if (!ELEVENLABS_API_KEY) {
+    throw new Error('ELEVENLABS_API_KEY kosong/belum terbaca! Cek nama Secret di GitHub Settings atau file render.yml.');
   }
 
-  console.log(`Membuat VO dengan Edge-TTS (${ttsInfo.voice}, pitch netral)...`);
-  fs.writeFileSync('naskah_vo.txt', teksBersih, 'utf8');
-  execSync(`edge-tts --voice "${ttsInfo.voice}" --rate="+4%" --pitch="+0Hz" --file naskah_vo.txt --write-media vo.mp3`, { stdio: 'inherit' });
+  console.log(`Membuat VO wajib ElevenLabs (Voice ID: ${ELEVENLABS_VOICE_ID})...`);
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`, {
+    method: 'POST',
+    headers: {
+      'xi-api-key': ELEVENLABS_API_KEY,
+      'Content-Type': 'application/json',
+      'Accept': 'audio/mpeg'
+    },
+    body: JSON.stringify({
+      text: teksBersih,
+      model_id: 'eleven_multilingual_v2',
+      voice_settings: {
+        stability: 0.45,
+        similarity_boost: 0.80,
+        style: 0.35,
+        use_speaker_boost: true
+      }
+    })
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`ElevenLabs menolak (${res.status}): ${errText}`);
+  }
+
+  const buf = Buffer.from(await res.arrayBuffer());
+  fs.writeFileSync('vo.mp3', buf);
+  console.log('VO ElevenLabs berhasil dibuat!');
 }
 
 async function kirimPesanTelegram(teks) {
@@ -238,9 +233,9 @@ async function main() {
   console.log('1/4 Meracik naskah & adegan V8.8...');
   const videoData = await buatNaskahJSON(dim, ttsInfo);
 
-  console.log('2/4 Membuat suara Voice Over (VO)...');
+  console.log('2/4 Membuat suara Voice Over (VO) ElevenLabs...');
   const teksBersih = videoData.lines.map(l => l[2].replace(/\*/g, '')).join(' ');
-  await generateVoiceOver(teksBersih, ttsInfo);
+  await generateVoiceOver(teksBersih);
 
   console.log('3/4 Merakit file HTML V8.8...');
   let html = fs.readFileSync('template.html', 'utf8');
