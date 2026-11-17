@@ -1,0 +1,54 @@
+name: Pabrik Video Otomatis
+
+on:
+  workflow_dispatch:
+    inputs:
+      judul:
+        description: 'Judul Video'
+        required: true
+        default: 'Kenapa Kita Merem Saat Bersin?'
+      ukuran:
+        description: 'Ukuran Video (9:16, 16:9, 4:5, 1:1)'
+        required: true
+        default: '9:16'
+      bahasa:
+        description: 'Bahasa Video'
+        required: true
+        default: 'Indonesia'
+
+jobs:
+  render-video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Ambil file pabrik dari repository
+        uses: actions/checkout@v4
+
+      - name: Siapkan Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Siapkan Python & Edge-TTS (Suara VO Gratis)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install mesin suara, FFmpeg, dan browser render
+        run: |
+          pip install edge-tts
+          sudo apt-get update && sudo apt-get install -y ffmpeg xvfb
+          npm install
+          npx playwright install chromium
+
+      - name: Jalankan produksi & render video V8.8
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          INPUT_JUDUL: ${{ github.event.inputs.judul }}
+          INPUT_UKURAN: ${{ github.event.inputs.ukuran }}
+          INPUT_BAHASA: ${{ github.event.inputs.bahasa }}
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x1280x24" node buat_video.js
