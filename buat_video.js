@@ -4,13 +4,13 @@ const http = require('http');
 const { execSync } = require('child_process');
 const { chromium } = require('playwright');
 
-const GEMINI_API_KEY   = process.env.GEMINI_API_KEY;
-const TELEGRAM_TOKEN   = process.env.TELEGRAM_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const GEMINI_API_KEY   = (process.env.GEMINI_API_KEY || '').trim();
+const TELEGRAM_TOKEN   = (process.env.TELEGRAM_TOKEN || '').trim();
+const TELEGRAM_CHAT_ID = (process.env.TELEGRAM_CHAT_ID || '').trim();
 
-const JUDUL  = process.env.INPUT_JUDUL  || "Kenapa Kita Merem Saat Bersin?";
-const UKURAN = process.env.INPUT_UKURAN || "9:16";
-const BAHASA = process.env.INPUT_BAHASA || "Indonesia";
+const JUDUL  = (process.env.INPUT_JUDUL  || "Kenapa Kita Merem Saat Bersin?").trim();
+const UKURAN = (process.env.INPUT_UKURAN || "9:16").trim();
+const BAHASA = (process.env.INPUT_BAHASA || "Indonesia").trim();
 
 function parseUkuran(uk) {
   const s = uk.toLowerCase();
@@ -47,6 +47,7 @@ function pilihSuaraTTS(bahasa) {
 }
 
 async function kirimPesanTelegram(teks) {
+  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
   const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
   await fetch(url, {
     method: 'POST',
@@ -72,14 +73,14 @@ async function kirimVideoTelegram(filePath, caption) {
 
 async function buatNaskahJSON(dim, ttsInfo) {
   const prompt = `Kamu adalah penulis skrip & sutradara video animasi edukasi V8.8.
-Buatkan data lengkap dalam format JSON MURNI (tanpa markdown \`\`\`json) untuk video berikut:
+Buatkan data lengkap dalam format JSON MURNI (tanpa teks pembuka/penutup) untuk video berikut:
 - Judul: "${JUDUL}"
 - Bahasa Video: ${BAHASA} (kode BCP-47: ${ttsInfo.langCode})
 - Ukuran: ${UKURAN} (${dim.width}x${dim.height})
 
 ATURAN KETAT V8.8:
 1. Semua teks di dalam video (tx, lines, scenes, desc, tags) wajib ditulis dalam bahasa ${BAHASA} yang natural seperti penutur asli.
-2. Buat 11-14 kalimat pendek di array "lines". Format tiap elemen: ["kunci_adegan", "mood", "Kalimat dengan *kata* ditekankan.", "fx_opsional"]
+2. Buat 11-13 kalimat pendek di array "lines". Format tiap elemen: ["kunci_adegan", "mood", "Kalimat dengan *kata* ditekankan.", "fx_opsional"]
    - Kunci adegan WAJIB berurutan: "title" (2 baris hook), "a" (2-3 baris fakta utama), "b" (3-4 baris bukti & visual), "cta" (2 baris ajakan di TENGAH video: misalnya "Mau bikin video kayak gini juga?" dan "Langsung aja ke *bio*."), "c" (2 baris sudut pandang/puncak), "end" (1-2 baris penutup berkesan TANPA CTA).
    - Mood: "n" (santai), "d" (dramatis), "e" (semangat), "s" (sunyi/serius).
    - FX opsional (boleh kosong ""): "b" (boom), "k" (hantaman), "c" (lonceng di baris kedua cta), "p" (pop).
@@ -147,8 +148,7 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
   ]
 }`;
 
-        const models = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemma-3-27b-it", "gemini-flash-latest"];
-
+  const models = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemma-3-27b-it", "gemini-flash-latest"];
   let lastApiError = "";
 
   for (let putaran = 1; putaran <= 5; putaran++) {
@@ -156,11 +156,14 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
       try {
         console.log(`Putaran ${putaran}: mencoba ${model}...`);
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+        const payload = JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        });
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: AbortSignal.timeout(45000),
-          
+          body: payload
         });
         const json = await res.json();
         if (json.candidates && json.candidates[0]) {
@@ -183,7 +186,6 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
     await new Promise(r => setTimeout(r, 8000));
   }
   throw new Error('Gagal menghasilkan naskah dari Gemini API setelah 5x putaran. Detail: ' + lastApiError);
-
 }
 
 async function main() {
@@ -191,17 +193,14 @@ async function main() {
   const dim = parseUkuran(UKURAN);
   const ttsInfo = pilihSuaraTTS(BAHASA);
 
-  // 1. Racik Naskah & Struktur V8.8
   console.log('1/4 Meracik naskah & adegan V8.8...');
   const videoData = await buatNaskahJSON(dim, ttsInfo);
 
-  // 2. Generate Voice Over (VO) otomatis dari teks bersih
   console.log('2/4 Membuat suara Voice Over (VO)...');
   const teksBersih = videoData.lines.map(l => l[2].replace(/\*/g, '')).join(' ');
   fs.writeFileSync('naskah_vo.txt', teksBersih, 'utf8');
   execSync(`edge-tts --voice "${ttsInfo.voice}" --rate="-4%" --file naskah_vo.txt --write-media vo.mp3`, { stdio: 'inherit' });
 
-  // 3. Suntikkan data & aset ke template.html
   console.log('3/4 Merakit file HTML V8.8...');
   let html = fs.readFileSync('template.html', 'utf8');
   html = html.replace('__TITLE__', videoData.title);
@@ -209,7 +208,6 @@ async function main() {
   html = html.replace('__VIDEO_DATA_JSON__', JSON.stringify(videoData));
   fs.writeFileSync('render_siap.html', html, 'utf8');
 
-  // 4. Buka di browser headless, rekam 60 FPS, dan konversi ke MP4
   console.log('4/4 Merender video 60 FPS di cloud...');
   const server = http.createServer((req, res) => {
     const reqUrl = req.url.split('?')[0];
@@ -239,11 +237,9 @@ async function main() {
   await browser.close();
   server.close();
 
-  // Gabungkan video kanvas + audio VO presisi dengan FFmpeg menjadi MP4 siap upload
   console.log('Mengemas MP4 final (H.264 + AAC)...');
   execSync(`ffmpeg -y -i hasil_mentah.webm -i vo.mp3 -filter_complex "[0:a][1:a]amix=inputs=2:duration=first:weights=0.35 1.0[aout]" -map 0:v -map "[aout]" -c:v libx264 -preset fast -crf 20 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart video_jadi.mp4`, { stdio: 'inherit' });
 
-  // Kirim video jadi + info YouTube ke Telegram HP Bos
   const infoYoutube = `🎬 VIDEO SELESAI DIRENDER!\n\n📌 Judul:\n${videoData.title}\n\n📝 Deskripsi:\n${videoData.desc}\n\n📚 Sumber:\n${videoData.src.map(s => '- ' + s).join('\n')}\n\n🏷️ Tags:\n${videoData.tags}`;
   await kirimVideoTelegram('video_jadi.mp4', infoYoutube);
   console.log('Selesai! Video sudah dikirim ke Telegram.');
