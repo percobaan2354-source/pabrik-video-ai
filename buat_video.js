@@ -147,30 +147,36 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
   ]
 }`;
 
-    const models = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"];
-
+      const models = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"];
   let lastApiError = "";
 
-  for (const model of models) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json" }
-      })
-    });
-    const json = await res.json();
-    if (json.candidates && json.candidates[0]) {
-      let raw = json.candidates[0].content.parts[0].text.trim();
-      raw = raw.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
-      return JSON.parse(raw);
+  for (let putaran = 1; putaran <= 4; putaran++) {
+    for (const model of models) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        })
+      });
+      const json = await res.json();
+      if (json.candidates && json.candidates[0]) {
+        let raw = json.candidates[0].content.parts[0].text.trim();
+        const awal = raw.indexOf('{');
+        const akhir = raw.lastIndexOf('}');
+        if (awal !== -1 && akhir !== -1) {
+          raw = raw.slice(awal, akhir + 1);
+        }
+        return JSON.parse(raw);
+      }
+      lastApiError = `${model}: ${JSON.stringify(json.error || json)}`;
+      console.log(`Putaran ${putaran} (${model}) antre ->`, lastApiError);
     }
-    lastApiError = `${model}: ${JSON.stringify(json.error || json)}`;
-    console.log("Coba model berikutnya ->", lastApiError);
+    console.log("Server Google sedang padat, tunggu 12 detik sebelum coba ulang...");
+    await new Promise(r => setTimeout(r, 12000));
   }
-  throw new Error('Gagal menghasilkan naskah dari Gemini API. Detail: ' + lastApiError);
+  throw new Error('Gagal menghasilkan naskah dari Gemini API setelah 4x putaran. Detail: ' + lastApiError);
 
 }
 
