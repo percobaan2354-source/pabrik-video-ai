@@ -1,0 +1,38 @@
+name: Cek Perintah Telegram
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  cek-telegram:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baca Pesan Telegram & Picu Render
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RES=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?offset=-1")
+          MSG=$(echo "$RES" | jq -r '.result[0].message.text // ""')
+          CID=$(echo "$RES" | jq -r '.result[0].message.chat.id // ""')
+          UID=$(echo "$RES" | jq -r '.result[0].update_id // ""')
+
+          if [[ "$CID" == "$CHAT_ID" && "$MSG" == /buat* ]]; then
+            ISI=$(echo "$MSG" | sed 's/^\/buat[[:space:]]*//')
+            IFS='|' read -r JUDUL UKURAN BAHASA <<< "$ISI"
+            JUDUL=$(echo "${JUDUL:-Fakta Unik}" | xargs)
+            UKURAN=$(echo "${UKURAN:-9:16}" | xargs)
+            BAHASA=$(echo "${BAHASA:-Indonesia}" | xargs)
+
+            gh workflow run render.yml -R "${{ github.repository }}" \
+              -f judul="$JUDUL" -f ukuran="$UKURAN" -f bahasa="$BAHASA"
+
+            curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+              -d "chat_id=$CHAT_ID" \
+              -d "text=⚙️ Pesanan diterima: $JUDUL ($UKURAN, $BAHASA)"
+
+            curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?offset=$((UID + 1))" > /dev/null
+          fi
