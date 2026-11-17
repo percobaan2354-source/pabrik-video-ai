@@ -147,7 +147,8 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
   ]
 }`;
 
-        const models = ["gemini-3.8-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"];
+        const models = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemma-3-27b-it", "gemini-flash-latest"];
+
   let lastApiError = "";
 
   for (let putaran = 1; putaran <= 5; putaran++) {
