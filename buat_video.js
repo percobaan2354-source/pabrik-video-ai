@@ -147,7 +147,8 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
   ]
 }`;
 
-  const models = ["gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"];
+    const models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest"];
+  let lastApiError = "";
 
   for (const model of models) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
@@ -165,8 +166,11 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
       raw = raw.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
       return JSON.parse(raw);
     }
+    lastApiError = `${model}: ${JSON.stringify(json.error || json)}`;
+    console.log("Coba model berikutnya ->", lastApiError);
   }
-  throw new Error('Gagal menghasilkan naskah dari Gemini API.');
+  throw new Error('Gagal menghasilkan naskah dari Gemini API. Detail: ' + lastApiError);
+
 }
 
 async function main() {
