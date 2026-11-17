@@ -20,7 +20,7 @@ jobs:
           RES=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?offset=-1")
           MSG=$(echo "$RES" | jq -r '.result[0].message.text // ""')
           CID=$(echo "$RES" | jq -r '.result[0].message.chat.id // ""')
-          UID=$(echo "$RES" | jq -r '.result[0].update_id // ""')
+          UP_ID=$(echo "$RES" | jq -r '.result[0].update_id // ""')
 
           if [[ "$CID" == "$CHAT_ID" && "$MSG" == /buat* ]]; then
             ISI=$(echo "$MSG" | sed 's/^\/buat[[:space:]]*//')
@@ -36,5 +36,5 @@ jobs:
               -d "chat_id=$CHAT_ID" \
               -d "text=⚙️ Pesanan diterima: $JUDUL ($UKURAN, $BAHASA)"
 
-            curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?offset=$((UID + 1))" > /dev/null
+            curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?offset=$((UP_ID + 1))" > /dev/null
           fi
