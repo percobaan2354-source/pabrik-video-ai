@@ -160,10 +160,7 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: AbortSignal.timeout(45000),
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { thinkingConfig: { thinkingBudget: 0 } }
-          })
+          
         });
         const json = await res.json();
         if (json.candidates && json.candidates[0]) {
