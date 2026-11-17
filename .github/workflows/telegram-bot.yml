@@ -8,6 +8,8 @@ on:
 jobs:
   cek-telegram:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
     steps:
       - name: Baca Pesan Telegram & Picu Render
         env:
