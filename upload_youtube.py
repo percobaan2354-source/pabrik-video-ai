@@ -1,9 +1,29 @@
 import os
+import glob
 import json
 import sys
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+
+def find_latest_video(preferred_path):
+    if os.path.exists(preferred_path):
+        return preferred_path
+    mp4_files = glob.glob("**/*.mp4", recursive=True)
+    if not mp4_files:
+        return None
+    return max(mp4_files, key=os.path.getmtime)
+
+def load_metadata(meta_path):
+    if os.path.exists(meta_path):
+        with open(meta_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    json_files = [p for p in glob.glob("*.json") if p not in ("package.json", "package-lock.json", "tsconfig.json")]
+    if json_files:
+        latest_json = max(json_files, key=os.path.getmtime)
+        with open(latest_json, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
 
 def upload_video(video_path, meta_path):
     client_id = os.environ.get("YT_CLIENT_ID")
@@ -14,11 +34,17 @@ def upload_video(video_path, meta_path):
         print("⚠️ Secrets YouTube belum lengkap, melewati proses upload otomatis.")
         return
 
-    with open(meta_path, "r", encoding="utf-8") as f:
-        meta = json.load(f)
+    actual_video = find_latest_video(video_path)
+    if not actual_video:
+        print("❌ Tidak ditemukan file video .mp4 hasil render.")
+        sys.exit(1)
 
-    title = meta.get("title", "Fakta Unik Hari Ini")[:95] + " #Shorts"
-    desc = meta.get("desc", "Fakta menarik singkat!") + "\n\n" + meta.get("tags", "#Shorts #FaktaUnik")
+    meta = load_metadata(meta_path)
+    raw_title = meta.get("title") or os.path.splitext(os.path.basename(actual_video))[0].replace("_", " ").replace("-", " ")
+    title = raw_title[:90].strip() + " #Shorts"
+    desc = meta.get("desc", "Video edukasi & fakta menarik singkat!") + "\n\n" + meta.get("tags", "#Shorts #FaktaUnik #AI")
+
+    print(f"🎬 Mengunggah file: {actual_video} | Judul: {title}")
 
     creds = Credentials(
         token=None,
@@ -36,15 +62,15 @@ def upload_video(video_path, meta_path):
             "title": title,
             "description": desc,
             "tags": ["Shorts", "FaktaUnik", "AI"],
-            "categoryId": "27"  # Education
+            "categoryId": "27"
         },
         "status": {
-            "privacyStatus": "private",  # Ubah ke "public" jika ingin langsung tayang publik
+            "privacyStatus": "private",
             "selfDeclaredMadeForKids": False
         }
     }
 
-    media = MediaFileUpload(video_path, chunksize=-1, resumable=True, mimetype="video/mp4")
+    media = MediaFileUpload(actual_video, chunksize=-1, resumable=True, mimetype="video/mp4")
     request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
 
     response = None
