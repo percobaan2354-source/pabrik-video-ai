@@ -37,7 +37,7 @@ function parseUkuran(uk) {
   if (s.includes('1:1') || s.includes('square')) {
     return { width: 720, height: 720, aspect: '1/1' };
   }
-  return { width: 720, height: 1280, aspect: '9/16' };
+  return { width: 1080, height: 1920, aspect: '9/16' };
 }
 
 function pilihSuaraTTS(bahasa) {
@@ -206,6 +206,11 @@ function rapikanNaskah(data, dim, ttsInfo) {
   if (!Array.isArray(data.src)) data.src = [];
   if (!data.varian) data.varian = 'v' + (Date.now() % 999);
 
+  if (dim.aspect === '9/16') {
+    if (!data.title.toLowerCase().includes('#shorts')) data.title += ' #Shorts';
+    if (!data.tags.toLowerCase().includes('#shorts')) data.tags += ' #Shorts';
+  }
+
   data.lang   = ttsInfo.langCode;
   data.width  = dim.width;
   data.height = dim.height;
@@ -221,7 +226,7 @@ Buatkan data lengkap dalam format JSON MURNI (tanpa teks pembuka/penutup) untuk 
 
 ATURAN KETAT V8.8:
 1. Semua teks di dalam video (tx, lines, scenes, desc, tags) wajib ditulis dalam bahasa ${BAHASA} yang natural seperti penutur asli.
-2. Buat 11-13 kalimat pendek di array "lines". Format tiap elemen: ["kunci_adegan", "mood", "Kalimat dengan *kata* ditekankan.", "fx_opsional"]
+2. Buat ${dim.aspect === '9/16' ? '8-10 kalimat SANGAT SINGKAT (maksimal 10-12 kata per kalimat agar total durasi baca di bawah 50 detik untuk YouTube Shorts)' : '11-13 kalimat pendek'} di array "lines". Format tiap elemen: ["kunci_adegan", "mood", "Kalimat dengan *kata* ditekankan.", "fx_opsional"]
    - Kunci adegan WAJIB berurutan: "title" (2 baris hook), "a" (2-3 baris fakta utama), "b" (3-4 baris bukti & visual), "cta" (2 baris ajakan di TENGAH video: misalnya "Mau bikin video kayak gini juga?" dan "Langsung aja ke *bio*."), "c" (2 baris sudut pandang/puncak), "end" (1-2 baris penutup berkesan TANPA CTA).
    - Mood: "n" (santai), "d" (dramatis), "e" (semangat), "s" (sunyi/serius).
    - FX opsional (boleh kosong ""): "b" (boom), "k" (hantaman), "c" (lonceng di baris kedua cta), "p" (pop).
