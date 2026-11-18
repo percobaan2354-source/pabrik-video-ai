@@ -67,6 +67,16 @@ const BROLL_DATA = DATA.broll || {};
 const CW = DATA.width || 720;
 const CH = DATA.height || 1280;
 
+/* [UPGRADE] Pengaman: kunci adegan / mood / teks yang tidak valid dari AI (supaya adegan tidak kosong/error) */
+{
+ const VALID_SC=['title','a','b','cta','c','end'],VALID_MOOD=['n','d','e','s'];
+ L.forEach(l=>{
+  if(!VALID_SC.includes(l[0]))l[0]='a';
+  if(!VALID_MOOD.includes(l[1]))l[1]='n';
+  l[2]=String(l[2]==null?'':l[2]);
+ });
+}
+
 const HALF = .56;
 const LP = LANG.split('-')[0].toLowerCase();
 const hash = s => {let h=2166136261;for(const c of s){h^=c.charCodeAt(0);h=Math.imul(h,16777619)}return h>>>0};
@@ -274,6 +284,14 @@ function initCharFromUrl(url){
   im.onerror=()=>resolve(false);
   im.src=url;
  });
+}
+
+/* [UPGRADE] Versi aman pemuat karakter: kalau gagal/macet (misal error di onload), tidak membuat seluruh proses ikut menggantung */
+function initCharSafe(url){
+ return Promise.race([
+  initCharFromUrl(url).catch(()=>false),
+  new Promise(r=>setTimeout(()=>r(false),8000))
+ ]);
 }
 
 /* ===== VISUAL ADEGAN ===== */
@@ -601,6 +619,50 @@ function stop(){playing=false;au&&au.pause();bed(false);setIcon();poster.classLi
 function finish(){playing=false;au&&au.pause();bed(false);setIcon();if(exporting)setTimeout(stopRec,900)}
 $('play').onclick=frame.onclick=()=>exporting?0:(playing?stop():play());
 
+/* ===== [UPGRADE] TOMBOL ULANG, TIMELINE & EKSPOR MANUAL (sebelumnya belum berfungsi) ===== */
+let toastT=0;
+function note(msg){toast.textContent=msg;toast.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>toast.classList.remove('on'),2600)}
+
+$('restart').onclick=()=>{
+ if(exporting)return;
+ stop();tm=0;if(au)au.currentTime=0;
+ pScene=null;lay=-1;capLineIdx=-1;spoken=-1;
+ play();
+};
+
+$('tl').onclick=e=>{
+ if(exporting)return;
+ const r=$('tl').getBoundingClientRect(),p=cl((e.clientX-r.left)/r.width);
+ const target=L[lineAt(p*LEN)].t0;
+ tm=target;if(au)au.currentTime=target;
+ pScene=null;lay=-1;capLineIdx=-1;spoken=-1;
+};
+
+$('exp').onclick=()=>{
+ if(exporting)return;
+ aInit();
+ if(!ac||!dest||typeof MediaRecorder==='undefined'){note('Browser ini belum mendukung ekspor video');return}
+ const btn=$('exp');
+ const vT=cv.captureStream(30).getVideoTracks(),aT=dest.stream.getAudioTracks();
+ const mt=['video/webm;codecs=vp8,opus','video/webm'].find(t=>MediaRecorder.isTypeSupported(t))||'';
+ const mr=new MediaRecorder(new MediaStream([...vT,...aT]),mt?{mimeType:mt,videoBitsPerSecond:6e6}:{});
+ const parts=[];
+ mr.ondataavailable=e=>e.data.size&&parts.push(e.data);
+ mr.onstop=()=>{
+  const b=new Blob(parts,{type:mr.mimeType||'video/webm'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='video_'+VARIAN+'.webm';
+  document.body.appendChild(a);a.click();a.remove();
+  btn.textContent='Ekspor video';btn.disabled=false;note('Video berhasil diekspor');
+ };
+ rec=mr;chunks=parts;
+ btn.textContent='Mengekspor... mohon tunggu';btn.disabled=true;
+ stop();tm=0;if(au)au.currentTime=0;
+ pScene=null;lay=-1;capLineIdx=-1;spoken=-1;
+ exporting=true;
+ mr.start(250);
+ play();
+};
+
 /* ===== AUTO-LOAD ASET & AUTO-EXPORT UNTUK ROBOT RENDER ===== */
 window.__EXPORT_DONE = false;
 function stopRec(){
@@ -608,14 +670,28 @@ function stopRec(){
  if(rec&&rec.state!=='inactive')rec.stop();
 }
 
+/* [UPGRADE] Tunggu font Google selesai dimuat (maks 5 detik) supaya teks canvas & ukuran subtitle tidak salah hitung */
+const FONTS_READY=Promise.race([
+ Promise.all([
+  ...['600','700','800','900'].map(w=>document.fonts.load(w+' 40px Poppins')),
+  document.fonts.load('800 40px "Playfair Display"'),
+  document.fonts.load('700 40px "Noto Sans"'),
+  ...(FN?[document.fonts.load('800 40px '+FN)]:[])
+ ]).then(()=>document.fonts.ready),
+ new Promise(r=>setTimeout(r,5000))
+]).catch(()=>{});
+
 async function initAutoAssetsAndRender(){
- await initCharFromUrl('karakter.png');
+ await FONTS_READY; /* [UPGRADE] */
+ await initCharSafe('karakter.png'); /* [UPGRADE] dulu: initCharFromUrl('karakter.png') */
  try{
   const resp = await fetch('vo.mp3');
   if(resp.ok){
    const buf = await resp.arrayBuffer();
    const blob = new Blob([buf],{type:'audio/mpeg'});
    au = new Audio(URL.createObjectURL(blob));
+   /* [UPGRADE] Catat kapan suara VO benar-benar mulai terputar sejak rekaman dimulai (untuk sinkron audio di ffmpeg) */
+   au.addEventListener('playing',()=>{if(exporting&&window.__VO_OFFSET==null&&window.__REC_T0)window.__VO_OFFSET=(performance.now()-window.__REC_T0)/1000});
    aInit();
    if(ac){
     const ab = await ac.decodeAudioData(buf.slice(0));
@@ -646,6 +722,7 @@ async function initAutoAssetsAndRender(){
    window.__EXPORT_DONE = true;
   };
   exporting = true;
+  window.__REC_T0 = performance.now(); /* [UPGRADE] */
   rec.start(250);
   tm = 0; pScene = null; lay = -1; capLineIdx = -1;
   play();
