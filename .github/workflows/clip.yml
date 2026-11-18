@@ -1,0 +1,36 @@
+name: AI Video Clipper
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'Link Video YouTube'
+        required: true
+        type: string
+
+jobs:
+  clip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ambil kode dari repositori
+        uses: actions/checkout@v4
+
+      - name: Siapkan Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install yt-dlp & FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg python3-pip
+          pip3 install -U yt-dlp
+
+      - name: Jalankan AI Clipper
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          INPUT_URL: ${{ github.event.inputs.url }}
+        run: node clipper.js
+        
