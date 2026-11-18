@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       judul:
-        description: 'Judul Video'
+        description: 'Judul / Topik Video'
         required: true
         default: 'Kenapa Kita Merem Saat Bersin?'
       ukuran:
@@ -15,6 +15,10 @@ on:
         description: 'Bahasa Video'
         required: true
         default: 'Indonesia'
+      jadwal_wib:
+        description: 'Jadwal Tayang WIB (Opsional, contoh: 2026-11-19 18:00)'
+        required: false
+        default: ''
 
 jobs:
   render-video:
@@ -30,7 +34,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Siapkan Python & Edge-TTS (Suara VO Gratis)
+      - name: Siapkan Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -60,7 +64,7 @@ jobs:
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          INPUT_JADWAL: ${{ github.event.inputs.jadwal_wib }}
         run: |
           pip install -q google-api-python-client google-auth-oauthlib
-          python upload_youtube.py output.mp4 data.json
-          
+          python upload_youtube.py video_jadi.mp4 data.json
