@@ -6,6 +6,7 @@ const GEMINI_API_KEY   = (process.env.GEMINI_API_KEY || '').trim();
 const TELEGRAM_TOKEN   = (process.env.TELEGRAM_TOKEN || '').trim();
 const TELEGRAM_CHAT_ID = (process.env.TELEGRAM_CHAT_ID || '').trim();
 const VIDEO_URL        = (process.env.INPUT_URL || '').trim();
+const YOUTUBE_COOKIES  = (process.env.YOUTUBE_COOKIES || '').trim();
 
 async function kirimPesan(teks) {
   if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
@@ -104,8 +105,15 @@ async function main() {
   if (!VIDEO_URL) throw new Error('Link video kosong!');
   await kirimPesan(`✂️ AI Clipper mulai bekerja!\n🔗 Link: ${VIDEO_URL}\n\n1/3 Mengambil transkrip & video...`);
 
+  // Siapkan opsi anti-blokir YouTube (pakai Node.js runtime + player_client android/web + cookies jika ada)
+  let opsiYtDlp = `--js-runtimes node --extractor-args "youtube:player_client=android,web"`;
+  if (YOUTUBE_COOKIES) {
+    fs.writeFileSync('cookies.txt', YOUTUBE_COOKIES, 'utf8');
+    opsiYtDlp += ` --cookies cookies.txt`;
+  }
+
   // Unduh subtitle otomatis (id/en) tanpa video dulu
-  execSync(`yt-dlp --write-auto-subs --write-subs --sub-lang "id,en" --skip-download -o "sub" "${VIDEO_URL}"`, { stdio: 'inherit' });
+  execSync(`yt-dlp ${opsiYtDlp} --write-auto-subs --write-subs --sub-lang "id,en" --skip-download -o "sub" "${VIDEO_URL}"`, { stdio: 'inherit' });
 
   const fileSub = fs.readdirSync('.').find(f => f.startsWith('sub.') && f.endsWith('.vtt'));
   if (!fileSub) {
@@ -119,7 +127,7 @@ async function main() {
   await kirimPesan(`🔥 Momen ditemukan!\n⏱️ ${momen.start} - ${momen.end}\n📌 ${momen.judul}\n💡 ${momen.alasan}\n\n3/3 Memotong & mengubah ke format 9:16...`);
 
   // Unduh video kualitas terbaik maksimal 720p/1080p mp4
-  execSync(`yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 -o "sumber.mp4" "${VIDEO_URL}"`, { stdio: 'inherit' });
+  execSync(`yt-dlp ${opsiYtDlp} -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 -o "sumber.mp4" "${VIDEO_URL}"`, { stdio: 'inherit' });
 
   // Potong & crop tengah ke 9:16 (1080x1920)
   execSync(`ffmpeg -y -ss ${momen.start} -to ${momen.end} -i sumber.mp4 -vf "crop=ih*9/16:ih,scale=1080:1920" -c:v libx264 -preset veryfast -crf 22 -c:a aac -b:a 128k -movflags +faststart clip_jadi.mp4`, { stdio: 'inherit' });
