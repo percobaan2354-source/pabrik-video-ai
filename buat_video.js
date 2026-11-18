@@ -94,6 +94,7 @@ async function kirimPesanTelegram(teks) {
 }
 
 async function kirimVideoTelegram(filePath, caption) {
+  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
   const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendVideo`;
   const form = new FormData();
   const fileBuffer = fs.readFileSync(filePath);
@@ -232,6 +233,9 @@ async function main() {
 
   console.log('1/4 Meracik naskah & adegan V8.8...');
   const videoData = await buatNaskahJSON(dim, ttsInfo);
+
+  // Simpan metadata ke data.json agar dibaca otomatis oleh upload_youtube.py
+  fs.writeFileSync('data.json', JSON.stringify(videoData, null, 2), 'utf8');
 
   console.log('2/4 Membuat suara Voice Over (VO) ElevenLabs...');
   const teksBersih = videoData.lines.map(l => l[2].replace(/\*/g, '')).join(' ');
