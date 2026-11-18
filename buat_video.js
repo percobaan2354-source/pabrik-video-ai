@@ -14,6 +14,18 @@ const JUDUL  = (process.env.INPUT_JUDUL  || "Kenapa Kita Merem Saat Bersin?").tr
 const UKURAN = (process.env.INPUT_UKURAN || "9:16").trim();
 const BAHASA = (process.env.INPUT_BAHASA || "Indonesia").trim();
 
+// ============================================================
+// [UPGRADE] Helper umum: jeda, timer tahap, format ukuran file
+// ============================================================
+const tunggu = (ms) => new Promise(r => setTimeout(r, ms));
+const WAKTU_MULAI = Date.now();
+function detikBerjalan() {
+  return ((Date.now() - WAKTU_MULAI) / 1000).toFixed(1);
+}
+function formatMB(bytes) {
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
 function parseUkuran(uk) {
   const s = uk.toLowerCase();
   if (s.includes('16:9') || s.includes('youtube panjang') || s.includes('landscape')) {
@@ -30,6 +42,10 @@ function parseUkuran(uk) {
 
 function pilihSuaraTTS(bahasa) {
   const b = bahasa.toLowerCase();
+  // [UPGRADE] Perbaikan bug: kata "indonesia" mengandung "es" sehingga dulu bisa salah terbaca Spanyol
+  if (b.includes('indonesia') || b === 'id') {
+    return { langCode: 'id-ID', voice: 'id-ID-ArdiNeural' };
+  }
   if (b.includes('inggris') || b.includes('english') || b.includes('en')) {
     return { langCode: 'en-US', voice: 'en-US-AndrewNeural' };
   }
@@ -54,43 +70,67 @@ async function generateVoiceOver(teksBersih) {
   }
 
   console.log(`Membuat VO wajib ElevenLabs (Voice ID: ${ELEVENLABS_VOICE_ID})...`);
-  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`, {
-    method: 'POST',
-    headers: {
-      'xi-api-key': ELEVENLABS_API_KEY,
-      'Content-Type': 'application/json',
-      'Accept': 'audio/mpeg'
-    },
-    body: JSON.stringify({
-      text: teksBersih,
-      model_id: 'eleven_multilingual_v2',
-      voice_settings: {
-        stability: 0.45,
-        similarity_boost: 0.80,
-        style: 0.35,
-        use_speaker_boost: true
+
+  // [UPGRADE] Auto-retry sampai 3x (kalau server ElevenLabs lagi sibuk / jaringan putus)
+  let errTerakhir = null;
+  for (let percobaan = 1; percobaan <= 3; percobaan++) {
+    try {
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`, {
+        method: 'POST',
+        headers: {
+          'xi-api-key': ELEVENLABS_API_KEY,
+          'Content-Type': 'application/json',
+          'Accept': 'audio/mpeg'
+        },
+        body: JSON.stringify({
+          text: teksBersih,
+          model_id: 'eleven_multilingual_v2',
+          voice_settings: {
+            stability: 0.45,
+            similarity_boost: 0.80,
+            style: 0.35,
+            use_speaker_boost: true
+          }
+        })
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        // Error 401/403/422 = salah key / salah setting, retry tidak ada gunanya
+        if ([400, 401, 403, 422].includes(res.status)) {
+          throw Object.assign(new Error(`ElevenLabs menolak (${res.status}): ${errText}`), { fatal: true });
+        }
+        throw new Error(`ElevenLabs menolak (${res.status}): ${errText}`);
       }
-    })
-  });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`ElevenLabs menolak (${res.status}): ${errText}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length < 1000) throw new Error('File VO terlalu kecil, kemungkinan rusak.');
+      fs.writeFileSync('vo.mp3', buf);
+      console.log(`VO ElevenLabs berhasil dibuat! (${formatMB(buf.length)})`);
+      return;
+    } catch (err) {
+      errTerakhir = err;
+      if (err.fatal) throw err;
+      console.log(`VO percobaan ${percobaan}/3 gagal -> ${err.message}`);
+      if (percobaan < 3) await tunggu(5000 * percobaan);
+    }
   }
-
-  const buf = Buffer.from(await res.arrayBuffer());
-  fs.writeFileSync('vo.mp3', buf);
-  console.log('VO ElevenLabs berhasil dibuat!');
+  throw errTerakhir;
 }
 
 async function kirimPesanTelegram(teks) {
   if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
-  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
-  await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: teks })
-  });
+  // [UPGRADE] Dibungkus try/catch supaya kegagalan notifikasi tidak ikut mematikan proses utama
+  try {
+    const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: teks.slice(0, 4000) })
+    });
+  } catch (e) {
+    console.log('Notifikasi Telegram gagal (diabaikan):', e.message);
+  }
 }
 
 async function kirimVideoTelegram(filePath, caption) {
@@ -107,6 +147,69 @@ async function kirimVideoTelegram(filePath, caption) {
   const res = await fetch(url, { method: 'POST', body: form });
   const json = await res.json();
   if (!json.ok) throw new Error('Gagal kirim video Telegram: ' + JSON.stringify(json));
+}
+
+// [UPGRADE] Kirim sebagai dokumen (cadangan kalau sendVideo gagal / file terlalu besar)
+async function kirimDokumenTelegram(filePath, caption) {
+  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
+  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendDocument`;
+  const form = new FormData();
+  const fileBuffer = fs.readFileSync(filePath);
+  const blob = new Blob([fileBuffer], { type: 'video/mp4' });
+  form.append('chat_id', TELEGRAM_CHAT_ID);
+  form.append('document', blob, path.basename(filePath));
+  form.append('caption', caption.slice(0, 1000));
+
+  const res = await fetch(url, { method: 'POST', body: form });
+  const json = await res.json();
+  if (!json.ok) throw new Error('Gagal kirim dokumen Telegram: ' + JSON.stringify(json));
+}
+
+// [UPGRADE] Pengaman struktur JSON dari Gemini: isi otomatis bagian yang hilang supaya template tidak error
+function rapikanNaskah(data, dim, ttsInfo) {
+  if (!data || typeof data !== 'object') throw new Error('Naskah dari Gemini bukan objek JSON yang valid.');
+
+  if (!Array.isArray(data.lines)) throw new Error('Naskah dari Gemini tidak punya array "lines".');
+  data.lines = data.lines.filter(l => Array.isArray(l) && l.length >= 3 && typeof l[2] === 'string' && l[2].trim() !== '');
+  if (data.lines.length < 3) throw new Error('Naskah dari Gemini terlalu pendek / format "lines" rusak.');
+
+  const defaultTx = {
+    kicker: 'FAKTA UNIK', t1: 'KATA ATAS', t2: 'KATA BAWAH?',
+    cvA: 'Tahukah kamu', cvB: '?', cvC: JUDUL,
+    watch: 'tonton sampai habis',
+    ctaA: 'Mau bikin video', ctaB: 'kayak gini?',
+    ctaSub: 'Prompt otomatis siap pakai', ctaBio: 'LINK DI BIO',
+    src: 'Sumber', chap: 'Bab', lb1: 'DATA RISET', lb2: 'KOMENTAR PENONTON'
+  };
+  const defaultBroll = {
+    b1_title: 'DATA RISET', b1_sub: 'Fakta pendukung',
+    b2_user: '@PenontonPenasaran', b2_comment: 'Wah baru tahu!',
+    b3_title: 'PERBANDINGAN DATA', b3_sub: 'Data singkat',
+    b4_title: 'FAKTA KUNCI', b4_sub: 'Ringkasan bukti'
+  };
+  const defaultScenes = {
+    title: ['Pembuka', 'hook cerita'],
+    a: ['Fakta Utama', 'penjelasan'],
+    b: ['Bukti & Fakta', 'visual pendukung'],
+    cta: ['Mau bikin video begini?', 'cek link di bio'],
+    c: ['Sudut Pandang', 'kesimpulan'],
+    end: ['Penutup', 'refleksi']
+  };
+
+  data.tx     = Object.assign({}, defaultTx,     (data.tx     && typeof data.tx     === 'object') ? data.tx     : {});
+  data.broll  = Object.assign({}, defaultBroll,  (data.broll  && typeof data.broll  === 'object') ? data.broll  : {});
+  data.scenes = Object.assign({}, defaultScenes, (data.scenes && typeof data.scenes === 'object') ? data.scenes : {});
+
+  if (typeof data.title !== 'string' || !data.title.trim()) data.title = JUDUL;
+  if (typeof data.desc  !== 'string' || !data.desc.trim())  data.desc  = `${data.title} - tonton sampai habis dan tulis pendapatmu di komentar!`;
+  if (typeof data.tags  !== 'string' || !data.tags.trim())  data.tags  = '#faktaunik #edukasi #shorts';
+  if (!Array.isArray(data.src)) data.src = [];
+  if (!data.varian) data.varian = 'v' + (Date.now() % 999);
+
+  data.lang   = ttsInfo.langCode;
+  data.width  = dim.width;
+  data.height = dim.height;
+  return data;
 }
 
 async function buatNaskahJSON(dim, ttsInfo) {
@@ -211,13 +314,15 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
           if (awal !== -1 && akhir !== -1) {
             raw = raw.slice(awal, akhir + 1);
           }
-          return JSON.parse(raw);
+          // [UPGRADE] Hasil di-parse lalu dirapikan/divalidasi; kalau rusak otomatis lanjut ke model berikutnya
+          const hasil = JSON.parse(raw);
+          return rapikanNaskah(hasil, dim, ttsInfo);
         }
         lastApiError = `${model}: ${JSON.stringify(json.error || json)}`;
         console.log(`Gagal (${model}) ->`, lastApiError);
       } catch (err) {
-        lastApiError = `${model} timeout/network: ${err.message}`;
-        console.log(`Timeout/Error jaringan (${model}) ->`, err.message);
+        lastApiError = `${model} timeout/network/format: ${err.message}`;
+        console.log(`Timeout/Error jaringan/format (${model}) ->`, err.message);
       }
     }
     console.log("Menunggu 8 detik sebelum putaran berikutnya...");
@@ -231,8 +336,12 @@ async function main() {
   const dim = parseUkuran(UKURAN);
   const ttsInfo = pilihSuaraTTS(BAHASA);
 
+  // [UPGRADE] Notifikasi awal ke Telegram
+  await kirimPesanTelegram(`🏭 Pabrik Video mulai bekerja!\n\n📌 Judul: ${JUDUL}\n📐 Ukuran: ${UKURAN}\n🌐 Bahasa: ${BAHASA}`);
+
   console.log('1/4 Meracik naskah & adegan V8.8...');
   const videoData = await buatNaskahJSON(dim, ttsInfo);
+  console.log(`   (naskah selesai, ${detikBerjalan()} detik berjalan, ${videoData.lines.length} kalimat)`);
 
   // Simpan metadata ke data.json agar dibaca otomatis oleh upload_youtube.py
   fs.writeFileSync('data.json', JSON.stringify(videoData, null, 2), 'utf8');
@@ -240,6 +349,8 @@ async function main() {
   console.log('2/4 Membuat suara Voice Over (VO) ElevenLabs...');
   const teksBersih = videoData.lines.map(l => l[2].replace(/\*/g, '')).join(' ');
   await generateVoiceOver(teksBersih);
+  console.log(`   (VO selesai, ${detikBerjalan()} detik berjalan)`);
+  await kirimPesanTelegram('✅ Naskah & suara VO selesai. Sekarang merender video...');
 
   console.log('3/4 Merakit file HTML V8.8...');
   let html = fs.readFileSync('template.html', 'utf8');
@@ -263,25 +374,61 @@ async function main() {
   const browser = await chromium.launch({
     args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required', '--disable-dev-shm-usage']
   });
-  const context = await browser.newContext({
-    viewport: { width: dim.width, height: dim.height },
-    acceptDownloads: true
-  });
-  const page = await context.newPage();
 
-  const downloadPromise = page.waitForEvent('download', { timeout: 240000 });
-  await page.goto('http://localhost:8080/render_siap.html?autorender=1', { waitUntil: 'networkidle' });
+  // [UPGRADE] try/finally: browser & server selalu ditutup walau render gagal (tidak menggantung)
+  try {
+    const context = await browser.newContext({
+      viewport: { width: dim.width, height: dim.height },
+      acceptDownloads: true
+    });
+    const page = await context.newPage();
 
-  const download = await downloadPromise;
-  await download.saveAs('hasil_mentah.webm');
-  await browser.close();
-  server.close();
+    // [UPGRADE] Log error dari dalam halaman HTML supaya gampang debug di GitHub Actions
+    page.on('pageerror', e => console.log('[Halaman] Error JS:', e.message));
+    page.on('console', msg => {
+      if (msg.type() === 'error') console.log('[Halaman] console.error:', msg.text());
+    });
+
+    const downloadPromise = page.waitForEvent('download', { timeout: 240000 });
+    await page.goto('http://localhost:8080/render_siap.html?autorender=1', { waitUntil: 'networkidle' });
+
+    const download = await downloadPromise;
+    await download.saveAs('hasil_mentah.webm');
+  } finally {
+    await browser.close().catch(() => {});
+    server.close();
+  }
+  console.log(`   (render browser selesai, ${detikBerjalan()} detik berjalan)`);
 
   console.log('Mengemas MP4 final (H.264 + AAC jernih tanpa gema)...');
   execSync(`ffmpeg -y -i hasil_mentah.webm -i vo.mp3 -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -crf 21 -r 30 -pix_fmt yuv420p -c:a aac -b:a 192k -shortest -movflags +faststart video_jadi.mp4`, { stdio: 'inherit' });
 
+  // [UPGRADE] Info tambahan: ukuran file & durasi video (ffprobe opsional, aman kalau gagal)
+  const ukuranFile = fs.statSync('video_jadi.mp4').size;
+  let durasiTeks = '-';
+  try {
+    const d = parseFloat(execSync('ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 video_jadi.mp4').toString().trim());
+    if (!isNaN(d)) durasiTeks = d.toFixed(1) + ' detik';
+  } catch (e) { /* abaikan */ }
+
   const infoYoutube = `🎬 VIDEO SELESAI DIRENDER!\n\n📌 Judul:\n${videoData.title}\n\n📝 Deskripsi:\n${videoData.desc}\n\n📚 Sumber:\n${videoData.src.map(s => '- ' + s).join('\n')}\n\n🏷️ Tags:\n${videoData.tags}`;
-  await kirimVideoTelegram('video_jadi.mp4', infoYoutube);
+
+  // [UPGRADE] Kirim video; kalau terlalu besar (>49MB) atau gagal, kirim sebagai dokumen
+  const infoTeknis = `\n\n⏱️ Durasi: ${durasiTeks} | 💾 ${formatMB(ukuranFile)} | 🕐 Proses: ${detikBerjalan()} dtk`;
+  if (ukuranFile > 49 * 1024 * 1024) {
+    console.log('File > 49MB, dikirim sebagai dokumen...');
+    await kirimDokumenTelegram('video_jadi.mp4', infoYoutube);
+  } else {
+    try {
+      await kirimVideoTelegram('video_jadi.mp4', infoYoutube);
+    } catch (e) {
+      console.log('sendVideo gagal, mencoba kirim sebagai dokumen ->', e.message);
+      await kirimDokumenTelegram('video_jadi.mp4', infoYoutube);
+    }
+  }
+
+  // [UPGRADE] Caption Telegram dibatasi 1000 huruf, jadi info lengkap + teknis dikirim juga sebagai pesan teks
+  await kirimPesanTelegram(infoYoutube + infoTeknis);
   console.log('Selesai! Video sudah dikirim ke Telegram.');
 }
 
