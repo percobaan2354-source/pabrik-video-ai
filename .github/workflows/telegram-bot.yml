@@ -2,7 +2,7 @@ name: Cek Perintah Telegram
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '* * * * *'
   workflow_dispatch:
 
 jobs:
@@ -11,7 +11,7 @@ jobs:
     permissions:
       actions: write
     steps:
-      - name: Baca Pesan Telegram & Picu Render
+      - name: Baca Pesan Telegram & Picu Workflow
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -22,8 +22,51 @@ jobs:
           CID=$(echo "$RES" | jq -r '.result[0].message.chat.id // ""')
           UP_ID=$(echo "$RES" | jq -r '.result[0].update_id // ""')
 
-          if [[ "$CID" == "$CHAT_ID" && "$MSG" == /buat* ]]; then
-            ISI=$(echo "$MSG" | sed 's/^\/buat[[:space:]]*//')
+          if [[ "$CID" != "$CHAT_ID" || -z "$MSG" ]]; then
+            echo "Tidak ada pesan baru dari user."
+            exit 0
+          fi
+
+          # 1. PERINTAH BARU: /clip <link_youtube>
+          if [[ "$MSG" == /clip* ]]; then
+            URL_VIDEO=$(echo "$MSG" | sed -E 's/^\/clip(@[A-Za-z0-9_]+)?[[:space:]]*//' | xargs)
+            if [[ "$URL_VIDEO" == http* ]]; then
+              gh workflow run clip.yml -R "${{ github.repository }}" -f url="$URL_VIDEO"
+              curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+                -d "chat_id=$CHAT_ID" \
+                -d "text=✂️ Pesanan AI Clipper diterima! Mencari momen viral dari: $URL_VIDEO"
+            else
+              curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+                -d "chat_id=$CHAT_ID" \
+                -d "text=⚠️ Format salah. Contoh: /clip https://www.youtube.com/watch?v=xxxx"
+            fi
+            curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?offset=$((UP_ID + 1))" > /dev/null
+
+          # 2. PERINTAH: /buat_en <judul>
+          elif [[ "$MSG" == /buat_en* ]]; then
+            JUDUL=$(echo "$MSG" | sed -E 's/^\/buat_en(@[A-Za-z0-9_]+)?[[:space:]]*//' | xargs)
+            JUDUL="${JUDUL:-Amazing Science Facts}"
+            gh workflow run render.yml -R "${{ github.repository }}" \
+              -f judul="$JUDUL" -f ukuran="9:16" -f bahasa="Inggris"
+            curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+              -d "chat_id=$CHAT_ID" \
+              -d "text=⚙️ Pesanan Shorts Inggris diterima: $JUDUL"
+            curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?offset=$((UP_ID + 1))" > /dev/null
+
+          # 3. PERINTAH: /buat_yt <judul>
+          elif [[ "$MSG" == /buat_yt* ]]; then
+            JUDUL=$(echo "$MSG" | sed -E 's/^\/buat_yt(@[A-Za-z0-9_]+)?[[:space:]]*//' | xargs)
+            JUDUL="${JUDUL:-Fakta Sejarah Dunia}"
+            gh workflow run render.yml -R "${{ github.repository }}" \
+              -f judul="$JUDUL" -f ukuran="16:9" -f bahasa="Indonesia"
+            curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+              -d "chat_id=$CHAT_ID" \
+              -d "text=⚙️ Pesanan Video Panjang 16:9 diterima: $JUDUL"
+            curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?offset=$((UP_ID + 1))" > /dev/null
+
+          # 4. PERINTAH LAMA: /buat <judul> | <ukuran> | <bahasa>
+          elif [[ "$MSG" == /buat* ]]; then
+            ISI=$(echo "$MSG" | sed -E 's/^\/buat(@[A-Za-z0-9_]+)?[[:space:]]*//')
             IFS='|' read -r JUDUL UKURAN BAHASA <<< "$ISI"
             JUDUL=$(echo "${JUDUL:-Fakta Unik}" | xargs)
             UKURAN=$(echo "${UKURAN:-9:16}" | xargs)
@@ -36,5 +79,20 @@ jobs:
               -d "chat_id=$CHAT_ID" \
               -d "text=⚙️ Pesanan diterima: $JUDUL ($UKURAN, $BAHASA)"
 
+            curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?offset=$((UP_ID + 1))" > /dev/null
+
+          # 5. PERINTAH: /status -> Cek proses terakhir di GitHub Actions
+          elif [[ "$MSG" == /status* ]]; then
+            LAST=$(gh run list -R "${{ github.repository }}" -L 1 --json displayTitle,status,conclusion -q '.[0] | "\(.displayTitle) -> \(.status) (\(.conclusion // "berjalan"))"')
+            curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+              -d "chat_id=$CHAT_ID" \
+              -d "text=📊 Status terakhir: ${LAST:-Belum ada riwayat}"
+            curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?offset=$((UP_ID + 1))" > /dev/null
+
+          # 6. SAPAAN / MENU (/start, /menu, halo, dll)
+          else
+            curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+              -d "chat_id=$CHAT_ID" \
+              -d "text=🎬 MENU PABRIK VIDEO AI:%0A• /buat Judul Video%0A• /clip Link YouTube%0A• /buat_en English Title%0A• /buat_yt Judul Video Panjang%0A• /status Cek proses render"
             curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?offset=$((UP_ID + 1))" > /dev/null
           fi
