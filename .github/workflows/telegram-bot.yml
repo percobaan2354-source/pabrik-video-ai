@@ -18,27 +18,43 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           RES=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?offset=-1")
-          MSG=$(echo "$RES" | jq -r '.result[0].message.text // ""')
+          RAW_MSG=$(echo "$RES" | jq -r '.result[0].message.text // ""')
           CID=$(echo "$RES" | jq -r '.result[0].message.chat.id // ""')
           UP_ID=$(echo "$RES" | jq -r '.result[0].update_id // ""')
 
-          if [[ "$CID" != "$CHAT_ID" || -z "$MSG" ]]; then
+          if [[ "$CID" != "$CHAT_ID" || -z "$RAW_MSG" ]]; then
             echo "Tidak ada pesan baru dari user."
             exit 0
           fi
 
-          # 1. PERINTAH BARU: /clip <link_youtube>
+          # Bersihkan mention @username_bot di depan teks (otomatis muncul saat pakai tombol inline)
+          MSG=$(echo "$RAW_MSG" | sed -E 's/^@[A-Za-z0-9_]+[[:space:]]*//' | xargs)
+
+          # 1. PERINTAH: /clip [font] <link_youtube>
           if [[ "$MSG" == /clip* ]]; then
-            URL_VIDEO=$(echo "$MSG" | sed -E 's/^\/clip(@[A-Za-z0-9_]+)?[[:space:]]*//' | xargs)
+            ISI_CLIP=$(echo "$MSG" | sed -E 's/^\/clip(@[A-Za-z0-9_]+)?[[:space:]]*//' | xargs)
+
+            # Deteksi pilihan font jika ada di depan atau belakang link
+            FONT_PILIHAN="montserrat"
+            for f in montserrat anton poppins comic roboto dejavu; do
+              if [[ "${ISI_CLIP,,}" == *"$f"* ]]; then
+                FONT_PILIHAN="$f"
+                break
+              fi
+            done
+
+            # Ambil URL YouTube bersih dari teks
+            URL_VIDEO=$(echo "$ISI_CLIP" | grep -oE 'https?://[^[:space:]|]+' | head -n 1)
+
             if [[ "$URL_VIDEO" == http* ]]; then
-              gh workflow run clip.yml -R "${{ github.repository }}" -f url="$URL_VIDEO"
+              gh workflow run clip.yml -R "${{ github.repository }}" -f url="$URL_VIDEO" -f font="$FONT_PILIHAN"
               curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
                 -d "chat_id=$CHAT_ID" \
-                -d "text=✂️ Pesanan AI Clipper diterima! Mencari momen viral dari: $URL_VIDEO"
+                -d "text=✂️ Pesanan AI Clipper diterima!%0A🔤 Font: $FONT_PILIHAN%0A🔗 Link: $URL_VIDEO"
             else
               curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
                 -d "chat_id=$CHAT_ID" \
-                -d "text=⚠️ Format salah. Contoh: /clip https://www.youtube.com/watch?v=xxxx"
+                -d "text=⚠️ Link YouTube belum ditempel! Pencet tombol font di bawah lalu tempel link YouTube-nya."
             fi
             curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?offset=$((UP_ID + 1))" > /dev/null
 
@@ -89,10 +105,40 @@ jobs:
               -d "text=📊 Status terakhir: ${LAST:-Belum ada riwayat}"
             curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?offset=$((UP_ID + 1))" > /dev/null
 
-          # 6. SAPAAN / MENU (/start, /menu, halo, dll)
+          # 6. SAPAAN / MENU (/start, /menu, halo, dll) -> Kirim tombol yang masuk ke kolom ketik!
           else
+            MENU_JSON=$(cat << 'EOF'
+          {
+            "inline_keyboard": [
+              [
+                {"text": "✂️ Clip + Montserrat", "switch_inline_query_current_chat": "/clip montserrat "},
+                {"text": "💥 Clip + Anton",      "switch_inline_query_current_chat": "/clip anton "}
+              ],
+              [
+                {"text": "✨ Clip + Poppins",    "switch_inline_query_current_chat": "/clip poppins "},
+                {"text": "😄 Clip + Comic",      "switch_inline_query_current_chat": "/clip comic "}
+              ],
+              [
+                {"text": "🎙️ Clip + Roboto",     "switch_inline_query_current_chat": "/clip roboto "},
+                {"text": "🎬 Clip + DejaVu",     "switch_inline_query_current_chat": "/clip dejavu "}
+              ],
+              [
+                {"text": "🇮🇩 Shorts Baru (/buat)",  "switch_inline_query_current_chat": "/buat "},
+                {"text": "🇺🇸 Shorts EN (/buat_en)", "switch_inline_query_current_chat": "/buat_en "}
+              ],
+              [
+                {"text": "📺 Video YT 16:9 (/buat_yt)", "switch_inline_query_current_chat": "/buat_yt "}
+              ]
+            ]
+          }
+          EOF
+          )
             curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
-              -d "chat_id=$CHAT_ID" \
-              -d "text=🎬 MENU PABRIK VIDEO AI:%0A• /buat Judul Video%0A• /clip Link YouTube%0A• /buat_en English Title%0A• /buat_yt Judul Video Panjang%0A• /status Cek proses render"
+              -H "Content-Type: application/json" \
+              -d "$(jq -n --arg cid "$CHAT_ID" --argjson rm "$MENU_JSON" '{
+                chat_id: $cid,
+                text: "🎬 MENU PABRIK VIDEO AI\n\nPencet salah satu tombol di bawah—teksnya otomatis masuk ke kolom ketik (tidak langsung terkirim), lalu tinggal isi judul atau tempel link YouTube-nya:",
+                reply_markup: $rm
+              }')"
             curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUpdates?offset=$((UP_ID + 1))" > /dev/null
           fi
