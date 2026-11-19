@@ -105,8 +105,8 @@ async function main() {
   if (!VIDEO_URL) throw new Error('Link video kosong!');
   await kirimPesan(`✂️ AI Clipper mulai bekerja!\n🔗 Link: ${VIDEO_URL}\n\n1/3 Mengambil transkrip & video...`);
 
-  // Siapkan opsi anti-blokir YouTube (pakai Node.js runtime + player_client tv,web_safari + cookies jika ada)
-  let opsiYtDlp = `--js-runtimes node --extractor-args "youtube:player_client=tv,web_safari"`;
+  // Siapkan opsi anti-blokir YouTube (pakai Node.js runtime + cookies jika ada)
+  let opsiYtDlp = `--js-runtimes node`;
   if (YOUTUBE_COOKIES) {
     fs.writeFileSync('cookies.txt', YOUTUBE_COOKIES, 'utf8');
     opsiYtDlp += ` --cookies cookies.txt`;
