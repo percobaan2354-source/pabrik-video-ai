@@ -192,19 +192,61 @@ ATURAN KETAT:
   throw new Error(`Gemini gagal menganalisis audio video (${errorTerakhir})`);
 }
 
-async function transkripKataDariAudio(audioPath, durasiClip) {
-  const audioBase64 = fs.readFileSync(audioPath).toString('base64');
-  const prompt = `Dengarkan audio klip berdurasi ${durasiClip.toFixed(2)} detik ini dengan sangat teliti.
-Transkripsikan SETIAP KATA yang diucapkan manusia/VO (baik bahasa Indonesia, Inggris, maupun campuran) beserta waktu mulai (start) dan waktu selesai (end) dalam satuan DETIK (angka desimal, contoh: 1.24) yang BENAR-BENAR PAS dengan suara ucapannya!
+// Deteksi rentang waktu saat suara manusia benar-benar aktif menggunakan FFmpeg silencedetect
+function deteksiRentangSuaraAktif(audioPath, durasiClip) {
+  try {
+    const log = execSync(
+      `ffmpeg -i "${audioPath}" -af "silencedetect=noise=-32dB:d=0.25" -f null - 2>&1`,
+      { encoding: 'utf8' }
+    );
+    const silences = [];
+    let curStart = null;
+    for (const line of log.split('\n')) {
+      const mStart = line.match(/silence_start:\s*([\d.]+)/);
+      if (mStart) curStart = parseFloat(mStart[1]);
+      const mEnd = line.match(/silence_end:\s*([\d.]+)/);
+      if (mEnd && curStart !== null) {
+        silences.push({ start: curStart, end: parseFloat(mEnd[1]) });
+        curStart = null;
+      }
+    }
+    if (curStart !== null) {
+      silences.push({ start: curStart, end: durasiClip });
+    }
+
+    const speechSegments = [];
+    let cursor = 0;
+    for (const s of silences) {
+      if (s.start > cursor + 0.05) {
+        speechSegments.push({ start: cursor, end: s.start });
+      }
+      cursor = Math.max(cursor, s.end);
+    }
+    if (durasiClip > cursor + 0.05) {
+      speechSegments.push({ start: cursor, end: durasiClip });
+    }
+    return speechSegments;
+  } catch (e) {
+    console.log('Silencedetect dilewati:', e.message);
+    return [];
+  }
+}
+
+// Transkripsikan 1 potongan pendek audio (maks 12 detik) agar waktu per kata sangat presisi & tidak terpotong di akhir
+async function transkripSatuChunkAudio(chunkPath, durasiChunk, offsetDetik) {
+  const audioBase64 = fs.readFileSync(chunkPath).toString('base64');
+  const prompt = `Dengarkan potongan audio pendek berdurasi ${durasiChunk.toFixed(2)} detik ini dengan sangat teliti.
+Tugasmu adalah mentranskripsikan SETIAP KATA yang diucapkan manusia dari detik 0.00 sampai detik ${durasiChunk.toFixed(2)} (JANGAN melewatkan kata di awal maupun di ujung akhir audio!).
 
 ATURAN KETAT:
-- Dengarkan ritme suara aslinya! Jangan menebak waktu secara rata. Jika pembicara diam/jeda, jangan isi kata di waktu diam tersebut.
-- Tulis kata per kata secara terpisah (1 objek = 1 kata) agar sorotan karaoke berjalan tepat per kata.
-- "start" dan "end" adalah detik relatif dari awal audio (0.00 sampai ${durasiClip.toFixed(2)}).
-- Keluarkan HANYA JSON array murni tanpa teks tambahan:
+- Tulis 1 objek per 1 KATA yang diucapkan ("kata", "start", "end").
+- "start" adalah detik tepat ketika suku kata pertama dari kata itu mulai terdengar di bibir pembicara (bukan terlambat setelah kata selesai).
+- "end" adalah detik tepat ketika kata itu selesai diucapkan.
+- Jika pembicara mengucapkannya cepat, durasi per kata bisa 0.15 - 0.35 detik. Jika lambat/menekan intonasi, bisa 0.40 - 0.80 detik.
+- Jangan berhenti sebelum detik ${durasiChunk.toFixed(2)} jika masih ada suara bicara sampai ujung!
+- Keluarkan HANYA JSON array murni:
 [
-  {"kata": "Halo", "start": 0.35, "end": 0.68},
-  {"kata": "semuanya", "start": 0.69, "end": 1.15}
+  {"kata": "contoh", "start": 0.12, "end": 0.45}
 ]`;
 
   const models = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
@@ -233,22 +275,31 @@ ATURAN KETAT:
         const akhir = raw.lastIndexOf(']');
         if (awal !== -1 && akhir !== -1) raw = raw.slice(awal, akhir + 1);
         const parsed = JSON.parse(raw);
+
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Pastikan jika AI menggabungkan >1 kata dalam satu objek, tetap dipecah proporsional per kata
           const hasilKata = [];
           for (const x of parsed) {
             if (!x || !x.kata || typeof x.start !== 'number' || typeof x.end !== 'number') continue;
-            const s = Math.max(0, Math.min(durasiClip, x.start));
-            const e = Math.max(s + 0.08, Math.min(durasiClip, x.end));
+            const sLocal = Math.max(0, Math.min(durasiChunk, x.start));
+            const eLocal = Math.max(sLocal + 0.06, Math.min(durasiChunk, x.end));
             const subKata = String(x.kata).trim().split(/\s+/).filter(Boolean);
+
             if (subKata.length === 1) {
-              hasilKata.push({ kata: subKata[0], start: s, end: e });
+              hasilKata.push({
+                kata: subKata[0],
+                start: offsetDetik + sLocal,
+                end: offsetDetik + eLocal
+              });
             } else if (subKata.length > 1) {
               const totalHuruf = subKata.reduce((acc, w) => acc + w.length, 0) || 1;
-              let kursor = s;
+              let kursor = sLocal;
               for (const w of subKata) {
-                const dur = ((w.length / totalHuruf) * (e - s));
-                hasilKata.push({ kata: w, start: kursor, end: kursor + dur });
+                const dur = (w.length / totalHuruf) * (eLocal - sLocal);
+                hasilKata.push({
+                  kata: w,
+                  start: offsetDetik + kursor,
+                  end: offsetDetik + kursor + dur
+                });
                 kursor += dur;
               }
             }
@@ -256,13 +307,47 @@ ATURAN KETAT:
           return hasilKata;
         }
       } else {
-        console.log(`Audio align ${model} respon:`, JSON.stringify(json.error || json));
+        console.log(`Chunk offset ${offsetDetik}s (${model}) respon:`, JSON.stringify(json.error || json));
       }
     } catch (e) {
-      console.log(`Gagal audio align ${model}:`, e.message);
+      console.log(`Gagal chunk offset ${offsetDetik}s (${model}):`, e.message);
     }
   }
-  return null;
+  return [];
+}
+
+// Pecah audio klip menjadi segmen 12 detik agar transkripsi hingga ujung video 100% lengkap dan akurat dengan intonasi VO
+async function transkripKataDariAudio(audioPath, durasiClip) {
+  const ukuranChunk = 12; // 12 detik per chunk mencegah drift waktu & pemotongan di ujung akhir video
+  const semuaKata = [];
+
+  for (let offset = 0; offset < durasiClip - 0.1; offset += ukuranChunk) {
+    const durasiSegmen = Math.min(ukuranChunk, durasiClip - offset);
+    const chunkFile = `chunk_${Math.floor(offset)}.mp3`;
+
+    execSync(
+      `ffmpeg -y -ss ${offset.toFixed(3)} -t ${durasiSegmen.toFixed(3)} -i "${audioPath}" -vn -ac 1 -ar 16000 -b:a 64k "${chunkFile}"`,
+      { stdio: 'inherit' }
+    );
+
+    const kataChunk = await transkripSatuChunkAudio(chunkFile, durasiSegmen, offset);
+    semuaKata.push(...kataChunk);
+  }
+
+  // Kalibrasi ringan dengan envelope suara asli (silencedetect) agar subtitle tidak muncul di saat hening
+  const speechSegments = deteksiRentangSuaraAktif(audioPath, durasiClip);
+  if (speechSegments.length > 0 && semuaKata.length > 0) {
+    for (const item of semuaKata) {
+      // Jika kata dimulai sedikit di dalam area hening sebelum suara keluar, geser start ke awal segmen suara terdekat
+      const segmenCocok = speechSegments.find(seg => seg.start > item.start && seg.start - item.start < 0.35 && seg.end > item.start + 0.1);
+      if (segmenCocok) {
+        item.start = segmenCocok.start;
+        if (item.end <= item.start) item.end = Math.min(durasiClip, item.start + 0.15);
+      }
+    }
+  }
+
+  return semuaKata;
 }
 
 function tulisFileASS(daftarKata, assPath, durasiClip) {
@@ -270,15 +355,22 @@ function tulisFileASS(daftarKata, assPath, durasiClip) {
     throw new Error('Tidak ada suara/VO manusia yang terdeteksi di segmen video ini.');
   }
 
-  // Rapikan urutan waktu kata agar tidak saling tumpang tindih
-  const kataRapi = [...daftarKata].sort((a, b) => a.start - b.start);
+  // Rapikan urutan waktu kata dan kompensasi keterlambatan persepsi visual (-0.06 detik) agar terasa pas dengan bibir/VO
+  const kataRapi = [...daftarKata]
+    .sort((a, b) => a.start - b.start)
+    .map(k => ({
+      kata: k.kata,
+      start: Math.max(0, k.start - 0.06),
+      end: Math.min(durasiClip, Math.max(k.start + 0.04, k.end - 0.03))
+    }));
+
   for (let i = 0; i < kataRapi.length - 1; i++) {
     if (kataRapi[i + 1].start < kataRapi[i].end) {
       kataRapi[i].end = Math.max(kataRapi[i].start + 0.05, kataRapi[i + 1].start);
     }
   }
 
-  // Kelompokkan menjadi 3-4 kata per baris tampilan berdasarkan jeda suara asli
+  // Kelompokkan menjadi 3-4 kata per baris tampilan berdasarkan jeda intonasi bicara asli
   const grupBaris = [];
   let tampung = [];
 
@@ -287,7 +379,8 @@ function tulisFileASS(daftarKata, assPath, durasiClip) {
     const jedaAntarKata = tampung.length > 0 ? item.start - tampung[tampung.length - 1].end : 0;
     const teksSementara = [...tampung.map(x => x.kata), item.kata].join(' ');
 
-    if (tampung.length > 0 && (jedaAntarKata > 0.45 || tampung.length >= 4 || teksSementara.length > 22)) {
+    // Pecah baris saat pembicara mengambil jeda intonasi (> 0.35 detik), sudah 4 kata, atau > 22 karakter
+    if (tampung.length > 0 && (jedaAntarKata > 0.35 || tampung.length >= 4 || teksSementara.length > 22)) {
       grupBaris.push(tampung);
       tampung = [];
     }
@@ -315,10 +408,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   grupBaris.forEach((grup, idxBaris) => {
     const akhirKataTerakhir = grup[grup.length - 1].end;
     const batasAkhirBaris = idxBaris < grupBaris.length - 1
-      ? Math.min(grupBaris[idxBaris + 1][0].start, akhirKataTerakhir + 0.15)
+      ? Math.min(grupBaris[idxBaris + 1][0].start, akhirKataTerakhir + 0.12)
       : Math.min(durasiClip, akhirKataTerakhir + 0.25);
 
-    // Setiap kata di dalam baris mendapat event sendiri agar sorotan kuning (&H0000FFFF&) berjalan seiring suara VO
+    // Setiap kata di dalam baris mendapat event sendiri agar sorotan kuning (&H0000FFFF&) berjalan seiring intonasi suara VO
     grup.forEach((kataAktifObj, idxKataAktif) => {
       const wStart = kataAktifObj.start;
       const wEnd = idxKataAktif < grup.length - 1
@@ -335,7 +428,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       }).join(' ');
 
       const animasi = idxKataAktif === 0
-        ? `{\\fscx86\\fscy86\\t(0,70,\\fscx103\\fscy103)\\t(70,130,\\fscx100\\fscy100)}`
+        ? `{\\fscx86\\fscy86\\t(0,65,\\fscx103\\fscy103)\\t(65,120,\\fscx100\\fscy100)}`
         : '';
 
       events.push(`Dialogue: 0,${detikKeAss(wStart)},${detikKeAss(wEnd)},ViralSub,,0,0,0,,${animasi}${teksBarisBerjalan}`);
@@ -402,15 +495,18 @@ async function main() {
   const startFmt = detikKeHHMMSS(startClip);
   const endFmt = detikKeHHMMSS(endClip);
 
-  await kirimPesan(`🔥 Momen ditemukan!\n⏱️ ${startFmt} - ${endFmt}\n📌 ${momen.judul}\n💡 ${momen.alasan}\n\n3/3 Memotong video 9:16 & membuat subtitle karaoke presisi dari suara VO...`);
+  await kirimPesan(`🔥 Momen ditemukan!\n⏱️ ${startFmt} - ${endFmt}\n📌 ${momen.judul}\n💡 ${momen.alasan}\n\n3/3 Memotong video 9:16 & menyinkronkan subtitle per kata sampai ujung...`);
 
   // Potong video ke format 9:16 (1080x1920)
   execSync(`ffmpeg -y -ss ${startFmt} -to ${endFmt} -i sumber.mp4 -vf "crop=ih*9/16:ih,scale=1080:1920" -c:v libx264 -preset veryfast -crf 22 -c:a aac -b:a 128k clip_mentah.mp4`, { stdio: 'inherit' });
 
-  // Ekstrak audio khusus potongan klip ini agar timestamp per kata benar-benar sinkron dari detik 0.00
-  execSync(`ffmpeg -y -i clip_mentah.mp4 -vn -ac 1 -ar 16000 -b:a 48k audio_klip.mp3`, { stdio: 'inherit' });
+  // Ukur durasi aktual tepat dari clip_mentah.mp4 agar sinkron 100% sampai frame terakhir
+  const durasiClipAktualStr = execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 clip_mentah.mp4`).toString().trim();
+  const durasiClip = parseFloat(durasiClipAktualStr) || Math.max(1, endClip - startClip);
 
-  const durasiClip = Math.max(1, endClip - startClip);
+  // Ekstrak audio khusus potongan klip ini agar timestamp per kata benar-benar sinkron dari detik 0.00 sampai detik terakhir
+  execSync(`ffmpeg -y -i clip_mentah.mp4 -vn -ac 1 -ar 16000 -b:a 64k audio_klip.mp3`, { stdio: 'inherit' });
+
   const daftarKataPresisi = await transkripKataDariAudio('audio_klip.mp3', durasiClip);
 
   tulisFileASS(daftarKataPresisi, 'sub_klip.ass', durasiClip);
