@@ -285,7 +285,7 @@ function deteksiRentangSuaraAktif(audioPath, durasiClip) {
   }
 }
 
-// Transkripsikan 1 potongan pendek audio (maks 10 detik) agar waktu per kata presisi & intonasi pas
+// Transkripsikan 1 potongan pendek audio (maks 10 detik) dengan sistem RETRY 3x anti-bolong
 async function transkripSatuChunkAudio(chunkPath, durasiChunk, offsetDetik) {
   const audioBase64 = fs.readFileSync(chunkPath).toString('base64');
   const prompt = `Dengarkan potongan audio pendek berdurasi ${durasiChunk.toFixed(2)} detik ini dengan sangat teliti.
@@ -303,68 +303,72 @@ ATURAN KETAT:
 ]`;
 
   const models = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
-  for (const model of models) {
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [
-                { inlineData: { mimeType: 'audio/mp3', data: audioBase64 } },
-                { text: prompt }
-              ]
-            }],
-            generationConfig: { responseMimeType: 'application/json' }
-          })
-        }
-      );
-      const json = await res.json();
-      if (json.candidates && json.candidates[0]) {
-        let raw = json.candidates[0].content.parts[0].text.trim();
-        const awal = raw.indexOf('[');
-        const akhir = raw.lastIndexOf(']');
-        if (awal !== -1 && akhir !== -1) raw = raw.slice(awal, akhir + 1);
-        const parsed = JSON.parse(raw);
 
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const hasilKata = [];
-          for (const x of parsed) {
-            if (!x || !x.kata || typeof x.start !== 'number' || typeof x.end !== 'number') continue;
-            const sLocal = Math.max(0, Math.min(durasiChunk, x.start));
-            const eLocal = Math.max(sLocal + 0.06, Math.min(durasiChunk, x.end));
-            const subKata = String(x.kata).trim().split(/\s+/).filter(Boolean);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    for (const model of models) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
+                parts: [
+                  { inlineData: { mimeType: 'audio/mp3', data: audioBase64 } },
+                  { text: prompt }
+                ]
+              }],
+              generationConfig: { responseMimeType: 'application/json' }
+            })
+          }
+        );
+        const json = await res.json();
+        if (json.candidates && json.candidates[0]) {
+          let raw = json.candidates[0].content.parts[0].text.trim();
+          const awal = raw.indexOf('[');
+          const akhir = raw.lastIndexOf(']');
+          if (awal !== -1 && akhir !== -1) raw = raw.slice(awal, akhir + 1);
+          const parsed = JSON.parse(raw);
 
-            if (subKata.length === 1) {
-              hasilKata.push({
-                kata: subKata[0],
-                start: offsetDetik + sLocal,
-                end: offsetDetik + eLocal
-              });
-            } else if (subKata.length > 1) {
-              const totalHuruf = subKata.reduce((acc, w) => acc + w.length, 0) || 1;
-              let kursor = sLocal;
-              for (const w of subKata) {
-                const dur = (w.length / totalHuruf) * (eLocal - sLocal);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const hasilKata = [];
+            for (const x of parsed) {
+              if (!x || !x.kata || typeof x.start !== 'number' || typeof x.end !== 'number') continue;
+              const sLocal = Math.max(0, Math.min(durasiChunk, x.start));
+              const eLocal = Math.max(sLocal + 0.06, Math.min(durasiChunk, x.end));
+              const subKata = String(x.kata).trim().split(/\s+/).filter(Boolean);
+
+              if (subKata.length === 1) {
                 hasilKata.push({
-                  kata: w,
-                  start: offsetDetik + kursor,
-                  end: offsetDetik + kursor + dur
+                  kata: subKata[0],
+                  start: offsetDetik + sLocal,
+                  end: offsetDetik + eLocal
                 });
-                kursor += dur;
+              } else if (subKata.length > 1) {
+                const totalHuruf = subKata.reduce((acc, w) => acc + w.length, 0) || 1;
+                let kursor = sLocal;
+                for (const w of subKata) {
+                  const dur = (w.length / totalHuruf) * (eLocal - sLocal);
+                  hasilKata.push({
+                    kata: w,
+                    start: offsetDetik + kursor,
+                    end: offsetDetik + kursor + dur
+                  });
+                  kursor += dur;
+                }
               }
             }
+            if (hasilKata.length > 0) return hasilKata;
           }
-          return hasilKata;
+        } else {
+          console.log(`Putaran ${attempt} chunk offset ${offsetDetik}s (${model}) respon:`, JSON.stringify(json.error || json));
         }
-      } else {
-        console.log(`Chunk offset ${offsetDetik}s (${model}) respon:`, JSON.stringify(json.error || json));
+      } catch (e) {
+        console.log(`Putaran ${attempt} gagal chunk offset ${offsetDetik}s (${model}):`, e.message);
       }
-    } catch (e) {
-      console.log(`Gagal chunk offset ${offsetDetik}s (${model}):`, e.message);
     }
+    await new Promise(r => setTimeout(r, 2000));
   }
   return [];
 }
@@ -385,6 +389,9 @@ async function transkripKataDariAudio(audioPath, durasiClip) {
 
     const kataChunk = await transkripSatuChunkAudio(chunkFile, durasiSegmen, offset);
     semuaKata.push(...kataChunk);
+
+    // Jeda ringan 1 detik antar-segmen agar tidak terkena limit API
+    await new Promise(r => setTimeout(r, 1000));
   }
 
   // Kalibrasi dengan envelope suara asli (silencedetect) agar subtitle tidak muncul di saat hening
