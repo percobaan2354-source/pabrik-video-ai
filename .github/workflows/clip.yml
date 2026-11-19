@@ -34,8 +34,7 @@ jobs:
           sudo curl -sL "https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-Bold.ttf" -o /usr/share/fonts/truetype/custom/Poppins-Bold.ttf
           sudo curl -sL "https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-Regular.ttf" -o /usr/share/fonts/truetype/custom/Poppins-Regular.ttf
           sudo fc-cache -f -v
-          sudo curl -L "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" -o /usr/local/bin/yt-dlp
-          sudo chmod a+rx /usr/local/bin/yt-dlp
+          pip install --break-system-packages -U "yt-dlp[default,curl-cffi]"
 
       - name: Install Dependensi Project
         run: |
@@ -44,21 +43,11 @@ jobs:
 
       - name: Jalankan AI Clipper
         env:
-          YOUTUBE_URL: ${{ github.event.inputs.url }}
-          VIDEO_URL: ${{ github.event.inputs.url }}
-          URL: ${{ github.event.inputs.url }}
-          FONT_PILIHAN: ${{ github.event.inputs.font }}
-          FONT: ${{ github.event.inputs.font }}
+          INPUT_URL: ${{ github.event.inputs.url }}
+          INPUT_FONT: ${{ github.event.inputs.font }}
           YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          if [ -n "$YOUTUBE_COOKIES" ]; then
-            printf "%s\n" "$YOUTUBE_COOKIES" > "$GITHUB_WORKSPACE/cookies.txt"
-            mkdir -p ~/.config/yt-dlp
-            echo "--cookies $GITHUB_WORKSPACE/cookies.txt" > ~/.config/yt-dlp/config
-          fi
-          node clipper.js "$YOUTUBE_URL" "$FONT_PILIHAN"
+          node clipper.js
