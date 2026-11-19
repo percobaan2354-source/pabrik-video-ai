@@ -5,16 +5,62 @@ const { execSync } = require('child_process');
 const GEMINI_API_KEY   = (process.env.GEMINI_API_KEY || '').trim();
 const TELEGRAM_TOKEN   = (process.env.TELEGRAM_TOKEN || '').trim();
 const TELEGRAM_CHAT_ID = (process.env.TELEGRAM_CHAT_ID || '').trim();
-const VIDEO_URL        = (process.env.INPUT_URL || '').trim();
+const RAW_INPUT_URL    = (process.env.INPUT_URL || '').trim();
+const RAW_INPUT_FONT   = (process.env.INPUT_FONT || '').trim();
 const YOUTUBE_COOKIES  = (process.env.YOUTUBE_COOKIES || '').trim();
 
-async function kirimPesan(teks) {
+// Konfigurasi katalog font yang terpasang di server Ubuntu
+const KATALOG_FONT = {
+  montserrat: { label: 'Montserrat (Viral Bold)', fontName: 'Montserrat', fontSize: 66, outline: 6, spacing: 1 },
+  anton:      { label: 'Anton (Tegas Tinggi)',    fontName: 'Anton',      fontSize: 78, outline: 6, spacing: 2 },
+  poppins:    { label: 'Poppins (Modern Clean)',  fontName: 'Poppins',    fontSize: 64, outline: 6, spacing: 1 },
+  comic:      { label: 'Comic Neue (Santai)',     fontName: 'Comic Neue', fontSize: 68, outline: 6, spacing: 1 },
+  roboto:     { label: 'Roboto (Podcast Tajam)',  fontName: 'Roboto',     fontSize: 66, outline: 6, spacing: 1 },
+  dejavu:     { label: 'DejaVu Sans (Klasik)',    fontName: 'DejaVu Sans',fontSize: 64, outline: 6, spacing: 0 }
+};
+
+// Parsing input URL & Font (mendukung format "https://youtu.be/xxx | anton" atau "https://youtu.be/xxx font:poppins" atau INPUT_FONT)
+function parseInputUrlDanFont(rawUrl, rawFont) {
+  let urlBersih = rawUrl;
+  let fontTerpilih = (rawFont || '').toLowerCase();
+
+  // Cek jika user mengirim format "LINK | NAMA_FONT" atau "LINK font:NAMA_FONT" dari Telegram
+  if (urlBersih.includes('|')) {
+    const bagian = urlBersih.split('|').map(s => s.trim());
+    urlBersih = bagian[0];
+    if (bagian[1]) fontTerpilih = bagian[1].toLowerCase();
+  } else {
+    const matchFont = urlBersih.match(/\s+(?:font[:=]\s*)?([a-zA-Z]+)$/i);
+    if (matchFont && KATALOG_FONT[matchFont[1].toLowerCase()]) {
+      fontTerpilih = matchFont[1].toLowerCase();
+      urlBersih = urlBersih.replace(matchFont[0], '').trim();
+    }
+  }
+
+  // Pencocokan fleksibel (misal user ketik "montserrat bold" tetap masuk ke "montserrat")
+  const kunciCocok = Object.keys(KATALOG_FONT).find(k => fontTerpilih.includes(k)) || 'montserrat';
+  return {
+    videoUrl: urlBersih,
+    fontKey: kunciCocok,
+    fontConfig: KATALOG_FONT[kunciCocok]
+  };
+}
+
+const { videoUrl: VIDEO_URL, fontKey: FONT_KEY, fontConfig: FONT_CONFIG } = parseInputUrlDanFont(RAW_INPUT_URL, RAW_INPUT_FONT);
+
+async function kirimPesan(teks, replyMarkup = null) {
   if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
   try {
+    const payload = {
+      chat_id: TELEGRAM_CHAT_ID,
+      text: teks.slice(0, 4000)
+    };
+    if (replyMarkup) payload.reply_markup = replyMarkup;
+
     await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: teks.slice(0, 4000) })
+      body: JSON.stringify(payload)
     });
   } catch (e) {
     console.log('Gagal kirim pesan:', e.message);
@@ -196,7 +242,7 @@ ATURAN KETAT:
 function deteksiRentangSuaraAktif(audioPath, durasiClip) {
   try {
     const log = execSync(
-      `ffmpeg -i "${audioPath}" -af "silencedetect=noise=-32dB:d=0.25" -f null - 2>&1`,
+      `ffmpeg -i "${audioPath}" -af "silencedetect=noise=-32dB:d=0.22" -f null - 2>&1`,
       { encoding: 'utf8' }
     );
     const silences = [];
@@ -232,7 +278,7 @@ function deteksiRentangSuaraAktif(audioPath, durasiClip) {
   }
 }
 
-// Transkripsikan 1 potongan pendek audio (maks 12 detik) agar waktu per kata sangat presisi & tidak terpotong di akhir
+// Transkripsikan 1 potongan pendek audio (maks 10 detik) agar waktu per kata presisi & intonasi pas
 async function transkripSatuChunkAudio(chunkPath, durasiChunk, offsetDetik) {
   const audioBase64 = fs.readFileSync(chunkPath).toString('base64');
   const prompt = `Dengarkan potongan audio pendek berdurasi ${durasiChunk.toFixed(2)} detik ini dengan sangat teliti.
@@ -242,7 +288,7 @@ ATURAN KETAT:
 - Tulis 1 objek per 1 KATA yang diucapkan ("kata", "start", "end").
 - "start" adalah detik tepat ketika suku kata pertama dari kata itu mulai terdengar di bibir pembicara (bukan terlambat setelah kata selesai).
 - "end" adalah detik tepat ketika kata itu selesai diucapkan.
-- Jika pembicara mengucapkannya cepat, durasi per kata bisa 0.15 - 0.35 detik. Jika lambat/menekan intonasi, bisa 0.40 - 0.80 detik.
+- Sesuaikan dengan intonasi pembicara: jika cepat, durasi per kata 0.14 - 0.32 detik; jika lambat/menekan intonasi, 0.35 - 0.85 detik.
 - Jangan berhenti sebelum detik ${durasiChunk.toFixed(2)} jika masih ada suara bicara sampai ujung!
 - Keluarkan HANYA JSON array murni:
 [
@@ -316,9 +362,9 @@ ATURAN KETAT:
   return [];
 }
 
-// Pecah audio klip menjadi segmen 12 detik agar transkripsi hingga ujung video 100% lengkap dan akurat dengan intonasi VO
+// Pecah audio klip menjadi segmen 10 detik agar transkripsi hingga ujung video 100% lengkap & presisi
 async function transkripKataDariAudio(audioPath, durasiClip) {
-  const ukuranChunk = 12; // 12 detik per chunk mencegah drift waktu & pemotongan di ujung akhir video
+  const ukuranChunk = 10; // 10 detik per chunk agar waktu per kata makin presisi dan tidak terpotong di ujung
   const semuaKata = [];
 
   for (let offset = 0; offset < durasiClip - 0.1; offset += ukuranChunk) {
@@ -334,15 +380,14 @@ async function transkripKataDariAudio(audioPath, durasiClip) {
     semuaKata.push(...kataChunk);
   }
 
-  // Kalibrasi ringan dengan envelope suara asli (silencedetect) agar subtitle tidak muncul di saat hening
+  // Kalibrasi dengan envelope suara asli (silencedetect) agar subtitle tidak muncul di saat hening
   const speechSegments = deteksiRentangSuaraAktif(audioPath, durasiClip);
   if (speechSegments.length > 0 && semuaKata.length > 0) {
     for (const item of semuaKata) {
-      // Jika kata dimulai sedikit di dalam area hening sebelum suara keluar, geser start ke awal segmen suara terdekat
-      const segmenCocok = speechSegments.find(seg => seg.start > item.start && seg.start - item.start < 0.35 && seg.end > item.start + 0.1);
+      const segmenCocok = speechSegments.find(seg => seg.start > item.start && seg.start - item.start < 0.30 && seg.end > item.start + 0.08);
       if (segmenCocok) {
         item.start = segmenCocok.start;
-        if (item.end <= item.start) item.end = Math.min(durasiClip, item.start + 0.15);
+        if (item.end <= item.start) item.end = Math.min(durasiClip, item.start + 0.14);
       }
     }
   }
@@ -350,23 +395,23 @@ async function transkripKataDariAudio(audioPath, durasiClip) {
   return semuaKata;
 }
 
-function tulisFileASS(daftarKata, assPath, durasiClip) {
+function tulisFileASS(daftarKata, assPath, durasiClip, fontCfg) {
   if (!daftarKata || daftarKata.length === 0) {
     throw new Error('Tidak ada suara/VO manusia yang terdeteksi di segmen video ini.');
   }
 
-  // Rapikan urutan waktu kata dan kompensasi keterlambatan persepsi visual (-0.06 detik) agar terasa pas dengan bibir/VO
+  // Rapikan urutan waktu kata dan kompensasi persepsi visual (-0.04 detik) agar pas dengan gerakan bibir/VO
   const kataRapi = [...daftarKata]
     .sort((a, b) => a.start - b.start)
     .map(k => ({
       kata: k.kata,
-      start: Math.max(0, k.start - 0.06),
-      end: Math.min(durasiClip, Math.max(k.start + 0.04, k.end - 0.03))
+      start: Math.max(0, k.start - 0.04),
+      end: Math.min(durasiClip, Math.max(k.start + 0.06, k.end - 0.02))
     }));
 
   for (let i = 0; i < kataRapi.length - 1; i++) {
     if (kataRapi[i + 1].start < kataRapi[i].end) {
-      kataRapi[i].end = Math.max(kataRapi[i].start + 0.05, kataRapi[i + 1].start);
+      kataRapi[i].end = Math.max(kataRapi[i].start + 0.06, kataRapi[i + 1].start);
     }
   }
 
@@ -379,7 +424,6 @@ function tulisFileASS(daftarKata, assPath, durasiClip) {
     const jedaAntarKata = tampung.length > 0 ? item.start - tampung[tampung.length - 1].end : 0;
     const teksSementara = [...tampung.map(x => x.kata), item.kata].join(' ');
 
-    // Pecah baris saat pembicara mengambil jeda intonasi (> 0.35 detik), sudah 4 kata, atau > 22 karakter
     if (tampung.length > 0 && (jedaAntarKata > 0.35 || tampung.length >= 4 || teksSementara.length > 22)) {
       grupBaris.push(tampung);
       tampung = [];
@@ -397,7 +441,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: ViralSub,DejaVu Sans,64,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,6,2,2,80,80,340,1
+Style: ViralSub,${fontCfg.fontName},${fontCfg.fontSize},&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,0,0,100,100,${fontCfg.spacing},0,1,${fontCfg.outline},2,2,80,80,340,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -415,8 +459,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     grup.forEach((kataAktifObj, idxKataAktif) => {
       const wStart = kataAktifObj.start;
       const wEnd = idxKataAktif < grup.length - 1
-        ? Math.max(wStart + 0.05, grup[idxKataAktif + 1].start)
-        : Math.max(wStart + 0.05, batasAkhirBaris);
+        ? Math.max(wStart + 0.06, grup[idxKataAktif + 1].start)
+        : Math.max(wStart + 0.06, batasAkhirBaris);
 
       if (wEnd <= wStart) return;
 
@@ -470,9 +514,9 @@ function unduhVideoDenganFallback(url) {
 
 async function main() {
   if (!VIDEO_URL) throw new Error('Link video kosong!');
-  await kirimPesan(`✂️ AI Clipper mulai bekerja!\n🔗 Link: ${VIDEO_URL}\n\n1/3 Mengunduh video & mengekstrak suara VO...`);
+  await kirimPesan(`✂️ AI Clipper mulai bekerja!\n🔗 Link: ${VIDEO_URL}\n🔤 Font Subtitle: ${FONT_CONFIG.label}\n\n1/3 Mengunduh video & mengekstrak suara VO...`);
 
-  // Langsung unduh video tanpa ketergantungan pada subtitle YouTube (bebas limit 429 endpoint subtitle!)
+  // Langsung unduh video tanpa ketergantungan pada subtitle YouTube
   unduhVideoDenganFallback(VIDEO_URL);
 
   // Cek durasi total video menggunakan ffprobe
@@ -495,7 +539,7 @@ async function main() {
   const startFmt = detikKeHHMMSS(startClip);
   const endFmt = detikKeHHMMSS(endClip);
 
-  await kirimPesan(`🔥 Momen ditemukan!\n⏱️ ${startFmt} - ${endFmt}\n📌 ${momen.judul}\n💡 ${momen.alasan}\n\n3/3 Memotong video 9:16 & menyinkronkan subtitle per kata sampai ujung...`);
+  await kirimPesan(`🔥 Momen ditemukan!\n⏱️ ${startFmt} - ${endFmt}\n📌 ${momen.judul}\n💡 ${momen.alasan}\n\n3/3 Memotong video 9:16 & membuat subtitle (${FONT_CONFIG.fontName})...`);
 
   // Potong video ke format 9:16 (1080x1920)
   execSync(`ffmpeg -y -ss ${startFmt} -to ${endFmt} -i sumber.mp4 -vf "crop=ih*9/16:ih,scale=1080:1920" -c:v libx264 -preset veryfast -crf 22 -c:a aac -b:a 128k clip_mentah.mp4`, { stdio: 'inherit' });
@@ -504,18 +548,22 @@ async function main() {
   const durasiClipAktualStr = execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 clip_mentah.mp4`).toString().trim();
   const durasiClip = parseFloat(durasiClipAktualStr) || Math.max(1, endClip - startClip);
 
-  // Ekstrak audio khusus potongan klip ini agar timestamp per kata benar-benar sinkron dari detik 0.00 sampai detik terakhir
+  // Ekstrak audio khusus potongan klip ini
   execSync(`ffmpeg -y -i clip_mentah.mp4 -vn -ac 1 -ar 16000 -b:a 64k audio_klip.mp3`, { stdio: 'inherit' });
 
   const daftarKataPresisi = await transkripKataDariAudio('audio_klip.mp3', durasiClip);
 
-  tulisFileASS(daftarKataPresisi, 'sub_klip.ass', durasiClip);
+  tulisFileASS(daftarKataPresisi, 'sub_klip.ass', durasiClip, FONT_CONFIG);
 
-  // Tempel subtitle ASS beranimasi dengan sorotan kuning berjalan ke video final
+  // Tempel subtitle ASS beranimasi dengan font pilihan & sorotan kuning berjalan ke video final
   execSync(`ffmpeg -y -i clip_mentah.mp4 -vf "ass=sub_klip.ass" -c:v libx264 -preset veryfast -crf 22 -c:a copy -movflags +faststart clip_jadi.mp4`, { stdio: 'inherit' });
 
-  const caption = `✂️ KLIP VIRAL SIAP!\n\n📌 ${momen.judul}\n⏱️ Segmen: ${startFmt} - ${endFmt}\n💡 Alasan: ${momen.alasan}`;
+  const caption = `✂️ KLIP VIRAL SIAP!\n\n📌 ${momen.judul}\n⏱️ Segmen: ${startFmt} - ${endFmt}\n🔤 Font: ${FONT_CONFIG.label}\n💡 Alasan: ${momen.alasan}`;
   await kirimVideo('clip_jadi.mp4', caption);
+
+  // Kirim panduan cepat pilihan font untuk perintah berikutnya di Telegram
+  const panduanFont = `🎨 Pilihan Font Subtitle Berikutnya:\n• montserrat (Viral Bold)\n• anton (Tegas Tinggi)\n• poppins (Modern Clean)\n• comic (Santai)\n• roboto (Podcast Tajam)\n• dejavu (Klasik)\n\nCara pakai di Telegram:\nKirim: link_youtube | anton`;
+  await kirimPesan(panduanFont);
   console.log('Selesai! Klip berhasil dikirim.');
 }
 
