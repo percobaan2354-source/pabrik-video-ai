@@ -23,7 +23,7 @@ jobs:
       - name: Install yt-dlp & FFmpeg
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg python3-pip
+          sudo apt-get install -y ffmpeg python3-pip fonts-dejavu-core
           pip3 install -U yt-dlp
 
       - name: Jalankan AI Clipper
