@@ -7,6 +7,18 @@ on:
         description: 'Link Video YouTube'
         required: true
         type: string
+      font:
+        description: 'Pilihan Font Subtitle'
+        required: false
+        default: 'montserrat'
+        type: choice
+        options:
+          - montserrat
+          - anton
+          - poppins
+          - comic
+          - roboto
+          - dejavu
 
 jobs:
   clip:
@@ -20,10 +32,11 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install yt-dlp & FFmpeg
+      - name: Install yt-dlp, FFmpeg & Paket Font
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg python3-pip fonts-dejavu-core
+          sudo apt-get install -y ffmpeg python3-pip fontconfig fonts-dejavu-core fonts-roboto fonts-comic-neue fonts-anton fonts-poppins fonts-montserrat
+          sudo fc-cache -fv
           pip3 install -U "yt-dlp[default,curl-cffi]"
 
       - name: Jalankan AI Clipper
@@ -33,4 +46,5 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
           INPUT_URL: ${{ github.event.inputs.url }}
+          INPUT_FONT: ${{ github.event.inputs.font }}
         run: node clipper.js
