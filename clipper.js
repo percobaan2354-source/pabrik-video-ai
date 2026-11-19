@@ -78,13 +78,128 @@ function detikKeAss(totalDetik) {
   return `${jam}:${String(menit).padStart(2, '0')}:${String(detik).padStart(2, '0')}.${String(centi).padStart(2, '0')}`;
 }
 
+function detikKeHHMMSS(totalDetik) {
+  const d = Math.max(0, Math.floor(totalDetik));
+  const jam = Math.floor(d / 3600);
+  const menit = Math.floor((d % 3600) / 60);
+  const detik = d % 60;
+  return `${String(jam).padStart(2, '0')}:${String(menit).padStart(2, '0')}:${String(detik).padStart(2, '0')}`;
+}
+
+// Upload audio ke Gemini File API (mendukung durasi video panjang hingga berjam-jam tanpa batas payload base64)
+async function uploadKeGeminiFileAPI(filePath, mimeType) {
+  const fileBuffer = fs.readFileSync(filePath);
+  const numBytes = fileBuffer.length;
+
+  const startRes = await fetch(
+    `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${GEMINI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: {
+        'X-Goog-Upload-Protocol': 'resumable',
+        'X-Goog-Upload-Command': 'start',
+        'X-Goog-Upload-Header-Content-Length': String(numBytes),
+        'X-Goog-Upload-Header-Content-Type': mimeType,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ file: { display_name: path.basename(filePath) } })
+    }
+  );
+
+  const uploadUrl = startRes.headers.get('x-goog-upload-url');
+  if (!uploadUrl) {
+    throw new Error('Gagal memulai upload audio ke Gemini File API');
+  }
+
+  const uploadRes = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Length': String(numBytes),
+      'X-Goog-Upload-Offset': '0',
+      'X-Goog-Upload-Command': 'upload, finalize'
+    },
+    body: fileBuffer
+  });
+
+  const uploadJson = await uploadRes.json();
+  if (!uploadJson.file || !uploadJson.file.uri) {
+    throw new Error('Gagal mendapatkan URI file Gemini: ' + JSON.stringify(uploadJson));
+  }
+  return uploadJson.file.uri;
+}
+
+// Cari momen viral langsung dengan mendengarkan suara/VO video (berfungsi meski tanpa subtitle YouTube!)
+async function cariMomenViralDariAudio(audioPath, durasiVideoDetik) {
+  if (!GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY kosong! Periksa GitHub Secrets.');
+  }
+
+  const fileUri = await uploadKeGeminiFileAPI(audioPath, 'audio/mp3');
+  const batasAkhirStr = detikKeHHMMSS(durasiVideoDetik);
+
+  const prompt = `Kamu adalah editor video viral TikTok/Shorts profesional.
+Dengarkan rekaman suara/VO video berdurasi total ${batasAkhirStr} (${Math.floor(durasiVideoDetik)} detik) ini dari awal sampai akhir.
+Pilih SATU momen pembicaraan paling menarik, emosional, lucu, berbobot, atau bikin penasaran dengan durasi antara 30 sampai 55 detik.
+
+ATURAN KETAT:
+- "start" dan "end" wajib format "HH:MM:SS" sesuai posisi waktu nyata pada audio ini (tidak boleh melebihi ${batasAkhirStr}).
+- Pastikan selisih waktu end dikurangi start adalah 30 sampai 55 detik, dan dimulai tepat saat awal kalimat (bukan terpotong di tengah kata).
+- Keluarkan HANYA JSON murni tanpa teks tambahan:
+{
+  "start": "00:01:15",
+  "end": "00:01:58",
+  "judul": "Judul Hook Viral #Shorts",
+  "alasan": "Alasan singkat kenapa momen ini berpotensi viral"
+}`;
+
+  const models = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
+  let errorTerakhir = '';
+
+  for (const model of models) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { fileData: { mimeType: 'audio/mp3', fileUri } },
+                { text: prompt }
+              ]
+            }],
+            generationConfig: { responseMimeType: 'application/json' }
+          })
+        }
+      );
+      const json = await res.json();
+      if (json.candidates && json.candidates[0]) {
+        let raw = json.candidates[0].content.parts[0].text.trim();
+        const awal = raw.indexOf('{');
+        const akhir = raw.lastIndexOf('}');
+        if (awal !== -1 && akhir !== -1) raw = raw.slice(awal, akhir + 1);
+        return JSON.parse(raw);
+      } else {
+        errorTerakhir = json.error ? json.error.message : JSON.stringify(json);
+        console.log(`Respon API ${model}:`, errorTerakhir);
+      }
+    } catch (e) {
+      errorTerakhir = e.message;
+      console.log(`Gagal model ${model}:`, e.message);
+    }
+  }
+  throw new Error(`Gemini gagal menganalisis audio video (${errorTerakhir})`);
+}
+
 async function transkripKataDariAudio(audioPath, durasiClip) {
   const audioBase64 = fs.readFileSync(audioPath).toString('base64');
   const prompt = `Dengarkan audio klip berdurasi ${durasiClip.toFixed(2)} detik ini dengan sangat teliti.
-Transkripsikan SETIAP KATA yang diucapkan manusia/VO beserta waktu mulai (start) dan waktu selesai (end) dalam satuan DETIK (angka desimal, contoh: 1.24) yang BENAR-BENAR PAS dengan suara ucapannya!
+Transkripsikan SETIAP KATA yang diucapkan manusia/VO (baik bahasa Indonesia, Inggris, maupun campuran) beserta waktu mulai (start) dan waktu selesai (end) dalam satuan DETIK (angka desimal, contoh: 1.24) yang BENAR-BENAR PAS dengan suara ucapannya!
 
 ATURAN KETAT:
 - Dengarkan ritme suara aslinya! Jangan menebak waktu secara rata. Jika pembicara diam/jeda, jangan isi kata di waktu diam tersebut.
+- Tulis kata per kata secara terpisah (1 objek = 1 kata) agar sorotan karaoke berjalan tepat per kata.
 - "start" dan "end" adalah detik relatif dari awal audio (0.00 sampai ${durasiClip.toFixed(2)}).
 - Keluarkan HANYA JSON array murni tanpa teks tambahan:
 [
@@ -119,13 +234,26 @@ ATURAN KETAT:
         if (awal !== -1 && akhir !== -1) raw = raw.slice(awal, akhir + 1);
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed
-            .filter(x => x && x.kata && typeof x.start === 'number' && typeof x.end === 'number')
-            .map(x => ({
-              kata: String(x.kata).trim(),
-              start: Math.max(0, Math.min(durasiClip, x.start)),
-              end: Math.max(0, Math.min(durasiClip, Math.max(x.start + 0.08, x.end)))
-            }));
+          // Pastikan jika AI menggabungkan >1 kata dalam satu objek, tetap dipecah proporsional per kata
+          const hasilKata = [];
+          for (const x of parsed) {
+            if (!x || !x.kata || typeof x.start !== 'number' || typeof x.end !== 'number') continue;
+            const s = Math.max(0, Math.min(durasiClip, x.start));
+            const e = Math.max(s + 0.08, Math.min(durasiClip, x.end));
+            const subKata = String(x.kata).trim().split(/\s+/).filter(Boolean);
+            if (subKata.length === 1) {
+              hasilKata.push({ kata: subKata[0], start: s, end: e });
+            } else if (subKata.length > 1) {
+              const totalHuruf = subKata.reduce((acc, w) => acc + w.length, 0) || 1;
+              let kursor = s;
+              for (const w of subKata) {
+                const dur = ((w.length / totalHuruf) * (e - s));
+                hasilKata.push({ kata: w, start: kursor, end: kursor + dur });
+                kursor += dur;
+              }
+            }
+          }
+          return hasilKata;
         }
       } else {
         console.log(`Audio align ${model} respon:`, JSON.stringify(json.error || json));
@@ -137,77 +265,11 @@ ATURAN KETAT:
   return null;
 }
 
-function ekstrakKataDariVTT(vttPath, startClip, endClip, durasiClip) {
-  const rawVtt = fs.readFileSync(vttPath, 'utf8').replace(/\r/g, '');
-  const blokVtt = rawVtt.split('\n\n').map(b => b.trim()).filter(Boolean);
-  const daftarKataGlobal = [];
-  let teksBlokSebelumnya = '';
-
-  for (const blok of blokVtt) {
-    const baris = blok.split('\n');
-    const idxWaktu = baris.findIndex(l => l.includes('-->'));
-    if (idxWaktu === -1) continue;
-
-    const [mulaiStr, selesaiStr] = baris[idxWaktu].split('-->');
-    const blokMulai = waktuKeDetik(mulaiStr);
-    const blokSelesai = waktuKeDetik(selesaiStr);
-    if (blokSelesai - blokMulai < 0.12) continue;
-
-    const barisTeks = baris.slice(idxWaktu + 1).filter(l => l.trim());
-    if (barisTeks.length === 0) continue;
-
-    const barisAktif = barisTeks[barisTeks.length - 1];
-    const teksPolos = barisAktif.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-    if (!teksPolos || teksPolos === teksBlokSebelumnya) continue;
-    teksBlokSebelumnya = teksPolos;
-
-    const regexTagWaktu = /<(\d{2}:\d{2}:\d{2}\.\d{3})>/g;
-    if (regexTagWaktu.test(barisAktif)) {
-      const token = barisAktif.split(/(<\d{2}:\d{2}:\d{2}\.\d{3}>)/g);
-      let waktuKataSaatIni = blokMulai;
-      for (const bagian of token) {
-        const cocokWaktu = bagian.match(/^<(\d{2}:\d{2}:\d{2}\.\d{3})>$/);
-        if (cocokWaktu) {
-          waktuKataSaatIni = waktuKeDetik(cocokWaktu[1]);
-        } else {
-          const bersih = bagian.replace(/<[^>]+>/g, '').trim();
-          if (bersih) {
-            for (const w of bersih.split(/\s+/)) {
-              daftarKataGlobal.push({ kata: w, start: waktuKataSaatIni, end: blokSelesai });
-            }
-          }
-        }
-      }
-    } else {
-      const kataKata = teksPolos.split(/\s+/);
-      const totalHuruf = kataKata.reduce((acc, k) => acc + k.length, 0) || 1;
-      let kursorWaktu = blokMulai;
-      for (const w of kataKata) {
-        const porsiDurasi = (w.length / totalHuruf) * (blokSelesai - blokMulai);
-        daftarKataGlobal.push({ kata: w, start: kursorWaktu, end: kursorWaktu + porsiDurasi });
-        kursorWaktu += porsiDurasi;
-      }
-    }
-  }
-
-  for (let i = 0; i < daftarKataGlobal.length - 1; i++) {
-    const nextStart = daftarKataGlobal[i + 1].start;
-    if (nextStart > daftarKataGlobal[i].start) {
-      daftarKataGlobal[i].end = Math.min(nextStart, daftarKataGlobal[i].start + 1.5);
-    }
-  }
-
-  return daftarKataGlobal
-    .filter(item => item.end > startClip && item.start < endClip)
-    .map(item => ({
-      kata: item.kata,
-      start: Math.max(0, item.start - startClip),
-      end: Math.min(durasiClip, item.end - startClip)
-    }))
-    .filter(item => item.end > item.start + 0.02);
-}
-
 function tulisFileASS(daftarKata, assPath, durasiClip) {
+  if (!daftarKata || daftarKata.length === 0) {
+    throw new Error('Tidak ada suara/VO manusia yang terdeteksi di segmen video ini.');
+  }
+
   // Rapikan urutan waktu kata agar tidak saling tumpang tindih
   const kataRapi = [...daftarKata].sort((a, b) => a.start - b.start);
   for (let i = 0; i < kataRapi.length - 1; i++) {
@@ -283,124 +345,80 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   fs.writeFileSync(assPath, headerAss + events.join('\n') + '\n', 'utf8');
 }
 
-async function cariMomenViral(transkrip) {
-  if (!GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY kosong! Periksa GitHub Secrets.');
+function unduhVideoDenganFallback(url) {
+  if (YOUTUBE_COOKIES) {
+    fs.writeFileSync('cookies.txt', YOUTUBE_COOKIES, 'utf8');
   }
 
-  const prompt = `Kamu adalah editor video viral TikTok/Shorts profesional.
-Baca transkrip video ber-timestamp di bawah ini, lalu pilih SATU momen paling menarik, emosional, lucu, atau bikin penasaran dengan durasi antara 30 sampai 55 detik.
+  const strategi = [];
+  if (YOUTUBE_COOKIES) {
+    strategi.push(`--js-runtimes node --remote-components ejs:github --impersonate chrome --cookies cookies.txt`);
+    strategi.push(`--js-runtimes node --remote-components ejs:github --cookies cookies.txt --extractor-args "youtube:player_client=web_safari,tv"`);
+  }
+  strategi.push(`--js-runtimes node --remote-components ejs:github --impersonate chrome --extractor-args "youtube:player_client=android,tv"`);
+  strategi.push(`--js-runtimes node --remote-components ejs:github`);
 
-ATURAN:
-- "start" dan "end" wajib format "HH:MM:SS" sesuai timestamp transkrip.
-- Pastikan selisih waktu end dikurangi start adalah 30-55 detik.
-- Keluarkan HANYA JSON murni tanpa teks tambahan:
-{
-  "start": "00:01:15",
-  "end": "00:01:58",
-  "judul": "Judul Hook Viral #Shorts",
-  "alasan": "Alasan singkat kenapa momen ini berpotensi viral"
-}
-
-TRANSKRIP:
-${transkrip}`;
-
-  const models = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
   let errorTerakhir = '';
-
-  for (const model of models) {
+  for (let i = 0; i < strategi.length; i++) {
     try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: 'application/json' }
-          })
-        }
+      console.log(`Mencoba unduh video (strategi ${i + 1}/${strategi.length})...`);
+      execSync(
+        `yt-dlp ${strategi[i]} -f "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 -o "sumber.mp4" "${url}"`,
+        { stdio: 'inherit' }
       );
-      const json = await res.json();
-      if (json.candidates && json.candidates[0]) {
-        let raw = json.candidates[0].content.parts[0].text.trim();
-        const awal = raw.indexOf('{');
-        const akhir = raw.lastIndexOf('}');
-        if (awal !== -1 && akhir !== -1) raw = raw.slice(awal, akhir + 1);
-        return JSON.parse(raw);
-      } else {
-        errorTerakhir = json.error ? json.error.message : JSON.stringify(json);
-        console.log(`Respon API ${model}:`, errorTerakhir);
-      }
+      if (fs.existsSync('sumber.mp4')) return;
     } catch (e) {
       errorTerakhir = e.message;
-      console.log(`Gagal model ${model}:`, e.message);
+      console.log(`Strategi ${i + 1} gagal:`, e.message);
     }
   }
-  throw new Error(`Gemini gagal menganalisis transkrip (${errorTerakhir})`);
+  throw new Error(`Gagal mengunduh video dari YouTube (${errorTerakhir})`);
 }
 
 async function main() {
   if (!VIDEO_URL) throw new Error('Link video kosong!');
-  await kirimPesan(`✂️ AI Clipper mulai bekerja!\n🔗 Link: ${VIDEO_URL}\n\n1/3 Mengambil transkrip & video...`);
+  await kirimPesan(`✂️ AI Clipper mulai bekerja!\n🔗 Link: ${VIDEO_URL}\n\n1/3 Mengunduh video & mengekstrak suara VO...`);
 
-  // Siapkan opsi anti-blokir YouTube (pakai Node.js runtime + remote challenge solver + browser impersonate + cookies jika ada)
-  let opsiYtDlp = `--js-runtimes node --remote-components ejs:github --impersonate chrome`;
-  if (YOUTUBE_COOKIES) {
-    fs.writeFileSync('cookies.txt', YOUTUBE_COOKIES, 'utf8');
-    opsiYtDlp += ` --cookies cookies.txt`;
+  // Langsung unduh video tanpa ketergantungan pada subtitle YouTube (bebas limit 429 endpoint subtitle!)
+  unduhVideoDenganFallback(VIDEO_URL);
+
+  // Cek durasi total video menggunakan ffprobe
+  const durasiStr = execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 sumber.mp4`).toString().trim();
+  const durasiTotal = parseFloat(durasiStr) || 60;
+
+  // Ekstrak audio seluruh video dalam format ringan (16kHz mono 32kbps) untuk didengarkan Gemini AI
+  execSync(`ffmpeg -y -i sumber.mp4 -vn -ac 1 -ar 16000 -b:a 32k audio_full.mp3`, { stdio: 'inherit' });
+
+  await kirimPesan('2/3 Gemini AI sedang mendengarkan suara video & mencari momen viral...');
+  const momen = await cariMomenViralDariAudio('audio_full.mp3', durasiTotal);
+
+  // Validasi agar rentang waktu tidak melebihi durasi video
+  let startClip = waktuKeDetik(momen.start);
+  let endClip = waktuKeDetik(momen.end);
+  if (endClip > durasiTotal) endClip = durasiTotal;
+  if (endClip - startClip < 15) {
+    startClip = Math.max(0, endClip - 40);
   }
+  const startFmt = detikKeHHMMSS(startClip);
+  const endFmt = detikKeHHMMSS(endClip);
 
-  // Unduh subtitle satu per satu dengan jeda untuk menghindari HTTP Error 429 (Too Many Requests)
-  for (const lang of ['id', 'en']) {
-    try {
-      execSync(`yt-dlp ${opsiYtDlp} --ignore-no-formats-error --sleep-subtitles 3 --sub-format vtt --write-auto-subs --write-subs --sub-lang "${lang}" --skip-download -o "sub" "${VIDEO_URL}"`, { stdio: 'inherit' });
-    } catch (e) {
-      console.log(`Subtitle bahasa '${lang}' dilewati/limit:`, e.message);
-    }
-    const cekSub = fs.readdirSync('.').find(f => f.startsWith('sub.') && f.endsWith('.vtt'));
-    if (cekSub) break;
-  }
+  await kirimPesan(`🔥 Momen ditemukan!\n⏱️ ${startFmt} - ${endFmt}\n📌 ${momen.judul}\n💡 ${momen.alasan}\n\n3/3 Memotong video 9:16 & membuat subtitle karaoke presisi dari suara VO...`);
 
-  // Prioritaskan subtitle Bahasa Indonesia (sub.id.vtt) jika ada, kalau tidak ambil yang tersedia
-  const daftarSub = fs.readdirSync('.').filter(f => f.startsWith('sub.') && f.endsWith('.vtt'));
-  const fileSub = daftarSub.find(f => f.includes('.id.')) || daftarSub[0];
-  if (!fileSub) {
-    throw new Error('Video ini tidak memiliki subtitle/CC otomatis atau terkena limit YouTube (429). Coba video lain atau tunggu beberapa menit.');
-  }
+  // Potong video ke format 9:16 (1080x1920)
+  execSync(`ffmpeg -y -ss ${startFmt} -to ${endFmt} -i sumber.mp4 -vf "crop=ih*9/16:ih,scale=1080:1920" -c:v libx264 -preset veryfast -crf 22 -c:a aac -b:a 128k clip_mentah.mp4`, { stdio: 'inherit' });
 
-  const transkrip = bersihkanSubtitleVTT(fs.readFileSync(fileSub, 'utf8'));
-  await kirimPesan('2/3 Gemini AI sedang mencari momen paling viral...');
-
-  const momen = await cariMomenViral(transkrip);
-  await kirimPesan(`🔥 Momen ditemukan!\n⏱️ ${momen.start} - ${momen.end}\n📌 ${momen.judul}\n💡 ${momen.alasan}\n\n3/3 Memotong, menyinkronkan suara VO & mengubah ke format 9:16...`);
-
-  // Unduh video kualitas terbaik maksimal 720p/1080p mp4
-  execSync(`yt-dlp ${opsiYtDlp} -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 -o "sumber.mp4" "${VIDEO_URL}"`, { stdio: 'inherit' });
-
-  // Potong dulu video 9:16 tanpa subtitle agar timestamp audio benar-benar presisi dari detik 0.00
-  execSync(`ffmpeg -y -ss ${momen.start} -to ${momen.end} -i sumber.mp4 -vf "crop=ih*9/16:ih,scale=1080:1920" -c:v libx264 -preset veryfast -crf 22 -c:a aac -b:a 128k clip_mentah.mp4`, { stdio: 'inherit' });
-
-  // Ekstrak audio MP3 dari klip yang sudah dipotong untuk sinkronisasi suara VO presisi per kata
+  // Ekstrak audio khusus potongan klip ini agar timestamp per kata benar-benar sinkron dari detik 0.00
   execSync(`ffmpeg -y -i clip_mentah.mp4 -vn -ac 1 -ar 16000 -b:a 48k audio_klip.mp3`, { stdio: 'inherit' });
 
-  const startClip = waktuKeDetik(momen.start);
-  const endClip = waktuKeDetik(momen.end);
   const durasiClip = Math.max(1, endClip - startClip);
-
-  // Minta Gemini menyinkronkan timestamp tiap kata langsung dari audio VO asli (fallback ke VTT jika gagal)
-  let daftarKataPresisi = await transkripKataDariAudio('audio_klip.mp3', durasiClip);
-  if (!daftarKataPresisi || daftarKataPresisi.length === 0) {
-    console.log('Fallback ke parsing VTT...');
-    daftarKataPresisi = ekstrakKataDariVTT(fileSub, startClip, endClip, durasiClip);
-  }
+  const daftarKataPresisi = await transkripKataDariAudio('audio_klip.mp3', durasiClip);
 
   tulisFileASS(daftarKataPresisi, 'sub_klip.ass', durasiClip);
 
-  // Tempel subtitle ASS beranimasi & sorotan kuning berjalan ke video final
+  // Tempel subtitle ASS beranimasi dengan sorotan kuning berjalan ke video final
   execSync(`ffmpeg -y -i clip_mentah.mp4 -vf "ass=sub_klip.ass" -c:v libx264 -preset veryfast -crf 22 -c:a copy -movflags +faststart clip_jadi.mp4`, { stdio: 'inherit' });
 
-  const caption = `✂️ KLIP VIRAL SIAP!\n\n📌 ${momen.judul}\n⏱️ Segmen: ${momen.start} - ${momen.end}\n💡 Alasan: ${momen.alasan}`;
+  const caption = `✂️ KLIP VIRAL SIAP!\n\n📌 ${momen.judul}\n⏱️ Segmen: ${startFmt} - ${endFmt}\n💡 Alasan: ${momen.alasan}`;
   await kirimVideo('clip_jadi.mp4', caption);
   console.log('Selesai! Klip berhasil dikirim.');
 }
