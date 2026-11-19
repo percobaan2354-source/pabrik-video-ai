@@ -78,15 +78,68 @@ function detikKeAss(totalDetik) {
   return `${jam}:${String(menit).padStart(2, '0')}:${String(detik).padStart(2, '0')}.${String(centi).padStart(2, '0')}`;
 }
 
-function buatSubtitleASSDariVTT(vttPath, assPath, startClipStr, endClipStr) {
-  const startClip = waktuKeDetik(startClipStr);
-  const endClip = waktuKeDetik(endClipStr);
-  const durasiClip = endClip - startClip;
+async function transkripKataDariAudio(audioPath, durasiClip) {
+  const audioBase64 = fs.readFileSync(audioPath).toString('base64');
+  const prompt = `Dengarkan audio klip berdurasi ${durasiClip.toFixed(2)} detik ini dengan sangat teliti.
+Transkripsikan SETIAP KATA yang diucapkan manusia/VO beserta waktu mulai (start) dan waktu selesai (end) dalam satuan DETIK (angka desimal, contoh: 1.24) yang BENAR-BENAR PAS dengan suara ucapannya!
 
+ATURAN KETAT:
+- Dengarkan ritme suara aslinya! Jangan menebak waktu secara rata. Jika pembicara diam/jeda, jangan isi kata di waktu diam tersebut.
+- "start" dan "end" adalah detik relatif dari awal audio (0.00 sampai ${durasiClip.toFixed(2)}).
+- Keluarkan HANYA JSON array murni tanpa teks tambahan:
+[
+  {"kata": "Halo", "start": 0.35, "end": 0.68},
+  {"kata": "semuanya", "start": 0.69, "end": 1.15}
+]`;
+
+  const models = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
+  for (const model of models) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { inlineData: { mimeType: 'audio/mp3', data: audioBase64 } },
+                { text: prompt }
+              ]
+            }],
+            generationConfig: { responseMimeType: 'application/json' }
+          })
+        }
+      );
+      const json = await res.json();
+      if (json.candidates && json.candidates[0]) {
+        let raw = json.candidates[0].content.parts[0].text.trim();
+        const awal = raw.indexOf('[');
+        const akhir = raw.lastIndexOf(']');
+        if (awal !== -1 && akhir !== -1) raw = raw.slice(awal, akhir + 1);
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed
+            .filter(x => x && x.kata && typeof x.start === 'number' && typeof x.end === 'number')
+            .map(x => ({
+              kata: String(x.kata).trim(),
+              start: Math.max(0, Math.min(durasiClip, x.start)),
+              end: Math.max(0, Math.min(durasiClip, Math.max(x.start + 0.08, x.end)))
+            }));
+        }
+      } else {
+        console.log(`Audio align ${model} respon:`, JSON.stringify(json.error || json));
+      }
+    } catch (e) {
+      console.log(`Gagal audio align ${model}:`, e.message);
+    }
+  }
+  return null;
+}
+
+function ekstrakKataDariVTT(vttPath, startClip, endClip, durasiClip) {
   const rawVtt = fs.readFileSync(vttPath, 'utf8').replace(/\r/g, '');
   const blokVtt = rawVtt.split('\n\n').map(b => b.trim()).filter(Boolean);
-
-  // Ekstrak seluruh kata beserta timestamp persisnya dari VTT YouTube
   const daftarKataGlobal = [];
   let teksBlokSebelumnya = '';
 
@@ -98,11 +151,8 @@ function buatSubtitleASSDariVTT(vttPath, assPath, startClipStr, endClipStr) {
     const [mulaiStr, selesaiStr] = baris[idxWaktu].split('-->');
     const blokMulai = waktuKeDetik(mulaiStr);
     const blokSelesai = waktuKeDetik(selesaiStr);
-
-    // Abaikan cue rolling transisi super pendek (< 0.12 detik) yang merupakan duplikat tampilan VTT YouTube
     if (blokSelesai - blokMulai < 0.12) continue;
 
-    // Ambil baris teks utama (pada VTT auto-caption YouTube, baris terakhir di cue adalah baris baru yang sedang diucapkan)
     const barisTeks = baris.slice(idxWaktu + 1).filter(l => l.trim());
     if (barisTeks.length === 0) continue;
 
@@ -111,12 +161,10 @@ function buatSubtitleASSDariVTT(vttPath, assPath, startClipStr, endClipStr) {
     if (!teksPolos || teksPolos === teksBlokSebelumnya) continue;
     teksBlokSebelumnya = teksPolos;
 
-    // Cek apakah VTT memiliki timestamp per kata: contoh "kata1<00:01:12.340><c> kata2</c>"
     const regexTagWaktu = /<(\d{2}:\d{2}:\d{2}\.\d{3})>/g;
     if (regexTagWaktu.test(barisAktif)) {
       const token = barisAktif.split(/(<\d{2}:\d{2}:\d{2}\.\d{3}>)/g);
       let waktuKataSaatIni = blokMulai;
-
       for (const bagian of token) {
         const cocokWaktu = bagian.match(/^<(\d{2}:\d{2}:\d{2}\.\d{3})>$/);
         if (cocokWaktu) {
@@ -131,24 +179,17 @@ function buatSubtitleASSDariVTT(vttPath, assPath, startClipStr, endClipStr) {
         }
       }
     } else {
-      // Fallback jika VTT tidak memiliki tag waktu per kata: bagi waktu sesuai bobot jumlah karakter
       const kataKata = teksPolos.split(/\s+/);
       const totalHuruf = kataKata.reduce((acc, k) => acc + k.length, 0) || 1;
       let kursorWaktu = blokMulai;
-
       for (const w of kataKata) {
-        const porsiDurasi = ((w.length / totalHuruf) * (blokSelesai - blokMulai));
-        daftarKataGlobal.push({
-          kata: w,
-          start: kursorWaktu,
-          end: kursorWaktu + porsiDurasi
-        });
+        const porsiDurasi = (w.length / totalHuruf) * (blokSelesai - blokMulai);
+        daftarKataGlobal.push({ kata: w, start: kursorWaktu, end: kursorWaktu + porsiDurasi });
         kursorWaktu += porsiDurasi;
       }
     }
   }
 
-  // Rapikan waktu selesai tiap kata agar menyambung ke kata berikutnya tanpa tumpang tindih atau terlalu cepat hilang
   for (let i = 0; i < daftarKataGlobal.length - 1; i++) {
     const nextStart = daftarKataGlobal[i + 1].start;
     if (nextStart > daftarKataGlobal[i].start) {
@@ -156,8 +197,7 @@ function buatSubtitleASSDariVTT(vttPath, assPath, startClipStr, endClipStr) {
     }
   }
 
-  // Filter hanya kata yang masuk di dalam rentang klip [startClip, endClip] dan geser waktunya ke 00:00
-  const kataDalamKlip = daftarKataGlobal
+  return daftarKataGlobal
     .filter(item => item.end > startClip && item.start < endClip)
     .map(item => ({
       kata: item.kata,
@@ -165,17 +205,26 @@ function buatSubtitleASSDariVTT(vttPath, assPath, startClipStr, endClipStr) {
       end: Math.min(durasiClip, item.end - startClip)
     }))
     .filter(item => item.end > item.start + 0.02);
+}
 
-  // Kelompokkan menjadi 3-4 kata per baris tampilan dengan waktu mulai dari kata pertama hingga kata terakhir di grup
+function tulisFileASS(daftarKata, assPath, durasiClip) {
+  // Rapikan urutan waktu kata agar tidak saling tumpang tindih
+  const kataRapi = [...daftarKata].sort((a, b) => a.start - b.start);
+  for (let i = 0; i < kataRapi.length - 1; i++) {
+    if (kataRapi[i + 1].start < kataRapi[i].end) {
+      kataRapi[i].end = Math.max(kataRapi[i].start + 0.05, kataRapi[i + 1].start);
+    }
+  }
+
+  // Kelompokkan menjadi 3-4 kata per baris tampilan berdasarkan jeda suara asli
   const grupBaris = [];
   let tampung = [];
 
-  for (let i = 0; i < kataDalamKlip.length; i++) {
-    const item = kataDalamKlip[i];
+  for (let i = 0; i < kataRapi.length; i++) {
+    const item = kataRapi[i];
     const jedaAntarKata = tampung.length > 0 ? item.start - tampung[tampung.length - 1].end : 0;
-
-    // Pecah baris baru jika jeda bicara > 0.45 detik, sudah 4 kata, atau > 22 huruf
     const teksSementara = [...tampung.map(x => x.kata), item.kata].join(' ');
+
     if (tampung.length > 0 && (jedaAntarKata > 0.45 || tampung.length >= 4 || teksSementara.length > 22)) {
       grupBaris.push(tampung);
       tampung = [];
@@ -199,27 +248,36 @@ Style: ViralSub,DejaVu Sans,64,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
-  const events = grupBaris.map((grup, idx) => {
-    const tStart = grup[0].start;
-    let tEnd = grup[grup.length - 1].end;
+  const events = [];
 
-    // Pastikan tidak tumpang tindih dengan baris berikutnya dan beri sedikit nafas baca
-    if (idx < grupBaris.length - 1) {
-      const nextStart = grupBaris[idx + 1][0].start;
-      tEnd = Math.min(nextStart, Math.max(tEnd, tStart + 0.35));
-    } else {
-      tEnd = Math.min(durasiClip, Math.max(tEnd, tStart + 0.5));
-    }
+  grupBaris.forEach((grup, idxBaris) => {
+    const akhirKataTerakhir = grup[grup.length - 1].end;
+    const batasAkhirBaris = idxBaris < grupBaris.length - 1
+      ? Math.min(grupBaris[idxBaris + 1][0].start, akhirKataTerakhir + 0.15)
+      : Math.min(durasiClip, akhirKataTerakhir + 0.25);
 
-    const kataBerwarna = grup.map((obj, i) => {
-      if (grup.length > 1 && i === grup.length - 1) {
-        return `{\\c&H0000FFFF&}${obj.kata}{\\c&H00FFFFFF&}`;
-      }
-      return obj.kata;
-    }).join(' ');
+    // Setiap kata di dalam baris mendapat event sendiri agar sorotan kuning (&H0000FFFF&) berjalan seiring suara VO
+    grup.forEach((kataAktifObj, idxKataAktif) => {
+      const wStart = kataAktifObj.start;
+      const wEnd = idxKataAktif < grup.length - 1
+        ? Math.max(wStart + 0.05, grup[idxKataAktif + 1].start)
+        : Math.max(wStart + 0.05, batasAkhirBaris);
 
-    const animasi = `{\\fscx85\\fscy85\\t(0,70,\\fscx103\\fscy103)\\t(70,130,\\fscx100\\fscy100)}`;
-    return `Dialogue: 0,${detikKeAss(tStart)},${detikKeAss(tEnd)},ViralSub,,0,0,0,,${animasi}${kataBerwarna}`;
+      if (wEnd <= wStart) return;
+
+      const teksBarisBerjalan = grup.map((obj, i) => {
+        if (i === idxKataAktif) {
+          return `{\\c&H0000FFFF&}${obj.kata}{\\c&H00FFFFFF&}`;
+        }
+        return obj.kata;
+      }).join(' ');
+
+      const animasi = idxKataAktif === 0
+        ? `{\\fscx86\\fscy86\\t(0,70,\\fscx103\\fscy103)\\t(70,130,\\fscx100\\fscy100)}`
+        : '';
+
+      events.push(`Dialogue: 0,${detikKeAss(wStart)},${detikKeAss(wEnd)},ViralSub,,0,0,0,,${animasi}${teksBarisBerjalan}`);
+    });
   });
 
   fs.writeFileSync(assPath, headerAss + events.join('\n') + '\n', 'utf8');
@@ -315,16 +373,32 @@ async function main() {
   await kirimPesan('2/3 Gemini AI sedang mencari momen paling viral...');
 
   const momen = await cariMomenViral(transkrip);
-  await kirimPesan(`🔥 Momen ditemukan!\n⏱️ ${momen.start} - ${momen.end}\n📌 ${momen.judul}\n💡 ${momen.alasan}\n\n3/3 Memotong, menyinkronkan subtitle & mengubah ke format 9:16...`);
+  await kirimPesan(`🔥 Momen ditemukan!\n⏱️ ${momen.start} - ${momen.end}\n📌 ${momen.judul}\n💡 ${momen.alasan}\n\n3/3 Memotong, menyinkronkan suara VO & mengubah ke format 9:16...`);
 
   // Unduh video kualitas terbaik maksimal 720p/1080p mp4
   execSync(`yt-dlp ${opsiYtDlp} -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 -o "sumber.mp4" "${VIDEO_URL}"`, { stdio: 'inherit' });
 
-  // Buat subtitle ASS langsung dari VTT asli dengan timestamp per kata yang sudah disinkronkan ke momen.start
-  buatSubtitleASSDariVTT(fileSub, 'sub_klip.ass', momen.start, momen.end);
+  // Potong dulu video 9:16 tanpa subtitle agar timestamp audio benar-benar presisi dari detik 0.00
+  execSync(`ffmpeg -y -ss ${momen.start} -to ${momen.end} -i sumber.mp4 -vf "crop=ih*9/16:ih,scale=1080:1920" -c:v libx264 -preset veryfast -crf 22 -c:a aac -b:a 128k clip_mentah.mp4`, { stdio: 'inherit' });
 
-  // Potong, crop tengah ke 9:16 (1080x1920), dan tempel subtitle ASS
-  execSync(`ffmpeg -y -ss ${momen.start} -to ${momen.end} -i sumber.mp4 -vf "crop=ih*9/16:ih,scale=1080:1920,ass=sub_klip.ass" -c:v libx264 -preset veryfast -crf 22 -c:a aac -b:a 128k -movflags +faststart clip_jadi.mp4`, { stdio: 'inherit' });
+  // Ekstrak audio MP3 dari klip yang sudah dipotong untuk sinkronisasi suara VO presisi per kata
+  execSync(`ffmpeg -y -i clip_mentah.mp4 -vn -ac 1 -ar 16000 -b:a 48k audio_klip.mp3`, { stdio: 'inherit' });
+
+  const startClip = waktuKeDetik(momen.start);
+  const endClip = waktuKeDetik(momen.end);
+  const durasiClip = Math.max(1, endClip - startClip);
+
+  // Minta Gemini menyinkronkan timestamp tiap kata langsung dari audio VO asli (fallback ke VTT jika gagal)
+  let daftarKataPresisi = await transkripKataDariAudio('audio_klip.mp3', durasiClip);
+  if (!daftarKataPresisi || daftarKataPresisi.length === 0) {
+    console.log('Fallback ke parsing VTT...');
+    daftarKataPresisi = ekstrakKataDariVTT(fileSub, startClip, endClip, durasiClip);
+  }
+
+  tulisFileASS(daftarKataPresisi, 'sub_klip.ass', durasiClip);
+
+  // Tempel subtitle ASS beranimasi & sorotan kuning berjalan ke video final
+  execSync(`ffmpeg -y -i clip_mentah.mp4 -vf "ass=sub_klip.ass" -c:v libx264 -preset veryfast -crf 22 -c:a copy -movflags +faststart clip_jadi.mp4`, { stdio: 'inherit' });
 
   const caption = `✂️ KLIP VIRAL SIAP!\n\n📌 ${momen.judul}\n⏱️ Segmen: ${momen.start} - ${momen.end}\n💡 Alasan: ${momen.alasan}`;
   await kirimVideo('clip_jadi.mp4', caption);
