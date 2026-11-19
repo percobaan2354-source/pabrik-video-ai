@@ -128,7 +128,9 @@ async function main() {
   // Unduh subtitle otomatis (id/en) tanpa video dulu
   execSync(`yt-dlp ${opsiYtDlp} --ignore-no-formats-error --write-auto-subs --write-subs --sub-lang "id,en" --skip-download -o "sub" "${VIDEO_URL}"`, { stdio: 'inherit' });
 
-  const fileSub = fs.readdirSync('.').find(f => f.startsWith('sub.') && f.endsWith('.vtt'));
+  // Prioritaskan subtitle Bahasa Indonesia (sub.id.vtt) jika ada, kalau tidak ambil yang tersedia
+  const daftarSub = fs.readdirSync('.').filter(f => f.startsWith('sub.') && f.endsWith('.vtt'));
+  const fileSub = daftarSub.find(f => f.includes('.id.')) || daftarSub[0];
   if (!fileSub) {
     throw new Error('Video ini tidak memiliki subtitle/CC otomatis sehingga AI tidak bisa membaca isi pembicaraannya.');
   }
@@ -137,13 +139,17 @@ async function main() {
   await kirimPesan('2/3 Gemini AI sedang mencari momen paling viral...');
 
   const momen = await cariMomenViral(transkrip);
-  await kirimPesan(`🔥 Momen ditemukan!\n⏱️ ${momen.start} - ${momen.end}\n📌 ${momen.judul}\n💡 ${momen.alasan}\n\n3/3 Memotong & mengubah ke format 9:16...`);
+  await kirimPesan(`🔥 Momen ditemukan!\n⏱️ ${momen.start} - ${momen.end}\n📌 ${momen.judul}\n💡 ${momen.alasan}\n\n3/3 Memotong, menempel subtitle & mengubah ke format 9:16...`);
 
   // Unduh video kualitas terbaik maksimal 720p/1080p mp4
   execSync(`yt-dlp ${opsiYtDlp} -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 -o "sumber.mp4" "${VIDEO_URL}"`, { stdio: 'inherit' });
 
-  // Potong & crop tengah ke 9:16 (1080x1920)
-  execSync(`ffmpeg -y -ss ${momen.start} -to ${momen.end} -i sumber.mp4 -vf "crop=ih*9/16:ih,scale=1080:1920" -c:v libx264 -preset veryfast -crf 22 -c:a aac -b:a 128k -movflags +faststart clip_jadi.mp4`, { stdio: 'inherit' });
+  // Konversi VTT ke SRT dan potong segmen waktunya agar pas dengan clip_jadi.mp4
+  execSync(`ffmpeg -y -ss ${momen.start} -to ${momen.end} -i "${fileSub}" sub_klip.srt`, { stdio: 'inherit' });
+
+  // Potong, crop tengah ke 9:16 (1080x1920), dan tempel subtitle bergaya Shorts/TikTok
+  const gayaSub = "FontName=DejaVu Sans,FontSize=16,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=55";
+  execSync(`ffmpeg -y -ss ${momen.start} -to ${momen.end} -i sumber.mp4 -vf "crop=ih*9/16:ih,scale=1080:1920,subtitles=sub_klip.srt:force_style='${gayaSub}'" -c:v libx264 -preset veryfast -crf 22 -c:a aac -b:a 128k -movflags +faststart clip_jadi.mp4`, { stdio: 'inherit' });
 
   const caption = `✂️ KLIP VIRAL SIAP!\n\n📌 ${momen.judul}\n⏱️ Segmen: ${momen.start} - ${momen.end}\n💡 Alasan: ${momen.alasan}`;
   await kirimVideo('clip_jadi.mp4', caption);
