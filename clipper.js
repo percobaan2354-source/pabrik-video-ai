@@ -58,6 +58,10 @@ function bersihkanSubtitleVTT(vttText) {
 }
 
 async function cariMomenViral(transkrip) {
+  if (!GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY kosong! Periksa GitHub Secrets.');
+  }
+
   const prompt = `Kamu adalah editor video viral TikTok/Shorts profesional.
 Baca transkrip video ber-timestamp di bawah ini, lalu pilih SATU momen paling menarik, emosional, lucu, atau bikin penasaran dengan durasi antara 30 sampai 55 detik.
 
@@ -75,7 +79,9 @@ ATURAN:
 TRANSKRIP:
 ${transkrip}`;
 
-  const models = ['gemini-2.5-flash', 'gemini-flash-latest'];
+  const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
+  let errorTerakhir = '';
+
   for (const model of models) {
     try {
       const res = await fetch(
@@ -83,7 +89,10 @@ ${transkrip}`;
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: 'application/json' }
+          })
         }
       );
       const json = await res.json();
@@ -93,12 +102,16 @@ ${transkrip}`;
         const akhir = raw.lastIndexOf('}');
         if (awal !== -1 && akhir !== -1) raw = raw.slice(awal, akhir + 1);
         return JSON.parse(raw);
+      } else {
+        errorTerakhir = json.error ? json.error.message : JSON.stringify(json);
+        console.log(`Respon API ${model}:`, errorTerakhir);
       }
     } catch (e) {
+      errorTerakhir = e.message;
       console.log(`Gagal model ${model}:`, e.message);
     }
   }
-  throw new Error('Gemini gagal menganalisis transkrip.');
+  throw new Error(`Gemini gagal menganalisis transkrip (${errorTerakhir})`);
 }
 
 async function main() {
