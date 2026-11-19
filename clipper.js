@@ -19,9 +19,12 @@ const KATALOG_FONT = {
   dejavu:     { label: 'DejaVu Sans (Klasik)',    fontName: 'DejaVu Sans',fontSize: 64, outline: 6, spacing: 0 }
 };
 
-// Parsing input URL & Font (mendukung format "@bot montserrat https://youtu.be/xxx", "https://youtu.be/xxx | anton", atau INPUT_FONT)
+// Parsing input URL & Font (mendukung format "@bot /clip montserrat https://youtu.be/xxx", "https://youtu.be/xxx | anton", atau INPUT_FONT)
 function parseInputUrlDanFont(rawUrl, rawFont) {
-  let urlBersih = rawUrl.replace(/^@[a-zA-Z0-9_]+\s+/, '').trim();
+  let urlBersih = rawUrl
+    .replace(/^@[a-zA-Z0-9_]+\s+/i, '')
+    .replace(/^\/clip\s+/i, '')
+    .trim();
   let fontTerpilih = (rawFont || '').toLowerCase();
 
   // Cek format "FONT https://youtu.be/xxx" (dari tombol switch_inline_query_current_chat)
@@ -569,16 +572,16 @@ async function main() {
   await kirimPesan('🎨 Pilih font untuk klip berikutnya (pencet tombolnya, nanti otomatis masuk ke kolom ketik—kamu tinggal tempel link YouTube-nya):', {
     inline_keyboard: [
       [
-        { text: '🔥 Montserrat', switch_inline_query_current_chat: 'montserrat ' },
-        { text: '💥 Anton',      switch_inline_query_current_chat: 'anton ' }
+        { text: '✂️ Clip + Montserrat', switch_inline_query_current_chat: '/clip montserrat ' },
+        { text: '💥 Clip + Anton',      switch_inline_query_current_chat: '/clip anton ' }
       ],
       [
-        { text: '✨ Poppins',    switch_inline_query_current_chat: 'poppins ' },
-        { text: '😄 Comic Neue', switch_inline_query_current_chat: 'comic ' }
+        { text: '✨ Clip + Poppins',    switch_inline_query_current_chat: '/clip poppins ' },
+        { text: '😄 Clip + Comic Neue', switch_inline_query_current_chat: '/clip comic ' }
       ],
       [
-        { text: '🎙️ Roboto',     switch_inline_query_current_chat: 'roboto ' },
-        { text: '🎬 DejaVu',     switch_inline_query_current_chat: 'dejavu ' }
+        { text: '🎙️ Clip + Roboto',     switch_inline_query_current_chat: '/clip roboto ' },
+        { text: '🎬 Clip + DejaVu',     switch_inline_query_current_chat: '/clip dejavu ' }
       ]
     ]
   });
