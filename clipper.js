@@ -19,21 +19,25 @@ const KATALOG_FONT = {
   dejavu:     { label: 'DejaVu Sans (Klasik)',    fontName: 'DejaVu Sans',fontSize: 64, outline: 6, spacing: 0 }
 };
 
-// Parsing input URL & Font (mendukung format "https://youtu.be/xxx | anton" atau "https://youtu.be/xxx font:poppins" atau INPUT_FONT)
+// Parsing input URL & Font (mendukung format "@bot montserrat https://youtu.be/xxx", "https://youtu.be/xxx | anton", atau INPUT_FONT)
 function parseInputUrlDanFont(rawUrl, rawFont) {
-  let urlBersih = rawUrl;
+  let urlBersih = rawUrl.replace(/^@[a-zA-Z0-9_]+\s+/, '').trim();
   let fontTerpilih = (rawFont || '').toLowerCase();
 
-  // Cek jika user mengirim format "LINK | NAMA_FONT" atau "LINK font:NAMA_FONT" dari Telegram
-  if (urlBersih.includes('|')) {
+  // Cek format "FONT https://youtu.be/xxx" (dari tombol switch_inline_query_current_chat)
+  const matchDepan = urlBersih.match(/^([a-zA-Z]+)\s+(https?:\/\/.+)$/i);
+  if (matchDepan && KATALOG_FONT[matchDepan[1].toLowerCase()]) {
+    fontTerpilih = matchDepan[1].toLowerCase();
+    urlBersih = matchDepan[2].trim();
+  } else if (urlBersih.includes('|')) {
     const bagian = urlBersih.split('|').map(s => s.trim());
     urlBersih = bagian[0];
     if (bagian[1]) fontTerpilih = bagian[1].toLowerCase();
   } else {
-    const matchFont = urlBersih.match(/\s+(?:font[:=]\s*)?([a-zA-Z]+)$/i);
-    if (matchFont && KATALOG_FONT[matchFont[1].toLowerCase()]) {
-      fontTerpilih = matchFont[1].toLowerCase();
-      urlBersih = urlBersih.replace(matchFont[0], '').trim();
+    const matchBelakang = urlBersih.match(/\s+(?:font[:=]\s*)?([a-zA-Z]+)$/i);
+    if (matchBelakang && KATALOG_FONT[matchBelakang[1].toLowerCase()]) {
+      fontTerpilih = matchBelakang[1].toLowerCase();
+      urlBersih = urlBersih.replace(matchBelakang[0], '').trim();
     }
   }
 
@@ -561,9 +565,23 @@ async function main() {
   const caption = `✂️ KLIP VIRAL SIAP!\n\n📌 ${momen.judul}\n⏱️ Segmen: ${startFmt} - ${endFmt}\n🔤 Font: ${FONT_CONFIG.label}\n💡 Alasan: ${momen.alasan}`;
   await kirimVideo('clip_jadi.mp4', caption);
 
-  // Kirim panduan cepat pilihan font untuk perintah berikutnya di Telegram
-  const panduanFont = `🎨 Pilihan Font Subtitle Berikutnya:\n• montserrat (Viral Bold)\n• anton (Tegas Tinggi)\n• poppins (Modern Clean)\n• comic (Santai)\n• roboto (Podcast Tajam)\n• dejavu (Klasik)\n\nCara pakai di Telegram:\nKirim: link_youtube | anton`;
-  await kirimPesan(panduanFont);
+  // Kirim tombol pilihan font yang langsung masuk ke kolom ketik chat (tidak langsung terkirim)
+  await kirimPesan('🎨 Pilih font untuk klip berikutnya (pencet tombolnya, nanti otomatis masuk ke kolom ketik—kamu tinggal tempel link YouTube-nya):', {
+    inline_keyboard: [
+      [
+        { text: '🔥 Montserrat', switch_inline_query_current_chat: 'montserrat ' },
+        { text: '💥 Anton',      switch_inline_query_current_chat: 'anton ' }
+      ],
+      [
+        { text: '✨ Poppins',    switch_inline_query_current_chat: 'poppins ' },
+        { text: '😄 Comic Neue', switch_inline_query_current_chat: 'comic ' }
+      ],
+      [
+        { text: '🎙️ Roboto',     switch_inline_query_current_chat: 'roboto ' },
+        { text: '🎬 DejaVu',     switch_inline_query_current_chat: 'dejavu ' }
+      ]
+    ]
+  });
   console.log('Selesai! Klip berhasil dikirim.');
 }
 
