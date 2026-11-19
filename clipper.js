@@ -125,14 +125,22 @@ async function main() {
     opsiYtDlp += ` --cookies cookies.txt`;
   }
 
-  // Unduh subtitle otomatis (id/en) tanpa video dulu
-  execSync(`yt-dlp ${opsiYtDlp} --ignore-no-formats-error --write-auto-subs --write-subs --sub-lang "id,en" --skip-download -o "sub" "${VIDEO_URL}"`, { stdio: 'inherit' });
+  // Unduh subtitle satu per satu dengan jeda untuk menghindari HTTP Error 429 (Too Many Requests)
+  for (const lang of ['id', 'en']) {
+    try {
+      execSync(`yt-dlp ${opsiYtDlp} --ignore-no-formats-error --sleep-subtitles 5 --write-auto-subs --write-subs --sub-lang "${lang}" --skip-download -o "sub" "${VIDEO_URL}"`, { stdio: 'inherit' });
+    } catch (e) {
+      console.log(`Subtitle bahasa '${lang}' dilewati/limit:`, e.message);
+    }
+    const cekSub = fs.readdirSync('.').find(f => f.startsWith('sub.') && f.endsWith('.vtt'));
+    if (cekSub) break;
+  }
 
   // Prioritaskan subtitle Bahasa Indonesia (sub.id.vtt) jika ada, kalau tidak ambil yang tersedia
   const daftarSub = fs.readdirSync('.').filter(f => f.startsWith('sub.') && f.endsWith('.vtt'));
   const fileSub = daftarSub.find(f => f.includes('.id.')) || daftarSub[0];
   if (!fileSub) {
-    throw new Error('Video ini tidak memiliki subtitle/CC otomatis sehingga AI tidak bisa membaca isi pembicaraannya.');
+    throw new Error('Video ini tidak memiliki subtitle/CC otomatis atau terkena limit YouTube (429). Coba video lain atau tunggu beberapa menit.');
   }
 
   const transkrip = bersihkanSubtitleVTT(fs.readFileSync(fileSub, 'utf8'));
