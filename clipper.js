@@ -529,16 +529,24 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 }
 
 function unduhVideoDenganFallback(url) {
+  // Bersihkan parameter pelacak ?si= pada link share YouTube agar lebih bersih
+  let cleanUrl = url.trim();
+  if (cleanUrl.includes('youtu.be/')) {
+    cleanUrl = cleanUrl.split('?')[0];
+  }
+
   if (YOUTUBE_COOKIES) {
     fs.writeFileSync('cookies.txt', YOUTUBE_COOKIES, 'utf8');
   }
 
   const strategi = [];
   if (YOUTUBE_COOKIES) {
+    strategi.push(`--js-runtimes node --remote-components ejs:github --cookies cookies.txt --extractor-args "youtube:player_client=tv_embedded,web_safari"`);
     strategi.push(`--js-runtimes node --remote-components ejs:github --impersonate chrome --cookies cookies.txt`);
-    strategi.push(`--js-runtimes node --remote-components ejs:github --cookies cookies.txt --extractor-args "youtube:player_client=web_safari,tv"`);
+    strategi.push(`--js-runtimes node --remote-components ejs:github --cookies cookies.txt --extractor-args "youtube:player_client=mweb,web"`);
   }
-  strategi.push(`--js-runtimes node --remote-components ejs:github --impersonate chrome --extractor-args "youtube:player_client=android,tv"`);
+  strategi.push(`--js-runtimes node --remote-components ejs:github --extractor-args "youtube:player_client=tv_embedded,android"`);
+  strategi.push(`--js-runtimes node --remote-components ejs:github --impersonate chrome`);
   strategi.push(`--js-runtimes node --remote-components ejs:github`);
 
   let errorTerakhir = '';
@@ -546,7 +554,7 @@ function unduhVideoDenganFallback(url) {
     try {
       console.log(`Mencoba unduh video (strategi ${i + 1}/${strategi.length})...`);
       execSync(
-        `yt-dlp ${strategi[i]} -f "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 -o "sumber.mp4" "${url}"`,
+        `yt-dlp ${strategi[i]} --no-check-certificates -f "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 -o "sumber.mp4" "${cleanUrl}"`,
         { stdio: 'inherit' }
       );
       if (fs.existsSync('sumber.mp4')) return;
