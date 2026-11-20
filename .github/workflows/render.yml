@@ -58,13 +58,33 @@ jobs:
           INPUT_BAHASA: ${{ github.event.inputs.bahasa }}
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1280x1280x24" node buat_video.js
-  
-      - name: Upload ke YouTube Shorts
+
+      - name: Upload ke YouTube Shorts via Apps Script
         env:
-          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
-          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
-          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
-          INPUT_JADWAL: ${{ github.event.inputs.jadwal_wib }}
+          APPS_SCRIPT_WEBHOOK_URL: ${{ secrets.APPS_SCRIPT_WEBHOOK_URL }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          INPUT_JUDUL: ${{ github.event.inputs.judul }}
         run: |
-          pip install -q google-api-python-client google-auth-oauthlib
-          python upload_youtube.py video_jadi.mp4 data.json
+          node -e '
+          const fs = require("fs");
+          async function run() {
+            const meta = fs.existsSync("data.json") ? JSON.parse(fs.readFileSync("data.json", "utf8")) : {};
+            const form = new FormData();
+            form.append("file", new Blob([fs.readFileSync("video_jadi.mp4")], { type: "video/mp4" }), "video_jadi.mp4");
+            const up = await fetch("https://tmpfiles.org/api/v1/upload", { method: "POST", body: form }).then(r => r.json());
+            const videoUrl = up.data.url.replace("tmpfiles.org/", "tmpfiles.org/dl/");
+            const res = await fetch(process.env.APPS_SCRIPT_WEBHOOK_URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                video_url: videoUrl,
+                judul: meta.judul || meta.title || process.env.INPUT_JUDUL || "Video Edukasi #Shorts",
+                deskripsi: meta.deskripsi || meta.description || "Dibuat otomatis #Shorts",
+                tags: meta.tags || ["shorts", "edukasi", "fakta"],
+                chat_id: process.env.TELEGRAM_CHAT_ID
+              })
+            });
+            console.log("Respon Apps Script:", await res.text());
+          }
+          run().catch(err => { console.error(err); process.exit(1); });
+          '
