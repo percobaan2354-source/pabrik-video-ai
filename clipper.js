@@ -127,7 +127,10 @@ function detikKeAss(totalDetik) {
   const jam = Math.floor(d / 3600);
   const menit = Math.floor((d % 3600) / 60);
   const detik = Math.floor(d % 60);
-  const centi = Math.floor((d - Math.floor(d)) * 100);
+  const centi = Math.round((d - Math.floor(d)) * 100);
+  if (centi >= 100) {
+    return detikKeAss(Math.floor(d) + 1);
+  }
   return `${jam}:${String(menit).padStart(2, '0')}:${String(detik).padStart(2, '0')}.${String(centi).padStart(2, '0')}`;
 }
 
@@ -181,7 +184,7 @@ async function uploadKeGeminiFileAPI(filePath, mimeType) {
   return uploadJson.file.uri;
 }
 
-// Cari momen viral langsung dengan mendengarkan suara/VO video (berfungsi meski tanpa subtitle YouTube!)
+// Cari momen viral langsung dengan mendengarkan suara/VO video + buat hook banner & caption siap copas
 async function cariMomenViralDariAudio(audioPath, durasiVideoDetik) {
   if (!GEMINI_API_KEY) {
     throw new Error('GEMINI_API_KEY kosong! Periksa GitHub Secrets.');
@@ -197,12 +200,16 @@ Pilih SATU momen pembicaraan paling menarik, emosional, lucu, berbobot, atau bik
 ATURAN KETAT:
 - "start" dan "end" wajib format "HH:MM:SS" sesuai posisi waktu nyata pada audio ini (tidak boleh melebihi ${batasAkhirStr}).
 - Pastikan selisih waktu end dikurangi start adalah 30 sampai 55 detik, dan dimulai tepat saat awal kalimat (bukan terpotong di tengah kata).
+- "hook_banner" adalah teks pancingan singkat maksimal 6 kata HURUF KAPITAL untuk dipasang di bagian atas video pada 3.5 detik pertama.
+- "caption_sosmed" adalah deskripsi singkat memancing komentar + 5 hashtag viral yang relevan untuk TikTok/Reels/Shorts.
 - Keluarkan HANYA JSON murni tanpa teks tambahan:
 {
   "start": "00:01:15",
   "end": "00:01:58",
   "judul": "Judul Hook Viral #Shorts",
-  "alasan": "Alasan singkat kenapa momen ini berpotensi viral"
+  "hook_banner": "KENAPA GAJI GURU KALAH SAMA ARTIS?",
+  "alasan": "Alasan singkat kenapa momen ini berpotensi viral",
+  "caption_sosmed": "Setuju gak sama pendapat ini? Tulis di kolom komentar! 👇 #edukasi #fakta #motivasi #podcast #fyp"
 }`;
 
   const models = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
@@ -409,7 +416,7 @@ async function transkripKataDariAudio(audioPath, durasiClip) {
   return semuaKata;
 }
 
-function tulisFileASS(daftarKata, assPath, durasiClip, fontCfg) {
+function tulisFileASS(daftarKata, assPath, durasiClip, fontCfg, hookText = '') {
   if (!daftarKata || daftarKata.length === 0) {
     throw new Error('Tidak ada suara/VO manusia yang terdeteksi di segmen video ini.');
   }
@@ -420,12 +427,12 @@ function tulisFileASS(daftarKata, assPath, durasiClip, fontCfg) {
     .map(k => ({
       kata: k.kata,
       start: Math.max(0, k.start - 0.04),
-      end: Math.min(durasiClip, Math.max(k.start + 0.06, k.end - 0.02))
+      end: Math.min(durasiClip, Math.max(k.start + 0.05, k.end - 0.02))
     }));
 
   for (let i = 0; i < kataRapi.length - 1; i++) {
     if (kataRapi[i + 1].start < kataRapi[i].end) {
-      kataRapi[i].end = Math.max(kataRapi[i].start + 0.06, kataRapi[i + 1].start);
+      kataRapi[i].end = Math.max(kataRapi[i].start + 0.02, kataRapi[i + 1].start);
     }
   }
 
@@ -456,12 +463,14 @@ ScaledBorderAndShadow: yes
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: ViralSub,${fontCfg.fontName},${fontCfg.fontSize},&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,0,0,100,100,${fontCfg.spacing},0,1,${fontCfg.outline},2,2,80,80,340,1
+Style: HookBanner,Montserrat,54,&H00FFFFFF,&H0000FFFF,&H00000000,&HE0101010,-1,0,0,0,100,100,1,0,3,16,0,8,70,70,220,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
-  const events = [];
+  // Kumpulkan seluruh segmen mentah terlebih dahulu untuk dipastikan 0% overlap (anti-glitch double subtitle)
+  const rawSubEvents = [];
 
   grupBaris.forEach((grup, idxBaris) => {
     const akhirKataTerakhir = grup[grup.length - 1].end;
@@ -469,14 +478,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       ? Math.min(grupBaris[idxBaris + 1][0].start, akhirKataTerakhir + 0.12)
       : Math.min(durasiClip, akhirKataTerakhir + 0.25);
 
-    // Setiap kata di dalam baris mendapat event sendiri agar sorotan kuning (&H0000FFFF&) berjalan seiring intonasi suara VO
     grup.forEach((kataAktifObj, idxKataAktif) => {
       const wStart = kataAktifObj.start;
       const wEnd = idxKataAktif < grup.length - 1
-        ? Math.max(wStart + 0.06, grup[idxKataAktif + 1].start)
-        : Math.max(wStart + 0.06, batasAkhirBaris);
+        ? grup[idxKataAktif + 1].start
+        : batasAkhirBaris;
 
-      if (wEnd <= wStart) return;
+      if (wEnd <= wStart + 0.015) return;
 
       const teksBarisBerjalan = grup.map((obj, i) => {
         if (i === idxKataAktif) {
@@ -489,9 +497,33 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         ? `{\\fscx86\\fscy86\\t(0,65,\\fscx103\\fscy103)\\t(65,120,\\fscx100\\fscy100)}`
         : '';
 
-      events.push(`Dialogue: 0,${detikKeAss(wStart)},${detikKeAss(wEnd)},ViralSub,,0,0,0,,${animasi}${teksBarisBerjalan}`);
+      rawSubEvents.push({
+        start: wStart,
+        end: wEnd,
+        text: `${animasi}${teksBarisBerjalan}`
+      });
     });
   });
+
+  // Kunci ketat anti-overlap: pastikan event sebelumnya selalu selesai tepat sebelum event berikutnya mulai
+  rawSubEvents.sort((a, b) => a.start - b.start);
+  const events = [];
+
+  // Tambahkan Hook Banner di bagian atas layar selama 3.5 detik pertama
+  if (hookText) {
+    const hookClean = hookText.replace(/[\r\n]+/g, ' ').trim().toUpperCase();
+    const durasiHook = Math.min(3.5, durasiClip);
+    events.push(`Dialogue: 1,0:00:00.00,${detikKeAss(durasiHook)},HookBanner,,0,0,0,,{\\fad(120,280)}${hookClean}`);
+  }
+
+  for (let i = 0; i < rawSubEvents.length; i++) {
+    const cur = rawSubEvents[i];
+    if (i < rawSubEvents.length - 1 && cur.end > rawSubEvents[i + 1].start) {
+      cur.end = rawSubEvents[i + 1].start;
+    }
+    if (cur.end - cur.start < 0.02) continue;
+    events.push(`Dialogue: 0,${detikKeAss(cur.start)},${detikKeAss(cur.end)},ViralSub,,0,0,0,,${cur.text}`);
+  }
 
   fs.writeFileSync(assPath, headerAss + events.join('\n') + '\n', 'utf8');
 }
@@ -552,8 +584,9 @@ async function main() {
   }
   const startFmt = detikKeHHMMSS(startClip);
   const endFmt = detikKeHHMMSS(endClip);
+  const hookBanner = (momen.hook_banner || momen.judul || '').replace(/#Shorts/gi, '').trim();
 
-  await kirimPesan(`🔥 Momen ditemukan!\n⏱️ ${startFmt} - ${endFmt}\n📌 ${momen.judul}\n💡 ${momen.alasan}\n\n3/3 Memotong video 9:16 & membuat subtitle (${FONT_CONFIG.fontName})...`);
+  await kirimPesan(`🔥 Momen ditemukan!\n⏱️ ${startFmt} - ${endFmt}\n📌 ${momen.judul}\n💡 ${momen.alasan}\n\n3/3 Memotong video 9:16, dynamic zoom, backsound & subtitle (${FONT_CONFIG.fontName})...`);
 
   // Potong video ke format 9:16 (1080x1920)
   execSync(`ffmpeg -y -ss ${startFmt} -to ${endFmt} -i sumber.mp4 -vf "crop=ih*9/16:ih,scale=1080:1920" -c:v libx264 -preset veryfast -crf 22 -c:a aac -b:a 128k clip_mentah.mp4`, { stdio: 'inherit' });
@@ -567,12 +600,19 @@ async function main() {
 
   const daftarKataPresisi = await transkripKataDariAudio('audio_klip.mp3', durasiClip);
 
-  tulisFileASS(daftarKataPresisi, 'sub_klip.ass', durasiClip, FONT_CONFIG);
+  tulisFileASS(daftarKataPresisi, 'sub_klip.ass', durasiClip, FONT_CONFIG, hookBanner);
 
-  // Tempel subtitle ASS beranimasi dengan font pilihan & sorotan kuning berjalan ke video final
-  execSync(`ffmpeg -y -i clip_mentah.mp4 -vf "ass=sub_klip.ass" -c:v libx264 -preset veryfast -crf 22 -c:a copy -movflags +faststart clip_jadi.mp4`, { stdio: 'inherit' });
+  // Render final: Dynamic Zoom-In halus setiap 9 detik + Hook Banner 3.5 detik + Subtitle Anti-Overlap + Backsound Ambient Lembut
+  const zoomFilter = "scale=1200:2134,crop=w='1200-120*max(0,sin(2*PI*t/9))':h='2134-214*max(0,sin(2*PI*t/9))':x='(iw-ow)/2':y='(ih-oh)/2',scale=1080:1920,ass=sub_klip.ass";
+  const bgmSynth = `aevalsrc='0.018*sin(2*PI*130.81*t)+0.014*sin(2*PI*196.00*t)+0.011*sin(2*PI*246.94*t)+0.009*sin(2*PI*293.66*t)':s=44100:d=${durasiClip.toFixed(2)}`;
 
-  const caption = `✂️ KLIP VIRAL SIAP!\n\n📌 ${momen.judul}\n⏱️ Segmen: ${startFmt} - ${endFmt}\n🔤 Font: ${FONT_CONFIG.label}\n💡 Alasan: ${momen.alasan}`;
+  execSync(
+    `ffmpeg -y -i clip_mentah.mp4 -f lavfi -i "${bgmSynth}" -filter_complex "[0:v]${zoomFilter}[v];[1:a]lowpass=f=420,afade=t=in:st=0:d=1.5,afade=t=out:st=${Math.max(0, durasiClip - 1.5).toFixed(2)}:d=1.5[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=2:weights='1 0.35'[a]" -map "[v]" -map "[a]" -c:v libx264 -preset veryfast -crf 22 -c:a aac -b:a 128k -movflags +faststart clip_jadi.mp4`,
+    { stdio: 'inherit' }
+  );
+
+  const captionSosmed = momen.caption_sosmed || `${momen.judul} #shorts #fyp #podcast #edukasi #viral`;
+  const caption = `✂️ KLIP VIRAL SIAP!\n\n📌 ${momen.judul}\n⏱️ Segmen: ${startFmt} - ${endFmt}\n🔤 Font: ${FONT_CONFIG.label}\n💡 Alasan: ${momen.alasan}\n\n📋 CAPTION & HASHTAG SIAP COPAS:\n${captionSosmed}`;
   await kirimVideo('clip_jadi.mp4', caption);
 
   // Kirim tombol pilihan font yang langsung masuk ke kolom ketik chat (tidak langsung terkirim)
