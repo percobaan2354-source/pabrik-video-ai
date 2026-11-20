@@ -610,8 +610,8 @@ async function main() {
 
   tulisFileASS(daftarKataPresisi, 'sub_klip.ass', durasiClip, FONT_CONFIG, hookBanner);
 
-  // Render final: Dynamic Zoom-In halus setiap 9 detik (koma di-escape max(0\,...)) + Hook Banner 3.5 detik + Subtitle Anti-Overlap + Backsound Ambient Lembut
-  const zoomFilter = "scale=1200:2134,crop=w=1200-120*max(0\\,sin(2*PI*t/9)):h=2134-214*max(0\\,sin(2*PI*t/9)):x=(iw-ow)/2:y=(ih-oh)/2,scale=1080:1920,ass=sub_klip.ass";
+  // Render final: Dynamic Zoom-In halus setiap 9 detik via zoompan + Hook Banner 3.5 detik + Subtitle Anti-Overlap + Backsound Ambient Lembut
+  const zoomFilter = "zoompan=z='1+0.06*max(0,sin(2*PI*in_time/9))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,ass=sub_klip.ass";
   const bgmSynth = `aevalsrc='0.018*sin(2*PI*130.81*t)+0.014*sin(2*PI*196.00*t)+0.011*sin(2*PI*246.94*t)+0.009*sin(2*PI*293.66*t)':s=44100:d=${durasiClip.toFixed(2)}`;
 
   execSync(
