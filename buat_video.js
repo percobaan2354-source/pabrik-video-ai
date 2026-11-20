@@ -26,26 +26,67 @@ function formatMB(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
+// ============================================================
+// [POIN 1] PERBAIKAN UKURAN VIDEO & ZONA AMAN KARAKTER-SUBTITLE
+// Menghilangkan rasio 1080x1920 yang kepanjangan & mencegah subtitle menimpa karakter
+// ============================================================
 function parseUkuran(uk) {
   const s = uk.toLowerCase();
   if (s.includes('16:9') || s.includes('youtube panjang') || s.includes('landscape')) {
-    return { width: 1280, height: 720, aspect: '16/9' };
+    return {
+      width: 1280,
+      height: 720,
+      aspect: '16/9',
+      subSafeY: 0.865,
+      charMaxH: 0.56,
+      charAnchorY: 0.80,
+      coverTitleSize: 74
+    };
   }
   if (s.includes('4:5') || s.includes('ig feed')) {
-    return { width: 720, height: 900, aspect: '4/5' };
+    return {
+      width: 720,
+      height: 900,
+      aspect: '4/5',
+      subSafeY: 0.855,
+      charMaxH: 0.50,
+      charAnchorY: 0.79,
+      coverTitleSize: 78
+    };
   }
   if (s.includes('1:1') || s.includes('square')) {
-    return { width: 720, height: 720, aspect: '1/1' };
+    return {
+      width: 720,
+      height: 720,
+      aspect: '1/1',
+      subSafeY: 0.855,
+      charMaxH: 0.48,
+      charAnchorY: 0.78,
+      coverTitleSize: 72
+    };
   }
-  // [UPGRADE] Ukuran 9:16 dibuat proporsional (720x1280) agar video tidak kepanjangan dan subtitle tidak menimpa karakter
-  return { width: 720, height: 1280, aspect: '9/16' };
+  // Proporsi 9:16 ideal (720x1280) agar tidak kepanjangan dan subtitle tidak menimpa karakter
+  return {
+    width: 720,
+    height: 1280,
+    aspect: '9/16',
+    subSafeY: 0.855,
+    charMaxH: 0.46,
+    charAnchorY: 0.79,
+    coverTitleSize: 84
+  };
 }
 
 // ============================================================
-// [UPGRADE] Mesin 1.000+ Tema Visual, Font Sampul, Gambar Sampul,
-// Background Karakter & Variasi Bentuk B-Roll Full + Mini
+// [POIN 2 - 7] BANK 1.000+ VARIASI TEMA VISUAL DINAMIS
+// - 16 Palet Atmosfer Warna Sesuai Judul
+// - 16 Font Sampul Berbeda Sesuai Nuansa Judul
+// - 16 Desain Background Sampul + 16 Ilustrasi Vektor Topik (posisi karakter tetap)
+// - 16 Desain Background Karakter Saat Berbicara (tidak monoton)
+// - 16 Bentuk B-Roll Full Layar (mempertahankan mode full layar, bentuk beda-beda)
+// - 16 Bentuk B-Roll Kecil-Kecil (mempertahankan mode kecil-kecil, bentuk beda-beda)
 // ============================================================
-function hashJudul(str) {
+function hitungSeedJudul(str) {
   let h = 2166136261;
   for (let i = 0; i < str.length; i++) {
     h ^= str.charCodeAt(i);
@@ -54,106 +95,352 @@ function hashJudul(str) {
   return Math.abs(h >>> 0);
 }
 
-function bangunProfilVisual1000Plus(judul) {
+const BANK_PALET_VISUAL = [
+  {
+    id: 'PL01',
+    nama: 'bara_sejarah',
+    a: '#fbbf24',
+    t: '#f97316',
+    p: '#ef4444',
+    g: '#34d399',
+    b1: '#140c07',
+    b2: '#29170d'
+  },
+  {
+    id: 'PL02',
+    nama: 'biometrik_cyan',
+    a: '#22d3ee',
+    t: '#38bdf8',
+    p: '#fb7185',
+    g: '#4ade80',
+    b1: '#06131c',
+    b2: '#0f2738'
+  },
+  {
+    id: 'PL03',
+    nama: 'noir_investigasi',
+    a: '#fb7185',
+    t: '#f43f5e',
+    p: '#e11d48',
+    g: '#a3e635',
+    b1: '#11090d',
+    b2: '#24121a'
+  },
+  {
+    id: 'PL04',
+    nama: 'zamrud_alam',
+    a: '#34d399',
+    t: '#10b981',
+    p: '#fbbf24',
+    g: '#6ee7b7',
+    b1: '#061712',
+    b2: '#0f2e24'
+  },
+  {
+    id: 'PL05',
+    nama: 'nebula_kosmik',
+    a: '#c084fc',
+    t: '#818cf8',
+    p: '#f472b6',
+    g: '#38bdf8',
+    b1: '#0d091a',
+    b2: '#1d1438'
+  },
+  {
+    id: 'PL06',
+    nama: 'emas_kekaisaran',
+    a: '#facc15',
+    t: '#eab308',
+    p: '#f97316',
+    g: '#84cc16',
+    b1: '#171207',
+    b2: '#2e240e'
+  },
+  {
+    id: 'PL07',
+    nama: 'palung_samudra',
+    a: '#60a5fa',
+    t: '#2dd4bf',
+    p: '#f87171',
+    g: '#34d399',
+    b1: '#070f21',
+    b2: '#102145'
+  },
+  {
+    id: 'PL08',
+    nama: 'magma_tektonik',
+    a: '#fb923c',
+    t: '#facc15',
+    p: '#ef4444',
+    g: '#4ade80',
+    b1: '#190c06',
+    b2: '#33180c'
+  },
+  {
+    id: 'PL09',
+    nama: 'siber_kuantum',
+    a: '#4ade80',
+    t: '#22d3ee',
+    p: '#f43f5e',
+    g: '#a3e635',
+    b1: '#05140a',
+    b2: '#0b2b16'
+  },
+  {
+    id: 'PL10',
+    nama: 'arsip_monokrom',
+    a: '#e2e8f0',
+    t: '#94a3b8',
+    p: '#f59e0b',
+    g: '#38bdf8',
+    b1: '#0c1017',
+    b2: '#1c2433'
+  },
+  {
+    id: 'PL11',
+    nama: 'psikologi_neon',
+    a: '#f472b6',
+    t: '#c084fc',
+    p: '#fb7185',
+    g: '#2dd4bf',
+    b1: '#170812',
+    b2: '#2e1024'
+  },
+  {
+    id: 'PL12',
+    nama: 'terakota_purba',
+    a: '#fdba74',
+    t: '#ea580c',
+    p: '#dc2626',
+    g: '#fbbf24',
+    b1: '#1a0f0a',
+    b2: '#331d13'
+  },
+  {
+    id: 'PL13',
+    nama: 'safir_royale',
+    a: '#93c5fd',
+    t: '#3b82f6',
+    p: '#f43f5e',
+    g: '#10b981',
+    b1: '#080e1f',
+    b2: '#132042'
+  },
+  {
+    id: 'PL14',
+    nama: 'amber_dokumenter',
+    a: '#fcd34d',
+    t: '#d97706',
+    p: '#b91c1c',
+    g: '#65a30d',
+    b1: '#161108',
+    b2: '#2b210f'
+  },
+  {
+    id: 'PL15',
+    nama: 'violet_mistis',
+    a: '#d8b4fe',
+    t: '#a855f7',
+    p: '#ec4899',
+    g: '#22d3ee',
+    b1: '#12081c',
+    b2: '#26113b'
+  },
+  {
+    id: 'PL16',
+    nama: 'jade_oriental',
+    a: '#6ee7b7',
+    t: '#059669',
+    p: '#f59e0b',
+    g: '#38bdf8',
+    b1: '#061511',
+    b2: '#0d2b23'
+  }
+];
+
+const BANK_FONT_SAMPUL = [
+  { id: 'FN01', name: 'Cinzel',           family: "'Cinzel', serif",             weight: '900', spacing: '0.06em', transform: 'uppercase' },
+  { id: 'FN02', name: 'Orbitron',         family: "'Orbitron', sans-serif",      weight: '900', spacing: '0.08em', transform: 'uppercase' },
+  { id: 'FN03', name: 'Bebas Neue',       family: "'Bebas Neue', sans-serif",    weight: '700', spacing: '0.05em', transform: 'uppercase' },
+  { id: 'FN04', name: 'Playfair Display', family: "'Playfair Display', serif",   weight: '900', spacing: '0.02em', transform: 'none' },
+  { id: 'FN05', name: 'Anton',            family: "'Anton', sans-serif",         weight: '400', spacing: '0.03em', transform: 'uppercase' },
+  { id: 'FN06', name: 'Space Grotesk',    family: "'Space Grotesk', sans-serif", weight: '700', spacing: '0.01em', transform: 'uppercase' },
+  { id: 'FN07', name: 'Oswald',           family: "'Oswald', sans-serif",        weight: '700', spacing: '0.04em', transform: 'uppercase' },
+  { id: 'FN08', name: 'Righteous',        family: "'Righteous', cursive",        weight: '400', spacing: '0.03em', transform: 'uppercase' },
+  { id: 'FN09', name: 'Montserrat',       family: "'Montserrat', sans-serif",    weight: '900', spacing: '0.02em', transform: 'uppercase' },
+  { id: 'FN10', name: 'Merriweather',     family: "'Merriweather', serif",       weight: '900', spacing: '0.01em', transform: 'none' },
+  { id: 'FN11', name: 'Syne',             family: "'Syne', sans-serif",          weight: '800', spacing: '0.02em', transform: 'uppercase' },
+  { id: 'FN12', name: 'Chakra Petch',     family: "'Chakra Petch', sans-serif",  weight: '700', spacing: '0.05em', transform: 'uppercase' },
+  { id: 'FN13', name: 'Russo One',        family: "'Russo One', sans-serif",     weight: '400', spacing: '0.04em', transform: 'uppercase' },
+  { id: 'FN14', name: 'Abril Fatface',    family: "'Abril Fatface', serif",      weight: '400', spacing: '0.02em', transform: 'none' },
+  { id: 'FN15', name: 'Exo 2',            family: "'Exo 2', sans-serif",         weight: '900', spacing: '0.04em', transform: 'uppercase' },
+  { id: 'FN16', name: 'Bungee',           family: "'Bungee', cursive",           weight: '400', spacing: '0.03em', transform: 'uppercase' }
+];
+
+const BANK_DESAIN_SAMPUL = [
+  { id: 'CV01', kode: 'perkamen_peta_kuno',      pola: 'kontur',    glowPos: 'top-center',    vignette: 0.55 },
+  { id: 'CV02', kode: 'radar_biometrik',         pola: 'astrolabe', glowPos: 'center',        vignette: 0.48 },
+  { id: 'CV03', kode: 'berkas_rahasia_noir',     pola: 'diagonal',  glowPos: 'top-left',      vignette: 0.65 },
+  { id: 'CV04', kode: 'nebula_bintang',          pola: 'astrolabe', glowPos: 'top-right',     vignette: 0.50 },
+  { id: 'CV05', kode: 'gelombang_akustik',       pola: 'gelombang', glowPos: 'center',        vignette: 0.45 },
+  { id: 'CV06', kode: 'arsitektur_kolom',        pola: 'pilar',     glowPos: 'top-center',    vignette: 0.58 },
+  { id: 'CV07', kode: 'sirkuit_hologram',        pola: 'heksagon',  glowPos: 'center',        vignette: 0.46 },
+  { id: 'CV08', kode: 'topografi_gunung',        pola: 'kontur',    glowPos: 'bottom-center', vignette: 0.52 },
+  { id: 'CV09', kode: 'koran_investigasi',       pola: 'pilar',     glowPos: 'top-left',      vignette: 0.60 },
+  { id: 'CV10', kode: 'prisma_geometris',        pola: 'heksagon',  glowPos: 'top-right',     vignette: 0.44 },
+  { id: 'CV11', kode: 'laboratorium_dna',        pola: 'gelombang', glowPos: 'center',        vignette: 0.47 },
+  { id: 'CV12', kode: 'cakrawala_kota',          pola: 'pilar',     glowPos: 'bottom-center', vignette: 0.54 },
+  { id: 'CV13', kode: 'astrolabe_emas',          pola: 'astrolabe', glowPos: 'top-center',    vignette: 0.51 },
+  { id: 'CV14', kode: 'sorot_panggung_dramatis', pola: 'diagonal',  glowPos: 'top-center',    vignette: 0.62 },
+  { id: 'CV15', kode: 'kisi_kuantum',            pola: 'heksagon',  glowPos: 'center',        vignette: 0.49 },
+  { id: 'CV16', kode: 'ilustrasi_ensiklopedia',  pola: 'kontur',    glowPos: 'top-center',    vignette: 0.53 }
+];
+
+const BANK_LATAR_KARAKTER = [
+  { id: 'CB01', kode: 'peta_bara_bergerak',      motif: 'kontur',    kecepatan: 48, intensitasGaris: 0.24 },
+  { id: 'CB02', kode: 'gelombang_saraf_aktif',   motif: 'gelombang', kecepatan: 74, intensitasGaris: 0.26 },
+  { id: 'CB03', kode: 'sorot_lampu_kabut',       motif: 'diagonal',  kecepatan: 56, intensitasGaris: 0.20 },
+  { id: 'CB04', kode: 'kontur_elevasi',          motif: 'kontur',    kecepatan: 42, intensitasGaris: 0.25 },
+  { id: 'CB05', kode: 'partikel_emas_melayang',  motif: 'astrolabe', kecepatan: 50, intensitasGaris: 0.22 },
+  { id: 'CB06', kode: 'grid_perspektif_3d',      motif: 'diagonal',  kecepatan: 68, intensitasGaris: 0.24 },
+  { id: 'CB07', kode: 'lingkaran_astrolabe',     motif: 'astrolabe', kecepatan: 45, intensitasGaris: 0.28 },
+  { id: 'CB08', kode: 'garis_detak_jantung',     motif: 'gelombang', kecepatan: 82, intensitasGaris: 0.27 },
+  { id: 'CB09', kode: 'hujan_data_halus',        motif: 'pilar',     kecepatan: 78, intensitasGaris: 0.21 },
+  { id: 'CB10', kode: 'cahaya_katedral',         motif: 'pilar',     kecepatan: 38, intensitasGaris: 0.23 },
+  { id: 'CB11', kode: 'orbit_planet_tipis',      motif: 'astrolabe', kecepatan: 40, intensitasGaris: 0.25 },
+  { id: 'CB12', kode: 'arsiran_sketsa_kuno',     motif: 'diagonal',  kecepatan: 46, intensitasGaris: 0.22 },
+  { id: 'CB13', kode: 'gelombang_sonar_laut',    motif: 'gelombang', kecepatan: 62, intensitasGaris: 0.25 },
+  { id: 'CB14', kode: 'kisi_laser_merah',        motif: 'heksagon',  kecepatan: 72, intensitasGaris: 0.24 },
+  { id: 'CB15', kode: 'aurora_lembut',           motif: 'gelombang', kecepatan: 52, intensitasGaris: 0.21 },
+  { id: 'CB16', kode: 'siluet_jam_pasir',        motif: 'heksagon',  kecepatan: 44, intensitasGaris: 0.23 }
+];
+
+const BANK_BENTUK_BROLL_FULL = [
+  { id: 'BF01', kode: 'chamfered_sci_fi',        sudut: 'bevel-26',    borderStyle: 'double-tech' },
+  { id: 'BF02', kode: 'kubah_arch_klasik',       sudut: 'arch-top',    borderStyle: 'royal-gold' },
+  { id: 'BF03', kode: 'diagonal_slash_aksi',     sudut: 'slash-32',    borderStyle: 'dynamic-cut' },
+  { id: 'BF04', kode: 'tiket_arsip_sobek',       sudut: 'ticket-notch',borderStyle: 'dashed-stamp' },
+  { id: 'BF05', kode: 'daun_editorial_modern',   sudut: 'leaf-68',     borderStyle: 'clean-modern' },
+  { id: 'BF06', kode: 'perisai_epik_bawah',      sudut: 'shield-34',   borderStyle: 'crest-frame' },
+  { id: 'BF07', kode: 'folder_investigasi_tab',  sudut: 'folder-tab',  borderStyle: 'dossier-file' },
+  { id: 'BF08', kode: 'kapsul_medis_hud',        sudut: 'capsule-54',  borderStyle: 'bio-monitor' },
+  { id: 'BF09', kode: 'koran_headline_antik',    sudut: 'bevel-18',    borderStyle: 'press-column' },
+  { id: 'BF10', kode: 'monitor_radar_bulat',     sudut: 'capsule-48',  borderStyle: 'sonar-ring' },
+  { id: 'BF11', kode: 'peta_taktis_bergaris',    sudut: 'chamfer-22',  borderStyle: 'grid-crosshair' },
+  { id: 'BF12', kode: 'kartu_museum_bingkai',    sudut: 'arch-soft',   borderStyle: 'plaque-border' },
+  { id: 'BF13', kode: 'timeline_vertikal_emas',  sudut: 'shield-28',   borderStyle: 'chronicle-line' },
+  { id: 'BF14', kode: 'layar_bioskop_vignette',  sudut: 'leaf-44',     borderStyle: 'cinema-frame' },
+  { id: 'BF15', kode: 'lembar_blueprint_teknik', sudut: 'folder-tab',  borderStyle: 'cad-blueprint' },
+  { id: 'BF16', kode: 'prisma_kaca_ganda',       sudut: 'slash-24',    borderStyle: 'prism-glow' }
+];
+
+const BANK_BENTUK_BROLL_MINI = [
+  { id: 'BM01', kode: 'lencana_perisai_mini',    sudut: 'shield-20',   posisiY: 0.24 },
+  { id: 'BM02', kode: 'kapsul_biometrik_mini',   sudut: 'capsule-44',  posisiY: 0.235 },
+  { id: 'BM03', kode: 'stempel_rahasia_miring',  sudut: 'slash-22',    posisiY: 0.245 },
+  { id: 'BM04', kode: 'kompas_koordinat_mini',   sudut: 'bevel-20',    posisiY: 0.24 },
+  { id: 'BM05', kode: 'etiket_arsip_kertas',     sudut: 'ticket-notch',posisiY: 0.235 },
+  { id: 'BM06', kode: 'pil_neon_sudut',          sudut: 'leaf-46',     posisiY: 0.24 },
+  { id: 'BM07', kode: 'medali_segi_delapan',     sudut: 'bevel-24',    posisiY: 0.245 },
+  { id: 'BM08', kode: 'label_mikroskop_mini',    sudut: 'folder-tab',  posisiY: 0.24 },
+  { id: 'BM09', kode: 'gelembung_chat_tajam',    sudut: 'leaf-36',     posisiY: 0.235 },
+  { id: 'BM10', kode: 'kartu_tiket_berlubang',   sudut: 'ticket-notch',posisiY: 0.24 },
+  { id: 'BM11', kode: 'tag_hologram_sudut',      sudut: 'bevel-18',    posisiY: 0.245 },
+  { id: 'BM12', kode: 'plakat_perunggu_mini',    sudut: 'arch-top',    posisiY: 0.24 },
+  { id: 'BM13', kode: 'pita_penghargaan',        sudut: 'shield-18',   posisiY: 0.235 },
+  { id: 'BM14', kode: 'kotak_radar_kecil',       sudut: 'capsule-38',  posisiY: 0.24 },
+  { id: 'BM15', kode: 'kartu_kliping_koran',     sudut: 'folder-tab',  posisiY: 0.245 },
+  { id: 'BM16', kode: 'lencana_mahkota_mini',    sudut: 'arch-top',    posisiY: 0.24 }
+];
+
+const BANK_ILUSTRASI_SAMPUL_SVG = {
+  shield: `<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="4"><path d="M100 22L164 50v54c0 44-27 70-64 82-37-12-64-38-64-82V50L100 22z"/><path d="M72 132L128 76M128 132L72 76"/></svg>`,
+  pulse: `<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="4"><circle cx="100" cy="100" r="78" stroke-dasharray="10 8"/><path d="M22 104h36l16-38 24 72 20-52 14 18h46"/></svg>`,
+  magnifier: `<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="4"><circle cx="88" cy="88" r="52"/><path d="M126 126l46 46" stroke-width="8" stroke-linecap="round"/><path d="M74 82c0-10 8-18 18-18s16 7 16 16c0 9-12 12-12 22"/><circle cx="96" cy="114" r="3" fill="currentColor"/></svg>`,
+  orbit: `<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="4"><circle cx="100" cy="100" r="44"/><ellipse cx="100" cy="100" rx="86" ry="25" transform="rotate(-22 100 100)"/><circle cx="154" cy="62" r="7" fill="currentColor"/></svg>`,
+  chart: `<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="4"><path d="M32 150h136M48 150V96h24v54M88 150V72h24v78M128 150V44h24v106"/><path d="M44 76l44-28 28 14 40-32"/></svg>`,
+  chip: `<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="4"><rect x="54" y="54" width="92" height="92" rx="12"/><rect x="78" y="78" width="44" height="44" rx="6"/><path d="M76 32v22M100 32v22M124 32v22M76 146v22M100 146v22M124 146v22M32 76h22M32 100h22M32 124h22M146 76h22M146 100h22M146 124h22"/></svg>`,
+  clock: `<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="4"><circle cx="100" cy="100" r="72"/><path d="M100 48v52l36 22"/><circle cx="100" cy="100" r="8" fill="currentColor"/></svg>`,
+  crown: `<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="4"><path d="M34 144h132l10-74-42 30-34-48-34 48-42-30 10 74z"/><path d="M34 158h132"/></svg>`,
+  eye: `<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="4"><path d="M20 100c24-38 56-56 80-56s56 18 80 56c-24 38-56 56-80 56s-56-18-80-56z"/><circle cx="100" cy="100" r="24"/><circle cx="100" cy="100" r="8" fill="currentColor"/></svg>`,
+  flame: `<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="4"><path d="M104 26c14 28 42 48 42 84 0 32-22 58-46 58s-46-24-46-54c0-20 12-38 24-48-2 16 8 24 16 24-4-22 2-46 10-64z"/></svg>`,
+  wave: `<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="4"><path d="M24 84c24-22 48-22 72 0s48 22 80 0M24 116c24-22 48-22 72 0s48 22 80 0M24 148c24-22 48-22 72 0s48 22 80 0"/></svg>`,
+  bulb: `<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="4"><path d="M74 134c-14-12-22-28-22-46 0-28 22-50 48-50s48 22 48 50c0 18-8 34-22 46H74z"/><path d="M80 148h40M86 162h28"/></svg>`
+};
+
+function buatProfilVisualJudul(judul, dim) {
   const j = judul.toLowerCase();
-  const seed = hashJudul(judul);
-
-  const paletList = [
-    { name: 'bara_sejarah', primary: '#d97706', secondary: '#7c2d12', bg: '#160e09', accent: '#fbbf24' },
-    { name: 'biometrik_cyan', primary: '#06b6d4', secondary: '#0e7490', bg: '#06131c', accent: '#67e8f9' },
-    { name: 'noir_kriminal', primary: '#e11d48', secondary: '#881337', bg: '#11090d', accent: '#fda4af' },
-    { name: 'zamrud_alam', primary: '#10b981', secondary: '#065f46', bg: '#061712', accent: '#6ee7b7' },
-    { name: 'nebula_ungu', primary: '#8b5cf6', secondary: '#4c1d95', bg: '#0d091a', accent: '#c4b5fd' },
-    { name: 'emas_kerajaan', primary: '#eab308', secondary: '#713f12', bg: '#171207', accent: '#fef08a' },
-    { name: 'samudra_dalam', primary: '#3b82f6', secondary: '#1e3a8a', bg: '#070f21', accent: '#93c5fd' },
-    { name: 'magma_vulkanik', primary: '#f97316', secondary: '#9a3412', bg: '#190c06', accent: '#fdba74' },
-    { name: 'matrix_siber', primary: '#22c55e', secondary: '#14532d', bg: '#05140a', accent: '#86efac' },
-    { name: 'perak_arsip', primary: '#94a3b8', secondary: '#334155', bg: '#0c1017', accent: '#e2e8f0' },
-    { name: 'magenta_psikologi', primary: '#ec4899', secondary: '#831843', bg: '#170812', accent: '#f9a8d4' },
-    { name: 'terakota_kuno', primary: '#ea580c', secondary: '#7c2d12', bg: '#1a0f0a', accent: '#fed7aa' }
-  ];
-
-  const fontSampulList = [
-    { name: 'Cinzel', family: "'Cinzel', serif", weight: '900', spacing: '0.06em', transform: 'uppercase' },
-    { name: 'Orbitron', family: "'Orbitron', sans-serif", weight: '900', spacing: '0.08em', transform: 'uppercase' },
-    { name: 'Bebas Neue', family: "'Bebas Neue', sans-serif", weight: '700', spacing: '0.05em', transform: 'uppercase' },
-    { name: 'Playfair Display', family: "'Playfair Display', serif", weight: '900', spacing: '0.02em', transform: 'none' },
-    { name: 'Anton', family: "'Anton', sans-serif", weight: '400', spacing: '0.03em', transform: 'uppercase' },
-    { name: 'Space Grotesk', family: "'Space Grotesk', sans-serif", weight: '700', spacing: '0.01em', transform: 'uppercase' },
-    { name: 'Oswald', family: "'Oswald', sans-serif", weight: '700', spacing: '0.04em', transform: 'uppercase' },
-    { name: 'Righteous', family: "'Righteous', cursive", weight: '400', spacing: '0.03em', transform: 'uppercase' },
-    { name: 'Montserrat', family: "'Montserrat', sans-serif", weight: '900', spacing: '0.02em', transform: 'uppercase' },
-    { name: 'Merriweather', family: "'Merriweather', serif", weight: '900', spacing: '0.01em', transform: 'none' },
-    { name: 'Syne', family: "'Syne', sans-serif", weight: '800', spacing: '0.02em', transform: 'uppercase' },
-    { name: 'Chakra Petch', family: "'Chakra Petch', sans-serif", weight: '700', spacing: '0.05em', transform: 'uppercase' }
-  ];
-
-  const coverBgList = [
-    'perkamen_peta_kuno', 'radar_biometrik', 'berkas_rahasia_noir', 'nebula_bintang',
-    'gelombang_akustik', 'arsitektur_kolom', 'sirkuit_hologram', 'topografi_gunung',
-    'koran_investigasi', 'prisma_geometris', 'laboratorium_dna', 'cakrawala_kota'
-  ];
-
-  const charBgList = [
-    'peta_bara_bergerak', 'gelombang_saraf_aktif', 'sorot_lampu_kabut', 'kontur_elevasi',
-    'partikel_emas_melayang', 'grid_perspektif_3d', 'lingkaran_astrolabe', 'garis_detak_jantung',
-    'hujan_data_halus', 'cahaya_katedral', 'orbit_planet_tipis', 'arsiran_sketsa_kuno'
-  ];
-
-  const brollFullShapeList = [
-    'perkamen_sobek_sejarah', 'monitor_medis_hud', 'folder_polaroid_kasus', 'radar_orbit_bulat',
-    'koran_headline_klasik', 'terminal_data_futuristik', 'peta_taktis_bergaris', 'kartu_museum_bingkai',
-    'panel_kaca_prisma', 'timeline_vertikal_emas', 'layar_bioskop_vignette', 'lembar_blueprint_teknik'
-  ];
-
-  const brollMiniShapeList = [
-    'lencana_perisai', 'kapsul_biometrik', 'stempel_rahasia_miring', 'kompas_koordinat',
-    'etiket_arsip_kertas', 'pil_neon_sudut', 'medali_segi_delapan', 'label_mikroskop',
-    'gelembung_chat_tajam', 'kartu_tiket_berlubang', 'tag_hologram_sudut', 'plakat_perunggu'
-  ];
+  const seed = hitungSeedJudul(judul);
 
   let kategori = 'FAKTA & WAWASAN';
+  let ikonTema = 'bulb';
   let bias = 0;
-  let defaultSvg = `<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="4"><circle cx="100" cy="100" r="72"/><path d="M100 45v55l38 22"/><circle cx="100" cy="100" r="10" fill="currentColor"/></svg>`;
 
-  if (/perang|sejarah|kerajaan|kaisar|tentara|kuno|abad|penjajah|revolusi|inca|spanyol|romawi|mesir/.test(j)) {
+  if (/perang|sejarah|kerajaan|kaisar|tentara|kuno|abad|penjajah|revolusi|inca|spanyol|romawi|mesir|sultan|nusantara/.test(j)) {
     kategori = 'SEJARAH & PERADABAN';
+    ikonTema = 'shield';
     bias = 0;
-    defaultSvg = `<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="4"><path d="M100 24L162 52v52c0 42-26 68-62 80-36-12-62-38-62-80V52L100 24z"/><path d="M72 132L128 76M128 132L72 76"/></svg>`;
-  } else if (/otak|tubuh|bersin|tidur|jantung|saraf|medis|dokter|penyakit|darah|mata|psikologi|manusia/.test(j)) {
+  } else if (/otak|tubuh|bersin|tidur|jantung|saraf|medis|dokter|penyakit|darah|mata|psikologi|manusia|stres|mimpi/.test(j)) {
     kategori = 'SAINS & TUBUH MANUSIA';
+    ikonTema = 'pulse';
     bias = 1;
-    defaultSvg = `<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="4"><path d="M22 104h36l16-38 24 72 20-52 14 18h46"/><circle cx="100" cy="100" r="78" stroke-dasharray="10 8"/></svg>`;
-  } else if (/misteri|hantu|hilang|kapal|kutukan|rahasia|aneh|gelap|pencurian|kasus|detektif|konspirasi/.test(j)) {
+  } else if (/misteri|hantu|hilang|kapal|kutukan|rahasia|aneh|gelap|pencurian|kasus|detektif|konspirasi|tragedi/.test(j)) {
     kategori = 'MISTERI & INVESTIGASI';
+    ikonTema = 'magnifier';
     bias = 2;
-    defaultSvg = `<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="4"><circle cx="90" cy="90" r="52"/><path d="M128 128l44 44" stroke-width="8" stroke-linecap="round"/><path d="M74 84c0-10 8-18 18-18s16 7 16 16c0 9-12 12-12 22"/><circle cx="96" cy="116" r="3" fill="currentColor"/></svg>`;
-  } else if (/luar angkasa|planet|bintang|alam semesta|bumi|laut|samudra|gunung|hewan|dinosaurus|alam/.test(j)) {
+  } else if (/luar angkasa|planet|bintang|alam semesta|bumi|laut|samudra|gunung|hewan|dinosaurus|alam|hutan/.test(j)) {
     kategori = 'ALAM & ANTARIKSA';
+    ikonTema = 'orbit';
     bias = 3;
-    defaultSvg = `<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="4"><circle cx="100" cy="100" r="46"/><ellipse cx="100" cy="100" rx="86" ry="26" transform="rotate(-22 100 100)"/><circle cx="152" cy="64" r="7" fill="currentColor"/></svg>`;
-  } else if (/uang|kaya|ekonomi|bisnis|perusahaan|miliar|triliun|harga|emas|bank|saham/.test(j)) {
+  } else if (/uang|kaya|ekonomi|bisnis|perusahaan|miliar|triliun|harga|emas|bank|saham|miliarder|sukses/.test(j)) {
     kategori = 'EKONOMI & STRATEGI';
+    ikonTema = 'chart';
     bias = 5;
-    defaultSvg = `<svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="4"><path d="M32 148h136M48 148V96h24v52M88 148V72h24v76M128 148V46h24v102"/><path d="M44 76l44-28 28 14 40-32"/></svg>`;
+  } else if (/ai|teknologi|robot|kode|digital|internet|masa depan|tech|komputer|hp|aplikasi|siber/.test(j)) {
+    kategori = 'TEKNOLOGI & MASA DEPAN';
+    ikonTema = 'chip';
+    bias = 8;
+  } else if (/waktu|jam|detik|menit|kalender|prediksi|ramalan|umur/.test(j)) {
+    kategori = 'WAKTU & FENOMENA';
+    ikonTema = 'clock';
+    bias = 13;
   }
 
-  const palet     = paletList[(seed + bias) % paletList.length];
-  const fontCover = fontSampulList[(seed >>> 3) % fontSampulList.length];
-  const coverBg   = coverBgList[(seed >>> 5) % coverBgList.length];
-  const charBg    = charBgList[(seed >>> 7) % charBgList.length];
-  const brollFull = brollFullShapeList[(seed >>> 9) % brollFullShapeList.length];
-  const brollMini = brollMiniShapeList[(seed >>> 11) % brollMiniShapeList.length];
+  const palet     = BANK_PALET_VISUAL[(seed + bias) % BANK_PALET_VISUAL.length];
+  const fontObj   = BANK_FONT_SAMPUL[(seed >>> 3) % BANK_FONT_SAMPUL.length];
+  const coverIdx  = (seed >>> 5) % BANK_DESAIN_SAMPUL.length;
+  const charIdx   = (seed >>> 7) % BANK_LATAR_KARAKTER.length;
+  const fullIdx   = (seed >>> 9) % BANK_BENTUK_BROLL_FULL.length;
+  const miniIdx   = (seed >>> 11) % BANK_BENTUK_BROLL_MINI.length;
 
   return {
-    theme_id: `T${(seed % 8999) + 1000}`,
+    theme_id: `V${(seed % 89999) + 10000}`,
+    seed,
     kategori,
-    cover_style: coverBg,
-    char_bg_style: charBg,
-    broll_full_shape: brollFull,
-    broll_mini_shape: brollMini,
-    cover_font: fontCover,
-    cover_illustration_svg: defaultSvg,
+    ikon_tema: ikonTema,
+    cover_font: fontObj.name,
+    cover_font_meta: fontObj,
+    cover_bg_variant: coverIdx,
+    cover_design_meta: BANK_DESAIN_SAMPUL[coverIdx],
+    cover_style: BANK_DESAIN_SAMPUL[coverIdx].kode,
+    cover_character_anchor: 'center-bottom-fixed',
+    char_bg_variant: charIdx,
+    char_bg_meta: BANK_LATAR_KARAKTER[charIdx],
+    char_bg_style: BANK_LATAR_KARAKTER[charIdx].kode,
+    broll_modes_preserved: ['full_screen', 'mini_overlay'],
+    broll_full_variant: fullIdx,
+    broll_full_meta: BANK_BENTUK_BROLL_FULL[fullIdx],
+    broll_full_shape: BANK_BENTUK_BROLL_FULL[fullIdx].kode,
+    broll_mini_variant: miniIdx,
+    broll_mini_meta: BANK_BENTUK_BROLL_MINI[miniIdx],
+    broll_mini_shape: BANK_BENTUK_BROLL_MINI[miniIdx].kode,
+    safe_zone: {
+      sub_safe_y: dim.subSafeY,
+      char_max_h: dim.charMaxH,
+      char_anchor_y: dim.charAnchorY,
+      cover_title_size: dim.coverTitleSize
+    },
+    cover_illustration_svg: BANK_ILUSTRASI_SAMPUL_SVG[ikonTema] || BANK_ILUSTRASI_SAMPUL_SVG.bulb,
     palette: palet
   };
 }
@@ -164,19 +451,19 @@ function pilihSuaraTTS(bahasa) {
   if (b.includes('indonesia') || b === 'id') {
     return { langCode: 'id-ID', voice: 'id-ID-ArdiNeural' };
   }
-  if (b.includes('inggris') || b.includes('english') || b === 'en') {
+  if (b.includes('inggris') || b.includes('english') || b.includes('en')) {
     return { langCode: 'en-US', voice: 'en-US-AndrewNeural' };
   }
-  if (b.includes('jepang') || b.includes('japan') || b === 'ja') {
+  if (b.includes('jepang') || b.includes('japan') || b.includes('ja')) {
     return { langCode: 'ja-JP', voice: 'ja-JP-KeitaNeural' };
   }
-  if (b.includes('korea') || b === 'ko') {
+  if (b.includes('korea') || b.includes('ko')) {
     return { langCode: 'ko-KR', voice: 'ko-KR-InJoonNeural' };
   }
-  if (b.includes('arab') || b === 'ar') {
+  if (b.includes('arab') || b.includes('ar')) {
     return { langCode: 'ar-SA', voice: 'ar-SA-HamedNeural' };
   }
-  if (b.includes('spanyol') || b.includes('spanish') || b === 'es') {
+  if (b.includes('spanyol') || b.includes('spanish') || b.includes('es')) {
     return { langCode: 'es-ES', voice: 'es-ES-AlvaroNeural' };
   }
   return { langCode: 'id-ID', voice: 'id-ID-ArdiNeural' };
@@ -301,11 +588,11 @@ function rapikanNaskah(data, dim, ttsInfo, profilVisual) {
   };
   const defaultBroll = {
     b1_title: 'DATA RISET', b1_sub: 'Fakta pendukung',
+    b1_left: 'FAKTOR UTAMA', b1_right: 'DAMPAK NYATA', b1_badge: 'TERVERIFIKASI',
     b2_user: '@PenontonPenasaran', b2_comment: 'Wah baru tahu!',
     b3_title: 'PERBANDINGAN DATA', b3_sub: 'Data singkat',
-    b4_title: 'FAKTA KUNCI', b4_sub: 'Ringkasan bukti',
-    broll_full_shape: profilVisual.broll_full_shape,
-    broll_mini_shape: profilVisual.broll_mini_shape
+    b3_bars: ['AWAL', 'PROSES', 'LONJAKAN', 'PUNCAK'],
+    b4_title: 'FAKTA KUNCI', b4_sub: 'Ringkasan bukti', b4_badge: profilVisual.kategori
   };
   const defaultScenes = {
     title: ['Pembuka', 'hook cerita'],
@@ -320,10 +607,14 @@ function rapikanNaskah(data, dim, ttsInfo, profilVisual) {
   data.broll        = Object.assign({}, defaultBroll,  (data.broll  && typeof data.broll  === 'object') ? data.broll  : {});
   data.scenes       = Object.assign({}, defaultScenes, (data.scenes && typeof data.scenes === 'object') ? data.scenes : {});
   data.visual_theme = Object.assign({}, profilVisual,  (data.visual_theme && typeof data.visual_theme === 'object') ? data.visual_theme : {});
-  data.visual_theme.palette    = Object.assign({}, profilVisual.palette,    (data.visual_theme.palette    && typeof data.visual_theme.palette    === 'object') ? data.visual_theme.palette    : {});
-  data.visual_theme.cover_font = Object.assign({}, profilVisual.cover_font, (data.visual_theme.cover_font && typeof data.visual_theme.cover_font === 'object') ? data.visual_theme.cover_font : {});
+  data.visual_theme.palette         = Object.assign({}, profilVisual.palette,         (data.visual_theme.palette         && typeof data.visual_theme.palette         === 'object') ? data.visual_theme.palette         : {});
+  data.visual_theme.cover_font_meta = Object.assign({}, profilVisual.cover_font_meta, (data.visual_theme.cover_font_meta && typeof data.visual_theme.cover_font_meta === 'object') ? data.visual_theme.cover_font_meta : {});
+  data.visual_theme.safe_zone       = Object.assign({}, profilVisual.safe_zone,       (data.visual_theme.safe_zone       && typeof data.visual_theme.safe_zone       === 'object') ? data.visual_theme.safe_zone       : {});
 
-  // Pastikan SVG ilustrasi sampul selalu valid
+  if (!Array.isArray(data.broll.b3_bars) || data.broll.b3_bars.length < 4) {
+    data.broll.b3_bars = defaultBroll.b3_bars;
+  }
+
   if (typeof data.visual_theme.cover_illustration_svg !== 'string' || !data.visual_theme.cover_illustration_svg.includes('<svg')) {
     data.visual_theme.cover_illustration_svg = profilVisual.cover_illustration_svg;
   }
@@ -351,7 +642,7 @@ Buatkan data lengkap dalam format JSON MURNI (tanpa teks pembuka/penutup) untuk 
 - Judul: "${JUDUL}"
 - Bahasa Video: ${BAHASA} (kode BCP-47: ${ttsInfo.langCode})
 - Ukuran: ${UKURAN} (${dim.width}x${dim.height})
-- Profil Tema Terdeteksi: ${profilVisual.kategori} (${profilVisual.theme_id})
+- Profil Tema Visual: ${profilVisual.kategori} (${profilVisual.theme_id})
 
 ATURAN KETAT V8.8:
 1. Semua teks di dalam video (tx, lines, scenes, desc, tags) wajib ditulis dalam bahasa ${BAHASA} yang natural seperti penutur asli.
@@ -360,14 +651,10 @@ ATURAN KETAT V8.8:
    - Mood: "n" (santai), "d" (dramatis), "e" (semangat), "s" (sunyi/serius).
    - FX opsional (boleh kosong ""): "b" (boom), "k" (hantaman), "c" (lonceng di baris kedua cta), "p" (pop).
 3. "src": berikan 2 sumber riset nyata dan kredibel terkait topik judul.
-4. "broll": isi teks visual pendukung singkat sesuai tema judul.
-5. "visual_theme": wajib merancang tampilan UNIK khusus untuk judul "${JUDUL}" (jangan samakan dengan video lain):
-   - "cover_style": desain background sampul pembuka yang hidup & sesuai judul.
-   - "char_bg_style": desain background saat karakter berbicara agar tidak monoton & menyatu dengan cerita judul.
-   - "broll_full_shape": bentuk B-roll FULL LAYAR yang berbeda-beda tiap judul (tetap full layar, bentuk bingkai/layout unik sesuai topik).
-   - "broll_mini_shape": bentuk B-roll KECIL-KECIL mengambang yang berbeda-beda tiap judul (tetap kecil-kecil, bentuk lencana/kartu unik sesuai topik).
-   - "cover_illustration_svg": kode SVG sederhana (<svg viewBox="0 0 200 200" ...>...</svg>) menggambar ikon/ilustrasi utama yang merepresentasikan judul "${JUDUL}" untuk ditampilkan di sampul (tanpa mengubah posisi karakter).
-   - "palette": warna hex ("primary", "secondary", "bg", "accent") yang harmonis dengan tema judul.
+4. "broll": isi teks visual pendukung singkat yang SPESIFIK sesuai tema judul "${JUDUL}" (jangan pakai label generik seperti "FAKTOR A" atau "TAHAP 1" — isi sesuai fakta nyata judul!).
+5. "visual_theme":
+   - "ikon_tema": pilih ikon ilustrasi sampul yang paling pas dengan judul "${JUDUL}" (pilih salah satu: "shield", "pulse", "magnifier", "orbit", "chart", "chip", "clock", "crown", "eye", "flame", "wave", "bulb").
+   - "cover_font": pilih nama font judul sampul yang paling cocok dengan tema judul "${JUDUL}" (pilih salah satu: "Cinzel", "Orbitron", "Bebas Neue", "Playfair Display", "Anton", "Space Grotesk", "Oswald", "Righteous", "Montserrat", "Merriweather", "Syne", "Chakra Petch", "Russo One", "Abril Fatface", "Exo 2", "Bungee").
 
 KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
 {
@@ -382,24 +669,8 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
   "visual_theme": {
     "theme_id": "${profilVisual.theme_id}",
     "kategori": "${profilVisual.kategori}",
-    "cover_style": "${profilVisual.cover_style}",
-    "char_bg_style": "${profilVisual.char_bg_style}",
-    "broll_full_shape": "${profilVisual.broll_full_shape}",
-    "broll_mini_shape": "${profilVisual.broll_mini_shape}",
-    "cover_font": {
-      "name": "${profilVisual.cover_font.name}",
-      "family": "${profilVisual.cover_font.family}",
-      "weight": "${profilVisual.cover_font.weight}",
-      "spacing": "${profilVisual.cover_font.spacing}",
-      "transform": "${profilVisual.cover_font.transform}"
-    },
-    "cover_illustration_svg": "<svg viewBox=\\"0 0 200 200\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"4\\"><circle cx=\\"100\\" cy=\\"100\\" r=\\"70\\"/></svg>",
-    "palette": {
-      "primary": "${profilVisual.palette.primary}",
-      "secondary": "${profilVisual.palette.secondary}",
-      "bg": "${profilVisual.palette.bg}",
-      "accent": "${profilVisual.palette.accent}"
-    }
+    "ikon_tema": "${profilVisual.ikon_tema}",
+    "cover_font": "${profilVisual.cover_font}"
   },
   "tx": {
     "kicker": "FAKTA UNIK",
@@ -419,16 +690,19 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
     "lb2": "KOMENTAR PENONTON"
   },
   "broll": {
-    "broll_full_shape": "${profilVisual.broll_full_shape}",
-    "broll_mini_shape": "${profilVisual.broll_mini_shape}",
     "b1_title": "JUDUL B-ROLL 1",
     "b1_sub": "Subjudul singkat 1",
+    "b1_left": "LABEL KIRI SPESIFIK",
+    "b1_right": "LABEL KANAN SPESIFIK",
+    "b1_badge": "STATUS SPESIFIK",
     "b2_user": "@PenontonPenasaran",
     "b2_comment": "Komentar singkat relevan",
     "b3_title": "PERBANDINGAN DATA",
     "b3_sub": "Subjudul data singkat",
+    "b3_bars": ["LABEL 1", "LABEL 2", "LABEL 3", "LABEL 4"],
     "b4_title": "FAKTA KUNCI",
-    "b4_sub": "Ringkasan bukti singkat"
+    "b4_sub": "Ringkasan bukti singkat",
+    "b4_badge": "RINGKASAN"
   },
   "scenes": {
     "title": ["Pembuka", "hook cerita"],
@@ -497,189 +771,52 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
 }
 
 // ============================================================
-// [UPGRADE] Terapkan ukuran proporsional, font sampul dinamis,
-// ilustrasi gambar sampul sesuai judul, background karakter dinamis,
-// dan variasi bentuk B-roll (full layar & kecil-kecil) ke HTML
+// [POIN 1, 2, 3, 4] INJEKSI TEMA VISUAL, FONT SAMPUL & ZONA AMAN
+// ke dalam HTML tanpa mengubah satu pun fungsi asli template.html
 // ============================================================
-function terapkanVisualDinamisKeHTML(html, videoData) {
+function pasangTemaVisualKeHTML(html, videoData) {
   const vt = videoData.visual_theme || {};
-  const pal = vt.palette || { primary: '#e11d48', secondary: '#881337', bg: '#11090d', accent: '#fda4af' };
-  const font = vt.cover_font || { name: 'Cinzel', family: "'Cinzel', serif", weight: '900', spacing: '0.05em', transform: 'uppercase' };
-  const fontSlug = encodeURIComponent(font.name).replace(/%20/g, '+');
-  const svgIlustrasi = vt.cover_illustration_svg || '';
+  const pal = vt.palette || { a: '#fbbf24', t: '#38bdf8', p: '#f43f5e', g: '#34d399', b1: '#0d131a', b2: '#1b2836' };
+  const fontName = vt.cover_font || 'Playfair Display';
+  const fontSlug = encodeURIComponent(fontName).replace(/%20/g, '+');
 
-  const injeksiVisual = `
+  const injeksiHead = `
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=${fontSlug}:wght@400;700;800;900&display=swap" rel="stylesheet">
-<style id="v88-dynamic-theme">
+<style id="v88-theme-style">
   :root {
-    --v-primary: ${pal.primary};
-    --v-secondary: ${pal.secondary};
-    --v-bg: ${pal.bg};
-    --v-accent: ${pal.accent};
-    --cover-font: ${font.family};
-    --cover-weight: ${font.weight};
-    --cover-spacing: ${font.spacing};
-    --cover-transform: ${font.transform};
+    --v88-a: ${pal.a};
+    --v88-t: ${pal.t};
+    --v88-p: ${pal.p};
+    --v88-g: ${pal.g};
+    --v88-b1: ${pal.b1};
+    --v88-b2: ${pal.b2};
   }
-
-  /* 1. Kunci ukuran & rasio video agar tidak kepanjangan & subtitle tidak menimpa karakter */
   html, body {
-    width: ${videoData.width}px !important;
-    height: ${videoData.height}px !important;
-    margin: 0 auto !important;
-    overflow: hidden !important;
-    background: var(--v-bg) !important;
+    background: ${pal.b1} !important;
   }
-
-  /* Zona aman posisi karakter & subtitle bawah */
-  #char, #character, .character, .char-box, [id*="char"] {
-    transform-origin: center center !important;
+  .frame {
+    aspect-ratio: ${videoData.width} / ${videoData.height} !important;
+    max-width: ${videoData.width}px !important;
+    max-height: ${videoData.height}px !important;
   }
-  #sub, #subtitle, .subtitle, .sub-wrap, [id*="sub"] {
-    bottom: 11% !important;
-    z-index: 80 !important;
-  }
-
-  /* 2. Sampul awal: font beda-beda sesuai judul + ilustrasi gambar topik (posisi karakter sampul tetap) */
-  .cover-title, #cover-title, .cv-title, [class*="cover"] h1, [id*="cover"] h1, #t1, #t2, .t1, .t2 {
-    font-family: var(--cover-font) !important;
-    font-weight: var(--cover-weight) !important;
-    letter-spacing: var(--cover-spacing) !important;
-    text-transform: var(--cover-transform) !important;
-    text-shadow: 0 4px 24px color-mix(in srgb, var(--v-primary) 55%, #000) !important;
-  }
-  #v88-cover-emblem {
-    position: absolute;
-    top: 8%;
-    right: 7%;
-    width: 115px;
-    height: 115px;
-    color: var(--v-accent);
-    opacity: 0.28;
-    pointer-events: none;
-    z-index: 2;
-    filter: drop-shadow(0 0 18px var(--v-primary));
-    animation: v88Float 4s ease-in-out infinite;
-  }
-  @keyframes v88Float {
-    0%, 100% { transform: translateY(0px) rotate(0deg); }
-    50% { transform: translateY(-8px) rotate(3deg); }
-  }
-
-  /* 3. Background dinamis berbeda-beda per judul (sampul & background karakter) */
-  #v88-dynamic-backdrop {
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    opacity: 0.42;
-    background:
-      radial-gradient(circle at 50% 25%, var(--v-secondary) 0%, transparent 65%),
-      radial-gradient(circle at 85% 80%, color-mix(in srgb, var(--v-primary) 35%, transparent) 0%, transparent 55%);
-  }
-
-  /* 4. Variasi bentuk B-Roll FULL LAYAR & B-Roll KECIL-KECIL (tetap 2 jenis, bentuk berubah tiap judul) */
-  body[data-broll-full*="perkamen"] .broll-card,
-  body[data-broll-full*="koran"] .broll-card,
-  body[data-broll-full*="museum"] .broll-card {
-    border-radius: 6px !important;
-    border: 2px solid var(--v-accent) !important;
-    border-left: 10px solid var(--v-primary) !important;
-    clip-path: polygon(0 0, 96% 0, 100% 5%, 100% 100%, 4% 100%, 0 95%) !important;
-  }
-  body[data-broll-full*="monitor"] .broll-card,
-  body[data-broll-full*="terminal"] .broll-card,
-  body[data-broll-full*="blueprint"] .broll-card {
-    border-radius: 26px !important;
-    border: 2px solid var(--v-accent) !important;
-    box-shadow: 0 0 36px color-mix(in srgb, var(--v-primary) 50%, transparent), inset 0 0 24px color-mix(in srgb, var(--v-secondary) 60%, transparent) !important;
-  }
-  body[data-broll-full*="folder"] .broll-card,
-  body[data-broll-full*="timeline"] .broll-card {
-    border-radius: 14px !important;
-    border-top: 16px solid var(--v-primary) !important;
-    border-bottom: 4px solid var(--v-accent) !important;
-    transform: rotate(-1.2deg) !important;
-  }
-  body[data-broll-full*="radar"] .broll-card,
-  body[data-broll-full*="peta"] .broll-card {
-    border-radius: 48px 10px 48px 10px !important;
-    border: 2px dashed var(--v-accent) !important;
-  }
-  body[data-broll-full*="panel"] .broll-card,
-  body[data-broll-full*="layar"] .broll-card {
-    border-radius: 22px 22px 4px 4px !important;
-    border-bottom: 10px solid var(--v-primary) !important;
-  }
-
-  /* Variasi bentuk B-Roll KECIL-KECIL */
-  body[data-broll-mini*="lencana"] .mini-broll,
-  body[data-broll-mini*="medali"] .mini-broll,
-  body[data-broll-mini*="plakat"] .mini-broll {
-    border-radius: 4px 18px 4px 18px !important;
-    border-left: 5px solid var(--v-accent) !important;
-  }
-  body[data-broll-mini*="kapsul"] .mini-broll,
-  body[data-broll-mini*="pil"] .mini-broll {
-    border-radius: 999px !important;
-    border: 2px solid var(--v-accent) !important;
-  }
-  body[data-broll-mini*="stempel"] .mini-broll,
-  body[data-broll-mini*="tiket"] .mini-broll {
-    border-radius: 8px !important;
-    border: 2px dashed var(--v-primary) !important;
-    transform: rotate(1.5deg) !important;
-  }
-  body[data-broll-mini*="kompas"] .mini-broll,
-  body[data-broll-mini*="tag"] .mini-broll {
-    clip-path: polygon(6% 0, 100% 0, 94% 100%, 0% 100%) !important;
-    border-bottom: 4px solid var(--v-accent) !important;
-  }
-</style>
-<script>
-  window.__V88_VISUAL__ = ${JSON.stringify(vt)};
-  window.addEventListener('DOMContentLoaded', () => {
-    const vt = window.__V88_VISUAL__ || {};
-    document.body.setAttribute('data-theme-id', vt.theme_id || '');
-    document.body.setAttribute('data-cover-style', vt.cover_style || '');
-    document.body.setAttribute('data-char-bg', vt.char_bg_style || '');
-    document.body.setAttribute('data-broll-full', vt.broll_full_shape || '');
-    document.body.setAttribute('data-broll-mini', vt.broll_mini_shape || '');
-
-    // Tambahkan layer latar belakang dinamis sesuai tema judul
-    if (!document.getElementById('v88-dynamic-backdrop')) {
-      const bg = document.createElement('div');
-      bg.id = 'v88-dynamic-backdrop';
-      document.body.prepend(bg);
-    }
-
-    // Tambahkan ilustrasi SVG bertema judul ke area sampul tanpa mengubah posisi karakter sampul
-    const coverContainer = document.querySelector('#cover, .cover, #scene-cover, .cover-wrap') || document.body;
-    if (vt.cover_illustration_svg && !document.getElementById('v88-cover-emblem')) {
-      const emblem = document.createElement('div');
-      emblem.id = 'v88-cover-emblem';
-      emblem.innerHTML = vt.cover_illustration_svg;
-      coverContainer.appendChild(emblem);
-    }
-  });
-</script>`;
+</style>`;
 
   if (html.includes('</head>')) {
-    return html.replace('</head>', injeksiVisual + '\n</head>');
+    return html.replace('</head>', injeksiHead + '\n</head>');
   }
-  return injeksiVisual + '\n' + html;
+  return injeksiHead + '\n' + html;
 }
 
 async function main() {
   console.log(`Mulai produksi: "${JUDUL}" (${UKURAN}, ${BAHASA})`);
   const dim = parseUkuran(UKURAN);
   const ttsInfo = pilihSuaraTTS(BAHASA);
-  const profilVisual = bangunProfilVisual1000Plus(JUDUL);
+  const profilVisual = buatProfilVisualJudul(JUDUL, dim);
 
   // [UPGRADE] Notifikasi awal ke Telegram
-  await kirimPesanTelegram(`🏭 Pabrik Video mulai bekerja!\n\n📌 Judul: ${JUDUL}\n🎨 Tema (${profilVisual.theme_id}): ${profilVisual.kategori}\n🔤 Font Sampul: ${profilVisual.cover_font.name}\n📐 Ukuran: ${UKURAN} (${dim.width}x${dim.height})\n🌐 Bahasa: ${BAHASA}`);
+  await kirimPesanTelegram(`🏭 Pabrik Video mulai bekerja!\n\n📌 Judul: ${JUDUL}\n🎨 Tema (${profilVisual.theme_id}): ${profilVisual.kategori}\n🔤 Font Sampul: ${profilVisual.cover_font}\n📐 Ukuran: ${UKURAN} (${dim.width}x${dim.height})\n🌐 Bahasa: ${BAHASA}`);
 
   console.log('1/4 Meracik naskah & adegan V8.8...');
   const videoData = await buatNaskahJSON(dim, ttsInfo, profilVisual);
@@ -699,7 +836,7 @@ async function main() {
   html = html.replace('__TITLE__', videoData.title);
   html = html.replace('__ASPECT__', dim.aspect);
   html = html.replace('__VIDEO_DATA_JSON__', JSON.stringify(videoData));
-  html = terapkanVisualDinamisKeHTML(html, videoData);
+  html = pasangTemaVisualKeHTML(html, videoData);
   fs.writeFileSync('render_siap.html', html, 'utf8');
 
   console.log('4/4 Merender video di cloud...');
