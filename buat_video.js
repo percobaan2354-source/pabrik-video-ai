@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
-const { execSync } = require('child_process');
+const { execSync, spawn } = require('child_process');
 const { chromium } = require('playwright');
 
 const GEMINI_API_KEY      = (process.env.GEMINI_API_KEY || '').trim();
@@ -367,7 +367,7 @@ async function main() {
   html = html.replace('__VIDEO_DATA_JSON__', JSON.stringify(videoData));
   fs.writeFileSync('render_siap.html', html, 'utf8');
 
-  console.log('4/4 Merender video di cloud...');
+  console.log('4/4 Merender video HD 30 FPS di cloud...');
   const server = http.createServer((req, res) => {
     const reqUrl = req.url.split('?')[0];
     const filePath = path.join(__dirname, reqUrl === '/' ? 'render_siap.html' : reqUrl);
@@ -382,7 +382,6 @@ async function main() {
   const browser = await chromium.launch({
     args: [
       '--no-sandbox',
-      '--autoplay-policy=no-user-gesture-required',
       '--disable-dev-shm-usage',
       '--use-gl=angle',
       '--use-angle=swiftshader'
@@ -392,70 +391,73 @@ async function main() {
   try {
     const context = await browser.newContext({
       viewport: { width: dim.width, height: dim.height },
-      acceptDownloads: true
+      deviceScaleFactor: 1
     });
     const page = await context.newPage();
 
     page.on('pageerror', e => console.log('[Halaman] Error JS:', e.message));
-    page.on('console', msg => {
-      if (msg.type() === 'error') console.log('[Halaman] console.error:', msg.text());
+
+    await page.goto('http://localhost:8080/render_siap.html?autorender=1', { waitUntil: 'networkidle' });
+
+    await page.waitForFunction(() => window.__ASSETS_READY === true, null, {
+      timeout: 60000,
+      polling: 200
     });
 
-    // Tangkap blob langsung saat <a download="hasil_mentah.webm"> dibuat di browser
-    await page.addInitScript(() => {
-      const origCreateObjectURL = URL.createObjectURL.bind(URL);
-      URL.createObjectURL = function(obj) {
-        if (obj instanceof Blob && obj.type && obj.type.includes('video')) {
-          window.__EXPORT_BLOB = obj;
-        }
-        return origCreateObjectURL(obj);
-      };
-    });
+    const totalDetik = await page.evaluate(() => window.__VIDEO_LEN || 40);
+    const fps = 30;
+    const totalFrame = Math.ceil(totalDetik * fps);
+    console.log(`   Merender ${totalFrame} frame (${totalDetik} detik @ ${fps} FPS)...`);
 
-    await page.goto('http://localhost:8080/render_siap.html?autorender=1', { waitUntil: 'domcontentloaded' });
+    const ffArgs = [
+      '-y',
+      '-f', 'image2pipe',
+      '-vcodec', 'mjpeg',
+      '-r', String(fps),
+      '-i', 'pipe:0',
+      '-i', 'vo.mp3',
+      '-map', '0:v:0',
+      '-map', '1:a:0',
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-crf', '20',
+      '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac',
+      '-b:a', '192k',
+      '-shortest',
+      '-movflags', '+faststart',
+      'video_jadi.mp4'
+    ];
+    const ff = spawn('ffmpeg', ffArgs, { stdio: ['pipe', 'inherit', 'inherit'] });
 
-    // Tunggu sampai rekaman di browser selesai (maksimal 240 detik)
-    await page.waitForFunction(
-      () => window.__EXPORT_DONE === true || Boolean(window.__EXPORT_BLOB),
-      null,
-      { timeout: 240000, polling: 500 }
-    );
+    for (let f = 0; f < totalFrame; f++) {
+      const tSec = f / fps;
+      const b64 = await page.evaluate((t) => {
+        window.__renderFrameAt(t);
+        const dataUrl = document.getElementById('cv').toDataURL('image/jpeg', 0.92);
+        return dataUrl.split(',')[1];
+      }, tSec);
 
-    // Ambil data biner WebM langsung dari browser (tidak tergantung dialog download OS)
-    const base64Video = await page.evaluate(async () => {
-      const blob = window.__EXPORT_BLOB;
-      if (!blob) throw new Error('Blob hasil rekaman tidak ditemukan.');
-      const buf = await blob.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let binary = '';
-      const chunk = 0x8000;
-      for (let i = 0; i < bytes.length; i += chunk) {
-        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      const frameBuf = Buffer.from(b64, 'base64');
+      if (!ff.stdin.write(frameBuf)) {
+        await new Promise(resolve => ff.stdin.once('drain', resolve));
       }
-      return btoa(binary);
-    });
 
-    fs.writeFileSync('hasil_mentah.webm', Buffer.from(base64Video, 'base64'));
+      if (f % 150 === 0) {
+        console.log(`   Progres render: ${Math.round((f / totalFrame) * 100)}% (${f}/${totalFrame} frame)`);
+      }
+    }
+
+    ff.stdin.end();
+    await new Promise((resolve, reject) => {
+      ff.on('close', code => code === 0 ? resolve() : reject(new Error('FFmpeg keluar dengan kode ' + code)));
+      ff.on('error', reject);
+    });
   } finally {
     await browser.close().catch(() => {});
     server.close();
   }
-  console.log(`   (render browser selesai, ${detikBerjalan()} detik berjalan)`);
-
-  // Cek apakah hasil_mentah.webm memiliki trek audio; jika tidak, sisipkan vo.mp3 otomatis
-  let hasAudio = false;
-  try {
-    const streams = execSync('ffprobe -v error -select_streams a -show_entries stream=codec_type -of csv=p=0 hasil_mentah.webm').toString().trim();
-    hasAudio = streams.length > 0;
-  } catch (e) { hasAudio = false; }
-
-  console.log('Mengemas MP4 final (Video HD + Audio)...');
-  if (hasAudio) {
-    execSync(`ffmpeg -y -i hasil_mentah.webm -map 0:v:0 -map 0:a:0 -c:v libx264 -preset veryfast -crf 20 -r 30 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart video_jadi.mp4`, { stdio: 'inherit' });
-  } else {
-    console.log('Trek audio WebM kosong, menggabungkan video dengan vo.mp3...');
-    execSync(`ffmpeg -y -i hasil_mentah.webm -i vo.mp3 -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -crf 20 -r 30 -pix_fmt yuv420p -c:a aac -b:a 192k -shortest -movflags +faststart video_jadi.mp4`, { stdio: 'inherit' });
-  }
+  console.log(`   (render selesai, ${detikBerjalan()} detik berjalan)`);
 
   const ukuranFile = fs.statSync('video_jadi.mp4').size;
   let durasiTeks = '-';
