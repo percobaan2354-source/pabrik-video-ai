@@ -415,10 +415,11 @@ async function main() {
     await page.goto('http://localhost:8080/render_siap.html?autorender=1', { waitUntil: 'domcontentloaded' });
 
     // Tunggu sampai rekaman di browser selesai (maksimal 240 detik)
-    await page.waitForFunction(() => window.__EXPORT_DONE === true || Boolean(window.__EXPORT_BLOB), {
-      timeout: 240000,
-      polling: 500
-    });
+    await page.waitForFunction(
+      () => window.__EXPORT_DONE === true || Boolean(window.__EXPORT_BLOB),
+      null,
+      { timeout: 240000, polling: 500 }
+    );
 
     // Ambil data biner WebM langsung dari browser (tidak tergantung dialog download OS)
     const base64Video = await page.evaluate(async () => {
