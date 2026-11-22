@@ -65,37 +65,37 @@ function generateBgmAndSfxWav(filePath, durationSec, videoData) {
 
   // 6 Skala Melodi Backsound berbeda untuk tiap video
   const SCALES = [
-    [261.63, 329.63, 392.00, 493.88, 523.25, 392.00], // C Maj7 Chill
-    [220.00, 261.63, 329.63, 392.00, 440.00, 329.63], // A Min7 Storytelling
-    [293.66, 349.23, 440.00, 523.25, 587.33, 440.00], // D Min9 Lo-Fi
-    [196.00, 246.94, 293.66, 369.99, 392.00, 293.66], // G Maj7 Warm
-    [246.94, 293.66, 369.99, 440.00, 493.88, 369.99], // B Min7 Curiosity
-    [174.61, 220.00, 261.63, 329.63, 349.23, 261.63]  // F Maj7 Ambient
+    [261.63, 329.63, 392.00, 493.88, 523.25, 392.00],
+    [220.00, 261.63, 329.63, 392.00, 440.00, 329.63],
+    [293.66, 349.23, 440.00, 523.25, 587.33, 440.00],
+    [196.00, 246.94, 293.66, 369.99, 392.00, 293.66],
+    [246.94, 293.66, 369.99, 440.00, 493.88, 369.99],
+    [174.61, 220.00, 261.63, 329.63, 349.23, 261.63]
   ];
   const scale = SCALES[seed % SCALES.length];
-  const beatDur = 0.42 + (seed % 5) * 0.04; // Tempo berbeda tiap video
+  const beatDur = 0.42 + (seed % 5) * 0.04;
 
-  // 1. Sintesis Backsound Melodis Stereo Lembut
+  // 1. Sintesis Backsound Melodis Stereo yang Terdengar Jelas
   for (let i = 0; i < numSamples; i++) {
     const t = i / sr;
     const step = Math.floor(t / beatDur);
     const localT = t - step * beatDur;
-    const env = Math.sin(Math.min(1, localT / 0.08) * (Math.PI / 2)) * Math.exp(-localT * 2.4);
+    const env = Math.sin(Math.min(1, localT / 0.06) * (Math.PI / 2)) * Math.exp(-localT * 2.1);
 
     const freq = scale[(step + (seed % 4)) % scale.length];
     const bassFreq = scale[0] * 0.5;
-    const bassEnv = Math.exp(-((t % (beatDur * 2)) * 1.8));
+    const bassEnv = Math.exp(-((t % (beatDur * 2)) * 1.6));
 
-    const lead = (Math.sin(2 * Math.PI * freq * t) * 0.65 + Math.sin(2 * Math.PI * freq * 2 * t) * 0.15) * env * 0.075;
-    const pad = Math.sin(2 * Math.PI * (freq * 0.5) * t + 0.4) * 0.035;
-    const bass = Math.sin(2 * Math.PI * bassFreq * t) * bassEnv * 0.065;
+    const lead = (Math.sin(2 * Math.PI * freq * t) * 0.70 + Math.sin(2 * Math.PI * freq * 2 * t) * 0.20) * env * 0.16;
+    const pad = Math.sin(2 * Math.PI * (freq * 0.5) * t + 0.4) * 0.07;
+    const bass = Math.sin(2 * Math.PI * bassFreq * t) * bassEnv * 0.14;
 
     const pan = Math.sin(t * 0.7) * 0.25;
     left[i]  = (lead * (1 - pan)) + pad + bass;
     right[i] = (lead * (1 + pan)) + pad + bass;
   }
 
-  // 2. Tambahkan SFX Transisi Sosmed (Whoosh + Pop) di setiap pergantian adegan
+  // 2. Tambahkan SFX Transisi Sosmed (Whoosh + Pop + Sub) di setiap pergantian adegan
   const lines = Array.isArray(videoData.lines) ? videoData.lines : [];
   let prevSc = null;
   const totalLines = lines.length || 1;
@@ -103,24 +103,22 @@ function generateBgmAndSfxWav(filePath, durationSec, videoData) {
     const sc = l[0];
     if (sc !== prevSc) {
       prevSc = sc;
-      const startSec = (idx / totalLines) * Math.max(1, durationSec - 1.5);
+      const startSec = idx === 0 ? 0.45 : (idx / totalLines) * Math.max(1, durationSec - 1.5);
       const startSample = Math.floor(startSec * sr);
-      const sfxLen = Math.floor(0.26 * sr);
+      const sfxLen = Math.floor(0.28 * sr);
       for (let j = 0; j < sfxLen && (startSample + j) < numSamples; j++) {
         const u = j / sfxLen;
         const env = Math.sin(u * Math.PI);
-        // Whoosh sweep frekuensi
-        const fSweep = 180 + u * 520;
-        const whoosh = Math.sin(2 * Math.PI * fSweep * (j / sr)) * env * 0.14;
-        // Pop click di awal transisi
-        const pop = (u < 0.25) ? Math.sin(2 * Math.PI * 820 * (j / sr)) * (1 - u / 0.25) * 0.11 : 0;
-        left[startSample + j]  += whoosh + pop;
-        right[startSample + j] += whoosh + pop;
+        const fSweep = 160 + u * 620;
+        const whoosh = Math.sin(2 * Math.PI * fSweep * (j / sr)) * env * 0.32;
+        const pop = (u < 0.25) ? Math.sin(2 * Math.PI * 860 * (j / sr)) * (1 - u / 0.25) * 0.26 : 0;
+        const sub = Math.sin(2 * Math.PI * (90 - u * 45) * (j / sr)) * (1 - u) * 0.28;
+        left[startSample + j]  += whoosh + pop + sub;
+        right[startSample + j] += whoosh + pop + sub;
       }
     }
   });
 
-  // Tulis ke file WAV 16-bit PCM Stereo
   const dataSize = numSamples * 4;
   const buffer = Buffer.alloc(44 + dataSize);
   buffer.write('RIFF', 0);
@@ -286,13 +284,13 @@ async function buatNaskahJSON(dim, ttsInfo) {
     ? '9-10 kalimat storytelling santai & mengalir (maksimal 10-12 kata per kalimat agar total durasi baca 38-50 detik)'
     : '12-15 kalimat padat dan informatif (untuk video landscape 16:9)';
 
-  const prompt = `Kamu adalah penulis skrip & sutradara video animasi storytelling V28.0.
+  const prompt = `Kamu adalah penulis skrip & sutradara video animasi storytelling V29.0.
 Buatkan data lengkap dalam format JSON MURNI (tanpa teks pembuka/penutup) untuk video berikut:
 - Judul: "${JUDUL}"
 - Bahasa Video: ${BAHASA} (kode BCP-47: ${ttsInfo.langCode})
 - Ukuran: ${UKURAN} (${dim.width}x${dim.height})
 
-ATURAN KETAT V28.0:
+ATURAN KETAT V29.0:
 1. Gaya bahasa wajib seperti bercerita santai (*storytelling* yang enak didengar, mengalir alami, tidak kaku) dalam bahasa ${BAHASA}.
 2. Buat ${jumlahKalimat} di dalam array "lines". Berikan tanda koma/titik yang jelas antar kalimat agar jeda intonasi suara terdeteksi presisi.
    Format tiap elemen: ["kunci_adegan", "mood", "Kalimat dengan *kata* ditekankan.", "fx_opsional"]
@@ -399,18 +397,18 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
 }
 
 async function main() {
-  console.log(`Mulai produksi V28.0: "${JUDUL}" (${UKURAN}, ${BAHASA})`);
+  console.log(`Mulai produksi V29.0: "${JUDUL}" (${UKURAN}, ${BAHASA})`);
   const dim = parseUkuran(UKURAN);
   const ttsInfo = pilihSuaraTTS(BAHASA);
 
   await kirimPesanTelegram(
-    `🏭 Pabrik Video V28.0 mulai bekerja!\n\n` +
+    `🏭 Pabrik Video V29.0 mulai bekerja!\n\n` +
     `📌 Judul: ${JUDUL}\n` +
     `📐 Ukuran: ${UKURAN} (${dim.width}x${dim.height})\n` +
     `🌐 Bahasa: ${BAHASA}`
   );
 
-  console.log('1/4 Meracik naskah & adegan V28.0...');
+  console.log('1/4 Meracik naskah & adegan V29.0...');
   const videoData = await buatNaskahJSON(dim, ttsInfo);
   console.log(`   (naskah selesai, ${detikBerjalan()} detik berjalan, ${videoData.lines.length} kalimat)`);
 
@@ -422,7 +420,7 @@ async function main() {
   console.log(`   (VO selesai, ${detikBerjalan()} detik berjalan)`);
   await kirimPesanTelegram('✅ Naskah & suara VO selesai. Sekarang merender video HD + Backsound...');
 
-  console.log('3/4 Merakit file HTML V28.0...');
+  console.log('3/4 Merakit file HTML V29.0...');
   let html = fs.readFileSync('template.html', 'utf8');
   html = html.replace('__TITLE__', videoData.title);
   html = html.replace('__ASPECT__', dim.aspect);
@@ -482,7 +480,7 @@ async function main() {
       '-i', 'pipe:0',
       '-i', 'vo.mp3',
       '-i', 'bgm_sfx.wav',
-      '-filter_complex', '[1:a]volume=1.18[vo];[2:a]volume=0.85[bgm];[vo][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]',
+      '-filter_complex', '[1:a]volume=1.15[vo];[2:a]volume=0.95[bgm];[vo][bgm]amix=inputs=2:duration=first:normalize=0[aout]',
       '-map', '0:v:0',
       '-map', '[aout]',
       '-c:v', 'libx264',
@@ -533,7 +531,7 @@ async function main() {
     if (!isNaN(d)) durasiTeks = d.toFixed(1) + ' detik';
   } catch (e) { /* abaikan */ }
 
-  const infoYoutube = `🎬 VIDEO V28.0 SELESAI DIRENDER!\n\n📌 Judul:\n${videoData.title}\n\n📝 Deskripsi:\n${videoData.desc}\n\n📚 Sumber:\n${videoData.src.map(s => '- ' + s).join('\n')}\n\n🏷️ Tags:\n${videoData.tags}`;
+  const infoYoutube = `🎬 VIDEO V29.0 SELESAI DIRENDER!\n\n📌 Judul:\n${videoData.title}\n\n📝 Deskripsi:\n${videoData.desc}\n\n📚 Sumber:\n${videoData.src.map(s => '- ' + s).join('\n')}\n\n🏷️ Tags:\n${videoData.tags}`;
 
   const infoTeknis = `\n\n⏱️ Durasi: ${durasiTeks} | 💾 ${formatMB(ukuranFile)} | 🕐 Proses: ${detikBerjalan()} dtk`;
   if (ukuranFile > 49 * 1024 * 1024) {
