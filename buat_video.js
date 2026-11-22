@@ -23,71 +23,37 @@ function formatMB(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-/* ===== PARSER UKURAN VIDEO (SHORTS, TIKTOK, IG, FB, YOUTUBE LONG) ===== */
 function parseUkuran(uk) {
   const s = uk.toLowerCase();
   if (s.includes('16:9') || s.includes('youtube long') || s.includes('youtube panjang') || s.includes('facebook') || s.includes('fb') || s.includes('landscape')) {
-    return {
-      width: 1280,
-      height: 720,
-      aspect: '16/9',
-      isVertical: false
-    };
+    return { width: 1280, height: 720, aspect: '16/9', isVertical: false };
   }
   if (s.includes('4:5') || s.includes('feed')) {
-    return {
-      width: 720,
-      height: 900,
-      aspect: '4/5',
-      isVertical: true
-    };
+    return { width: 720, height: 900, aspect: '4/5', isVertical: true };
   }
   if (s.includes('1:1') || s.includes('square')) {
-    return {
-      width: 720,
-      height: 720,
-      aspect: '1/1',
-      isVertical: false
-    };
+    return { width: 720, height: 720, aspect: '1/1', isVertical: false };
   }
-  return {
-    width: 720,
-    height: 1280,
-    aspect: '9/16',
-    isVertical: true
-  };
+  return { width: 720, height: 1280, aspect: '9/16', isVertical: true };
 }
 
 function pilihSuaraTTS(bahasa) {
   const b = bahasa.toLowerCase();
-  if (b.includes('indonesia') || b === 'id') {
-    return { langCode: 'id-ID', voice: 'id-ID-ArdiNeural' };
-  }
-  if (b.includes('inggris') || b.includes('english') || b.includes('en')) {
-    return { langCode: 'en-US', voice: 'en-US-AndrewNeural' };
-  }
-  if (b.includes('jepang') || b.includes('japan') || b.includes('ja')) {
-    return { langCode: 'ja-JP', voice: 'ja-JP-KeitaNeural' };
-  }
-  if (b.includes('korea') || b.includes('ko')) {
-    return { langCode: 'ko-KR', voice: 'ko-KR-InJoonNeural' };
-  }
-  if (b.includes('arab') || b.includes('ar')) {
-    return { langCode: 'ar-SA', voice: 'ar-SA-HamedNeural' };
-  }
-  if (b.includes('spanyol') || b.includes('spanish') || b.includes('es')) {
-    return { langCode: 'es-ES', voice: 'es-ES-AlvaroNeural' };
-  }
-  return { langCode: 'id-ID', voice: 'id-ID-ArdiNeural' };
+  if (b.includes('indonesia') || b === 'id') return { langCode: 'id-ID' };
+  if (b.includes('inggris') || b.includes('english') || b.includes('en')) return { langCode: 'en-US' };
+  if (b.includes('jepang') || b.includes('japan') || b.includes('ja')) return { langCode: 'ja-JP' };
+  if (b.includes('korea') || b.includes('ko')) return { langCode: 'ko-KR' };
+  if (b.includes('arab') || b.includes('ar')) return { langCode: 'ar-SA' };
+  if (b.includes('spanyol') || b.includes('spanish') || b.includes('es')) return { langCode: 'es-ES' };
+  return { langCode: 'id-ID' };
 }
 
 async function generateVoiceOver(teksBersih) {
   if (!ELEVENLABS_API_KEY) {
-    throw new Error('ELEVENLABS_API_KEY kosong/belum terbaca! Cek nama Secret di GitHub Settings atau file render.yml.');
+    throw new Error('ELEVENLABS_API_KEY kosong/belum terbaca!');
   }
 
   console.log(`Membuat VO wajib ElevenLabs (Voice ID: ${ELEVENLABS_VOICE_ID})...`);
-
   let errTerakhir = null;
   for (let percobaan = 1; percobaan <= 3; percobaan++) {
     try {
@@ -102,9 +68,9 @@ async function generateVoiceOver(teksBersih) {
           text: teksBersih,
           model_id: 'eleven_multilingual_v2',
           voice_settings: {
-            stability: 0.45,
+            stability: 0.48,
             similarity_boost: 0.80,
-            style: 0.35,
+            style: 0.30,
             use_speaker_boost: true
           }
         })
@@ -178,7 +144,6 @@ async function kirimDokumenTelegram(filePath, caption) {
   if (!json.ok) throw new Error('Gagal kirim dokumen Telegram: ' + JSON.stringify(json));
 }
 
-/* ===== VALIDASI & PERAPIHAN NASKAH V26.0 ===== */
 function rapikanNaskah(data, dim, ttsInfo) {
   if (!data || typeof data !== 'object') throw new Error('Naskah dari Gemini bukan objek JSON yang valid.');
   if (!Array.isArray(data.lines)) throw new Error('Naskah dari Gemini tidak punya array "lines".');
@@ -219,33 +184,33 @@ function rapikanNaskah(data, dim, ttsInfo) {
 
 async function buatNaskahJSON(dim, ttsInfo) {
   const jumlahKalimat = dim.isVertical
-    ? '9-11 kalimat SANGAT SINGKAT (maksimal 10-12 kata per kalimat agar total durasi baca 38-52 detik untuk video vertikal)'
+    ? '9-10 kalimat storytelling santai & mengalir (maksimal 10-12 kata per kalimat agar total durasi baca 38-50 detik)'
     : '12-15 kalimat padat dan informatif (untuk video landscape 16:9)';
 
-  const prompt = `Kamu adalah penulis skrip & sutradara video animasi edukasi V26.0.
+  const prompt = `Kamu adalah penulis skrip & sutradara video animasi storytelling V27.0.
 Buatkan data lengkap dalam format JSON MURNI (tanpa teks pembuka/penutup) untuk video berikut:
 - Judul: "${JUDUL}"
 - Bahasa Video: ${BAHASA} (kode BCP-47: ${ttsInfo.langCode})
 - Ukuran: ${UKURAN} (${dim.width}x${dim.height})
 
-ATURAN KETAT V26.0:
-1. Semua teks di dalam video (tx, lines, desc, tags, src) wajib ditulis dalam bahasa ${BAHASA} yang natural, hidup, dan enak didengar seperti penutur asli.
-2. Buat ${jumlahKalimat} di dalam array "lines".
+ATURAN KETAT V27.0:
+1. Gaya bahasa wajib seperti bercerita santai (*storytelling* yang enak didengar, mengalir alami, tidak kaku) dalam bahasa ${BAHASA}.
+2. Buat ${jumlahKalimat} di dalam array "lines". Berikan tanda koma/titik yang jelas antar kalimat agar jeda intonasi suara terdeteksi presisi.
    Format tiap elemen: ["kunci_adegan", "mood", "Kalimat dengan *kata* ditekankan.", "fx_opsional"]
    - Kunci adegan WAJIB menggunakan urutan ini:
-     * "title" (1-2 baris hook pembuka yang bikin penasaran)
-     * "b1" (1-2 baris penjelasan visual B-Roll full layar pertama — sebutkan objek/kata benda konkret agar ilustrasi vector otomatis akurat)
+     * "title" (1 baris hook pembuka yang santai tapi bikin penasaran)
+     * "b1" (1-2 baris penjelasan visual B-Roll full layar pertama — sebutkan objek/kata benda konkret agar ilustrasi motion graphic otomatis akurat)
      * "a" (1-2 baris cerita utama dari karakter)
      * "b2" (1-2 baris detail mikro B-Roll kecil — sebutkan kata kunci spesifik)
      * "b3" (1-2 baris bukti perbandingan / mekanisme B-Roll full layar kedua)
-     * "cta" (1-2 baris ajakan di TENGAH video: misalnya "Mau bikin video kayak gini juga?" dan "Langsung aja cek *link di bio*.")
-     * "c" (1-2 baris sudut pandang / kesimpulan karakter)
+     * "cta" (2 baris ajakan di TENGAH video: baris 1 "Mau bikin video kayak gini juga?" dan baris 2 "Langsung aja cek *link di bio*.")
+     * "c" (1-2 baris sudut pandang / refleksi karakter)
      * "b4" (1-2 baris puncak fakta B-Roll full layar ketiga)
      * "end" (1 baris penutup berkesan TANPA CTA)
-   - Mood: "n" (santai), "d" (dramatis), "e" (semangat), "s" (sunyi/serius).
+   - Mood: "n" (santai), "d" (dramatis), "e" (semangat), "s" (tenang).
    - FX opsional (boleh kosong ""): "b" (boom), "k" (hantaman), "c" (lonceng di baris kedua cta), "p" (pop).
 3. "tx":
-   - "kicker": kategori singkat 1-2 kata (contoh: "FAKTA SEJARAH", "SAINS TUBUH", "MISTERI DUNIA").
+   - "kicker": kategori singkat 1-2 kata (contoh: "SAINS TUBUH", "FAKTA UNIK", "PSIKOLOGI").
    - "t1": 1-2 kata judul besar baris atas di sampul (maksimal 14 huruf).
    - "t2": 1-2 kata judul besar baris bawah di sampul (maksimal 14 huruf).
    - "cvC": hook singkat 4-6 kata di sampul.
@@ -287,7 +252,7 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
   ]
 }`;
 
-  let models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-flash-preview", "gemini-flash-latest"];
+  let models = ["gemini-3-flash-preview", "gemini-flash-latest"];
   try {
     const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
     const listJson = await listRes.json();
@@ -295,7 +260,7 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
       const valid = listJson.models
         .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
         .map(m => m.name.replace('models/', ''))
-        .filter(n => /flash|pro/i.test(n) && !/embedding|vision|aqa|tts|image/i.test(n));
+        .filter(n => /flash|pro/i.test(n) && !/embedding|vision|aqa|tts|image|2\.5/i.test(n));
       if (valid.length > 0) {
         models = [...new Set([...models, ...valid])];
       }
@@ -337,18 +302,18 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
 }
 
 async function main() {
-  console.log(`Mulai produksi V26.0: "${JUDUL}" (${UKURAN}, ${BAHASA})`);
+  console.log(`Mulai produksi V27.0: "${JUDUL}" (${UKURAN}, ${BAHASA})`);
   const dim = parseUkuran(UKURAN);
   const ttsInfo = pilihSuaraTTS(BAHASA);
 
   await kirimPesanTelegram(
-    `🏭 Pabrik Video V26.0 mulai bekerja!\n\n` +
+    `🏭 Pabrik Video V27.0 mulai bekerja!\n\n` +
     `📌 Judul: ${JUDUL}\n` +
     `📐 Ukuran: ${UKURAN} (${dim.width}x${dim.height})\n` +
     `🌐 Bahasa: ${BAHASA}`
   );
 
-  console.log('1/4 Meracik naskah & adegan V26.0...');
+  console.log('1/4 Meracik naskah & adegan V27.0...');
   const videoData = await buatNaskahJSON(dim, ttsInfo);
   console.log(`   (naskah selesai, ${detikBerjalan()} detik berjalan, ${videoData.lines.length} kalimat)`);
 
@@ -360,7 +325,7 @@ async function main() {
   console.log(`   (VO selesai, ${detikBerjalan()} detik berjalan)`);
   await kirimPesanTelegram('✅ Naskah & suara VO selesai. Sekarang merender video HD...');
 
-  console.log('3/4 Merakit file HTML V26.0...');
+  console.log('3/4 Merakit file HTML V27.0...');
   let html = fs.readFileSync('template.html', 'utf8');
   html = html.replace('__TITLE__', videoData.title);
   html = html.replace('__ASPECT__', dim.aspect);
@@ -466,7 +431,7 @@ async function main() {
     if (!isNaN(d)) durasiTeks = d.toFixed(1) + ' detik';
   } catch (e) { /* abaikan */ }
 
-  const infoYoutube = `🎬 VIDEO V26.0 SELESAI DIRENDER!\n\n📌 Judul:\n${videoData.title}\n\n📝 Deskripsi:\n${videoData.desc}\n\n📚 Sumber:\n${videoData.src.map(s => '- ' + s).join('\n')}\n\n🏷️ Tags:\n${videoData.tags}`;
+  const infoYoutube = `🎬 VIDEO V27.0 SELESAI DIRENDER!\n\n📌 Judul:\n${videoData.title}\n\n📝 Deskripsi:\n${videoData.desc}\n\n📚 Sumber:\n${videoData.src.map(s => '- ' + s).join('\n')}\n\n🏷️ Tags:\n${videoData.tags}`;
 
   const infoTeknis = `\n\n⏱️ Durasi: ${durasiTeks} | 💾 ${formatMB(ukuranFile)} | 🕐 Proses: ${detikBerjalan()} dtk`;
   if (ukuranFile > 49 * 1024 * 1024) {
