@@ -1349,8 +1349,10 @@ $('exp').onclick=async()=>{
 };
 function finishExport(){exporting=false;if(rec&&rec.state!=='inactive')rec.stop()}
 
-/* ===== AUTO-LOAD ASET & AUTO-EXPORT UNTUK ROBOT RENDER GITHUB ===== */
-window.__EXPORT_DONE = false;
+/* ===== AUTO-LOAD ASET & MODE RENDER FRAME PRESISI UNTUK SERVER GITHUB ===== */
+window.__ASSETS_READY = false;
+window.__VIDEO_LEN = 40;
+window.__SERVER_MODE = new URLSearchParams(window.location.search).get('autorender') === '1';
 
 const FONTS_READY=Promise.race([
  Promise.all([
@@ -1362,6 +1364,51 @@ const FONTS_READY=Promise.race([
  new Promise(r=>setTimeout(r,5000))
 ]).catch(()=>{});
 
+window.__renderFrameAt = function(tSec){
+ DT = 1/30;
+ tm = cl(tSec, 0, LEN);
+ now = tm;
+ A = tm * SPD;
+ playing = true;
+ cvL = tm < COVER_HOLD ? 1 : Math.max(0, 1 - (tm - COVER_HOLD) * 4.2);
+
+ const nli = lineAt(tm);
+ if(nli !== li){
+  li = nli; lay = -1;
+  const sc = L[li] ? L[li][0] : 'a';
+  if(sc !== pScene){
+   pScene = sc;
+   if(cvL <= 0.02) trT = now;
+  }
+ }
+ charTick();
+
+ X.save();
+ X.scale(SX, SY);
+ const sc = L[li] ? L[li][0] : 'title';
+ const cvVisible = (cvL > 0.02);
+ if(cvVisible){
+  X.save();
+  const zOut = 1 + (1 - cvL) * 0.08;
+  X.translate(360, 640); X.scale(zOut, zOut); X.translate(-360, -640);
+  X.globalAlpha = cvL;
+  SCN.cover(A);
+  X.restore();
+  if(cvL < 0.98){
+   X.save();
+   X.globalAlpha = 1 - cvL;
+   if(SCN[sc]) SCN[sc](Math.max(0, tm - (L[li] ? L[li].t0 : 0)));
+   X.restore();
+  }
+ }else if(SCN[sc]){
+  SCN[sc](Math.max(0, tm - (L[li] ? L[li].t0 : 0)));
+ }
+ drawTransition();
+ drawSubs();
+ X.drawImage(ov, 0, 0);
+ X.restore();
+};
+
 async function initAutoAssetsAndRender(){
  await FONTS_READY;
  await initCharSafe('karakter.png');
@@ -1369,45 +1416,21 @@ async function initAutoAssetsAndRender(){
   const resp = await fetch('vo.mp3');
   if(resp.ok){
    const buf = await resp.arrayBuffer();
-   initAudio();
-   voBuf = await ac.decodeAudioData(buf.slice(0));
+   const AC = window.AudioContext || window.webkitAudioContext;
+   const tempAc = new AC();
+   voBuf = await tempAc.decodeAudioData(buf.slice(0));
    LEN = Math.ceil(voBuf.duration) + 1;
    retime();
+   tempAc.close().catch(()=>{});
   }
  }catch(e){console.error(e)}
-
- if(new URLSearchParams(window.location.search).get('autorender') === '1'){
-  initAudio();
-  if(ac && ac.state==='suspended') await ac.resume().catch(()=>{});
-  const vTracks = cv.captureStream(30).getVideoTracks();
-  const aTracks = (dest && dest.stream) ? dest.stream.getAudioTracks() : [];
-  const ms = new MediaStream([...vTracks, ...aTracks]);
-  const mt = ['video/webm;codecs=vp8,opus','video/webm;codecs=vp9,opus','video/webm'].find(t=>MediaRecorder.isTypeSupported(t)) || '';
-  rec = new MediaRecorder(ms, mt ? {mimeType:mt, videoBitsPerSecond:12000000, audioBitsPerSecond:192000} : {});
-  chunks = [];
-  rec.ondataavailable = e => e.data.size && chunks.push(e.data);
-  rec.onstop = () => {
-   const b = new Blob(chunks, {type: rec.mimeType || 'video/webm'});
-   const a = document.createElement('a');
-   a.href = URL.createObjectURL(b);
-   a.download = 'hasil_mentah.webm';
-   document.body.appendChild(a);
-   a.click();
-   a.remove();
-   window.__EXPORT_DONE = true;
-  };
-  exporting = true;
-  window.__REC_T0 = performance.now();
-  tm = 0; spoken = -1; pScene = null; lay = -1; cvL = 1; mNext = 0;
-  playing = true;
-  updatePlayIcon();
-  rec.start(200);
-  startVoFrom(0);
-  setTimeout(()=>{ if(exporting) finishExport(); }, (LEN + 1.5) * 1000);
+ window.__VIDEO_LEN = LEN;
+ window.__ASSETS_READY = true;
+ if(!window.__SERVER_MODE){
+  requestAnimationFrame(render);
  }
 }
 
-requestAnimationFrame(render);
 window.addEventListener('load', initAutoAssetsAndRender);
 </script>
 </body>
