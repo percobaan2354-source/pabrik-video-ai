@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>__TITLE__</title>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800;900&family=Playfair+Display:ital,wght@0,700;0,900;1,800;1,900&family=Montserrat:wght@700;800;900&family=Space+Grotesk:wght@700&family=Oswald:wght@700&family=Cinzel:wght@700;900&family=Bebas+Neue&family=Noto+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800;900&family=Playfair+Display:ital,wght@0,700;0,900;1,800;1,900&family=Montserrat:wght@600;700;800;900&family=Space+Grotesk:wght@600;700&family=Oswald:wght@600;700&family=Cinzel:wght@700;900&family=Bebas+Neue&family=Noto+Sans:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{--ink:#050b11;--panel:#101a22;--line:#1f2f3a;--txt:#ece6dc}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -80,7 +80,6 @@ const SX = CW / 720;
 const SY = CH / 1280;
 
 /* State global diinisialisasi di awal */
-let cvL=1;
 let now=0,A=0,tm=0,playing=false,li=0,spoken=-1,lay=-1,pScene=null,trT=-9,trDir=1,exporting=false,rec=null,chunks=[],voBuf=null,voSrc=null,voStartCtxT=0,voStartOffset=0,voWallT0=0,cap=[],last=0,DT=.016,mNext=0;
 
 /* Normalisasi kode adegan & mood */
@@ -105,7 +104,7 @@ const hash = s => {let h=2166136261;for(const c of s){h^=c.charCodeAt(0);h=Math.
 const SEED = hash(TITLE+'|'+VARIAN+'|'+TX.t1+'|'+TX.t2);
 const rnd = (()=>{let a=SEED;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}})();
 
-/* ===== DATABASE 12 GENRE (PALET TERANG CERAH & BERVARIASI V28.0) ===== */
+/* ===== DATABASE 12 GENRE (PALET TERANG CERAH & BERVARIASI V29.0) ===== */
 const GENRE_DB={
  sejarah:{pal:{a:'#d97706',t:'#0284c7',p:'#ea580c',g:'#059669',b1:'#fef3c7',b2:'#fde68a',sky:'#fffbeb'},icons:['clock','book','shield','trophy','star'],bgm:[220.00,261.63,293.66,329.63,392.00,329.63]},
  horor:{pal:{a:'#0284c7',t:'#4f46e5',p:'#e11d48',g:'#0d9488',b1:'#e0e7ff',b2:'#c7d2fe',sky:'#eef2ff'},icons:['moon','eye','flame','clock','shield'],bgm:[146.83,155.56,174.61,155.56,138.59,146.83]},
@@ -137,9 +136,9 @@ function detectGenre12(){
  return'fakta';
 }
 
-/* ===== SMART VISUAL DETECTOR V28.0 (PRIORITAS KONTEKS UTAMA KALIMAT VO) ===== */
+/* ===== SMART VISUAL DETECTOR V29.0 (MENGANALISIS KATA BENDA PERSIS SESUAI VO) ===== */
 const STOP_WORDS=new Set([
- 'yang','dan','di','ke','dari','ini','itu','untuk','pada','dengan','adalah','sebagai','dalam','oleh','akan','juga','atau','karena','jika','bila','saat','ketika','sebelum','sesudah','setelah','lalu','kemudian','mereka','kami','kita','kamu','dia','ia','orang','manusia','para','semua','setiap','banyak','beberapa','satu','dua','tiga','empat','lima','enam','tujuh','delapan','sembilan','sepuluh','sekitar','hampir','sangat','lebih','paling','bisa','dapat','harus','mau','ingin','pernah','sering','selalu','belum','sudah','telah','sedang','masih','lagi','saja','cuma','hanya','bukan','tidak','nggak','gak','tak','ada','punya','jadi','menjadi','buat','membuat','disebut','bernama','secara','hal','cara','bagian','tahap','kali','sampai','hingga','antara','selama','tengah','awal','akhir','mungkin','ternyata','padahal','namun','tapi','tetapi','kalau','misalnya','contoh','kayak','seperti','gini','begitu','sih','nih','deh','dong','ya','kan','sekali','waktu','dulu','zaman','era','hari','bikin','malah','makin','banget','aja','lo','gue','lu','bayangkan','coba','lihat','pernah','enggak','sebuah','layaknya','masuk','mode'
+ 'yang','dan','di','ke','dari','ini','itu','untuk','pada','dengan','adalah','sebagai','dalam','oleh','akan','juga','atau','karena','jika','bila','saat','ketika','sebelum','sesudah','setelah','lalu','kemudian','mereka','kami','kita','kamu','dia','ia','orang','manusia','para','semua','setiap','banyak','beberapa','satu','dua','tiga','empat','lima','enam','tujuh','delapan','sembilan','sepuluh','sekitar','hampir','sangat','lebih','paling','bisa','dapat','harus','mau','ingin','pernah','sering','selalu','belum','sudah','telah','sedang','masih','lagi','saja','cuma','hanya','bukan','tidak','nggak','gak','tak','ada','punya','jadi','menjadi','buat','membuat','disebut','bernama','secara','hal','cara','bagian','tahap','kali','sampai','hingga','antara','selama','tengah','awal','akhir','mungkin','ternyata','padahal','namun','tapi','tetapi','kalau','misalnya','contoh','kayak','seperti','gini','begitu','sih','nih','deh','dong','ya','kan','sekali','waktu','dulu','zaman','era','hari','bikin','malah','makin','banget','aja','lo','gue','lu','bayangkan','coba','lihat','pernah','enggak','sebuah','layaknya','masuk','mode','justru','kunci','tercepat','segera'
 ]);
 
 function extractMeaningfulWords(sentence){
@@ -159,30 +158,33 @@ function extractSmartVisual(sentence,fallbackTitle){
  const top1=(words[0]||fallbackTitle||'FAKTA').toUpperCase();
  const top2=(words[1]&&words[1].toUpperCase()!==top1?words[1]:'UTAMA').toUpperCase();
 
- // Prioritas 1: Objek spesifik yang disebut langsung dalam VO
- if(/jam dinding|jam weker|jarum jam|berdetak|waktu malam/.test(q)){
-  return{theme:'clock',ic1:'clock',ic2:'moon',kicker:'SUASANA MALAM',title:'JAM DINDING',sub:'Detak Waktu Malam'};
+ // Mencocokkan objek persis dengan kata yang diucapkan VO
+ if(/jam dinding|jam weker|jarum jam|berdetak/.test(q)){
+  return{theme:'wall_clock',ic1:'wall_clock',ic2:'moon',kicker:'VISUAL VO',title:'JAM DINDING',sub:'Detak Waktu Berjalan'};
  }
- if(/singa|harimau|predator|dikejar|bahaya|ancaman|kabur/.test(q)){
-  return{theme:'alert',ic1:'bolt',ic2:'shield',kicker:'MODE WASPADA',title:'SINYAL BAHAYA',sub:'Respon Ancaman Alami'};
+ if(/singa|harimau|predator|dikejar/.test(q)){
+  return{theme:'lion',ic1:'lion',ic2:'bolt',kicker:'VISUAL VO',title:'DIKEJAR SINGA',sub:'Mode Waspada Aktif'};
  }
  if(/hormon|kortisol|adrenalin|kimia/.test(q)){
-  return{theme:'hormone',ic1:'bolt',ic2:'heart',kicker:'REAKSI TUBUH',title:'HORMON STRES',sub:'Kortisol & Adrenalin'};
+  return{theme:'hormone',ic1:'bolt',ic2:'heart',kicker:'REAKSI TUBUH',title:'HORMON KORTISOL',sub:'Pemicu Kewaspadaan'};
  }
  if(/jantung|berdegup|denyut|darah|tekanan/.test(q)){
   return{theme:'heart',ic1:'heart',ic2:'bolt',kicker:'RESPON JANTUNG',title:'DETAK JANTUNG',sub:'Ritme & Sirkulasi'};
  }
- if(/relaksasi|tenang|santai|pasif|napas|pejam|terpejam|damai|istirahat|terlelap|melepaskan/.test(q)){
-  return{theme:'relax',ic1:'leaf',ic2:'moon',kicker:'KUNCI TERLELAP',title:'LEPASKAN KONTROL',sub:'Tubuh Lebih Rileks'};
+ if(/melepaskan kontrol|kontrol|kendali|setir|kemudi/.test(q)){
+  return{theme:'control',ic1:'shield',ic2:'leaf',kicker:'PSIKOLOGI TIDUR',title:'LEPASKAN KONTROL',sub:'Berhenti Memaksa'};
+ }
+ if(/relaksasi|tenang|santai|pasif|napas|pejam|terpejam|damai|istirahat|terlelap/.test(q)){
+  return{theme:'relax',ic1:'leaf',ic2:'moon',kicker:'KUNCI TERLELAP',title:'TUBUH RILEKS',sub:'Istirahat Alami'};
  }
  if(/kamar mandi|gayung|bak air|mandi|sabun|air dingin|shower|toilet|wc/.test(q)){
   return{theme:'bathroom',ic1:'dipper',ic2:'wave',kicker:'KAMAR MANDI',title:'GAYUNG & AIR',sub:'Ilustrasi Kamar Mandi'};
  }
  if(/lilin|lampu|listrik|penerangan|terang|gelap/.test(q)){
-  return{theme:'light',ic1:'moon',ic2:'lamp',kicker:'SUASANA RUANG',title:'KAMAR GELAP',sub:'Penerangan & Fokus'};
+  return{theme:'light',ic1:'moon',ic2:'lamp',kicker:'SUASANA RUANG',title:'KAMAR GELAP',sub:'Cahaya & Suasana'};
  }
  if(/pabrik|kerja|kantor|jadwal|serentak|mesin|industri/.test(q)){
-  return{theme:'work',ic1:'chip',ic2:'clock',kicker:'RITME KERJA',title:'JADWAL SERENTAK',sub:'Era Industri Modern'};
+  return{theme:'work',ic1:'chip',ic2:'wall_clock',kicker:'RITME KERJA',title:'JADWAL SERENTAK',sub:'Era Industri Modern'};
  }
  if(/sejarawan|catatan|buku|dokumen|arsip|tulisan|naskah|riset|penelitian/.test(q)){
   return{theme:'archive',ic1:'book',ic2:'doc',kicker:'BUKTI CATATAN',title:top1+' '+top2,sub:'Arsip & Bukti Riset'};
@@ -231,9 +233,8 @@ const COVER_FONTS=['"Playfair Display",Georgia,serif','"Montserrat",sans-serif',
 const COVER_FF=COVER_FONTS[SEED%COVER_FONTS.length];
 const COVER_LAYOUT=SEED%4;
 const SPD=.96+rnd()*.14;
-const SUBY=1015;
-/* Sampul muncul di awal sebelum VO masuk sehingga tidak memicu delay subtitle */
-let COVER_HOLD=0.58;
+const SUBY=1025;
+let COVER_HOLD=0.45;
 
 const SC={title:['Pembuka','hook cerita',P.a],b1:['Bukti Utama','b-roll luas',P.t],a:['Fakta Utama','cerita santai',P.g],b2:['Detail Mikro','b-roll kecil',P.p],b3:['Pemindaian','bukti terungkap',P.t],cta:['Mau bikin video begini?','cek link di bio',P.a],c:['Sudut Pandang','refleksi',P.g],b4:['Puncak Cerita','klimaks',P.p],end:['Penutup','kesan akhir',P.t]};
 let LEN=40;
@@ -283,7 +284,7 @@ L.forEach(l=>{
  tot+=l.wt;
 });
 
-/* ===== DETEKSI INTONASI & JEDA VO PRESISI TANPA DELAY AWAL ===== */
+/* ===== DETEKSI INTONASI & JEDA VO PRESISI ANTI-GLITCH ===== */
 function alignLinesToVoAudio(audioBuffer){
  if(!audioBuffer||!NL)return;
  const data=audioBuffer.getChannelData(0);
@@ -329,8 +330,8 @@ function alignLinesToVoAudio(audioBuffer){
  }
 
  if(islands.length===NL){
-  // Sinkronkan COVER_HOLD tepat sebelum suara VO pertama keluar agar 0 delay!
-  COVER_HOLD = Math.max(0.38, Math.min(0.75, islands[0].start + 0.42));
+  // Sampul tampil sebelum suara pertama keluar -> pergantian langsung bersih tanpa tumpuk!
+  COVER_HOLD = Math.max(0.35, Math.min(0.65, islands[0].start));
   for(let idx=0;idx<NL;idx++){
    const isl=islands[idx];
    L[idx].t0=(idx===0)?0:Math.max(0,isl.start-0.04);
@@ -504,7 +505,6 @@ function drawBrightVariedBg(mode,accent){
  }
  X.restore();
 
- /* Elemen dekorasi pinggir sampul yang hidup & bergerak tanpa menghalangi karakter */
  if(mode==='cover'){
   X.save();
   X.translate(76,220+waveShift);
@@ -698,7 +698,7 @@ function drawStickerBadge(shapeId,r,fillCol,borderCol){
 }
 
 function drawCoverProps(){
- const popIn=bk(cl(A/0.35));
+ const popIn=bk(cl(A/0.25));
  const p1x=114,p1y=495+Math.sin(A*2.2)*9;
  const p2x=606,p2y=495+Math.cos(A*2.0)*9;
  const s1=STICKER_SHAPE;
@@ -725,12 +725,47 @@ function drawCoverProps(){
  X.restore();
 }
 
-/* KOLEKSI IKON & ILUSTRASI VECTOR 2D/3D LENGKAP */
+/* ===== KOLEKSI ILUSTRASI VECTOR 2D/3D (JAM DINDING, SINGA, JANTUNG, DLL) ===== */
 function drawVecIcon(type,x,y,r,col){
  X.save();
  X.translate(x,y);
  X.lineCap='round';X.lineJoin='round';
- if(type==='heart'){
+ if(type==='wall_clock'||type==='clock'){
+  // Bingkai Jam Dinding Lengkap
+  X.fillStyle=col;X.beginPath();X.arc(0,0,r*1.08,0,Math.PI*2);X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=4;X.stroke();
+  X.fillStyle='#ffffff';X.beginPath();X.arc(0,0,r*0.88,0,Math.PI*2);X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=3;X.stroke();
+  // Tanda jam 12, 3, 6, 9
+  X.fillStyle='#0f172a';
+  [0,1,2,3].forEach(k=>{
+   const a=k*Math.PI/2;
+   X.beginPath();X.arc(Math.sin(a)*r*0.68,-Math.cos(a)*r*0.68,r*0.07,0,Math.PI*2);X.fill();
+  });
+  // Jarum jam & menit berdetak cepat
+  const secAng=Math.floor(A*4)*(Math.PI/6);
+  const minAng=A*0.6;
+  X.strokeStyle='#0f172a';X.lineWidth=4.5;
+  X.beginPath();X.moveTo(0,0);X.lineTo(Math.sin(minAng)*r*0.46,-Math.cos(minAng)*r*0.46);X.stroke();
+  X.strokeStyle='#dc2626';X.lineWidth=3;
+  X.beginPath();X.moveTo(0,0);X.lineTo(Math.sin(secAng)*r*0.64,-Math.cos(secAng)*r*0.64);X.stroke();
+  X.fillStyle='#0f172a';X.beginPath();X.arc(0,0,r*0.09,0,Math.PI*2);X.fill();
+ }else if(type==='lion'){
+  // Ilustrasi Kepala Singa
+  X.fillStyle='#d97706';X.beginPath();X.arc(0,0,r*0.92,0,Math.PI*2);X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=4;X.stroke();
+  X.fillStyle='#fef3c7';X.beginPath();X.arc(0,r*0.05,r*0.62,0,Math.PI*2);X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=3.5;X.stroke();
+  // Telinga
+  X.fillStyle='#f59e0b';
+  X.beginPath();X.arc(-r*0.46,-r*0.48,r*0.2,0,Math.PI*2);X.arc(r*0.46,-r*0.48,r*0.2,0,Math.PI*2);X.fill();
+  // Mata tajam
+  X.fillStyle='#0f172a';
+  X.beginPath();X.arc(-r*0.22,-r*0.06,r*0.08,0,Math.PI*2);X.arc(r*0.22,-r*0.06,r*0.08,0,Math.PI*2);X.fill();
+  // Hidung segitiga
+  X.fillStyle='#dc2626';
+  X.beginPath();X.moveTo(-r*0.14,r*0.12);X.lineTo(r*0.14,r*0.12);X.lineTo(0,r*0.26);X.closePath();X.fill();
+ }else if(type==='heart'){
   X.fillStyle=col;
   X.beginPath();
   X.moveTo(0,r*0.72);
@@ -770,12 +805,6 @@ function drawVecIcon(type,x,y,r,col){
   X.quadraticCurveTo(r*0.45,r*0.25,r*0.85,r*0.45);X.lineTo(r*0.85,-r*0.45);X.quadraticCurveTo(r*0.45,-r*0.65,0,-r*0.45);X.closePath();X.fill();
   X.strokeStyle='#0f172a';X.lineWidth=3.5;X.stroke();
   X.strokeStyle=col;X.lineWidth=3;X.beginPath();X.moveTo(0,-r*0.42);X.lineTo(0,r*0.42);X.stroke();
- }else if(type==='clock'){
-  X.fillStyle='#ffffff';X.beginPath();X.arc(0,0,r,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=4;X.stroke();
-  X.strokeStyle=col;X.lineWidth=4.5;
-  const handAng=A*3.2;
-  X.beginPath();X.moveTo(0,0);X.lineTo(Math.sin(handAng)*r*0.55,-Math.cos(handAng)*r*0.55);X.moveTo(0,0);X.lineTo(r*0.45,r*0.2);X.stroke();
  }else if(type==='sun'){
   X.fillStyle=col;X.beginPath();X.arc(0,0,r*0.52,0,Math.PI*2);X.fill();
   X.strokeStyle='#0f172a';X.lineWidth=3.5;X.stroke();
@@ -861,9 +890,9 @@ function getActiveBrollClause(){
  return clauses[idx];
 }
 
-/* ===== MOTION GRAPHIC B-ROLL FULL LAYAR (4 GAYA BERBEDA DALAM 1 VIDEO) ===== */
+/* ===== MOTION GRAPHIC B-ROLL FULL LAYAR (GAMBAR OBJEK PERSIS SESUAI VO!) ===== */
 function fullBroll(k,t,o){
- const e=eo(cl(t/.40));
+ const e=eo(cl(t/.35));
  const camZoom=1.0+Math.min(0.06,t*0.012);
  const activeSent=getActiveBrollClause();
  const det=extractSmartVisual(activeSent,TITLE);
@@ -885,7 +914,36 @@ function fullBroll(k,t,o){
  X.strokeStyle=P.a;X.lineWidth=4.5;rr(60,232,600,400,32);X.stroke();
  X.restore();
 
- if(mgStyle===0){
+ // Jika VO menyebut objek konkret (Jam Dinding, Singa, Jantung, Kamar Mandi, Kasur), tampilkan ilustrasi objek utamanya secara besar & jelas!
+ const isConcreteObject=['wall_clock','lion','heart','bathroom','sleep','control','relax'].includes(det.theme);
+
+ if(isConcreteObject){
+  const cx=360,cy=402;
+  const pulse=1+Math.sin(A*3.6)*0.04;
+  // Lingkaran latar objek
+  X.fillStyle=al(P.a,0.16);
+  X.beginPath();X.arc(cx,cy,136,0,Math.PI*2);X.fill();
+  X.strokeStyle=P.t;X.lineWidth=4;X.setLineDash([12,10]);
+  X.beginPath();X.arc(cx,cy,136,0,Math.PI*2);X.stroke();
+  X.setLineDash([]);
+
+  // Ikon objek utama besar di tengah
+  X.save();
+  X.translate(cx,cy);
+  X.scale(pulse,pulse);
+  drawVecIcon(det.ic1,0,0,92,P.a);
+  X.restore();
+
+  // Lencana ikon pendukung di sudut kanan bawah lingkaran
+  X.save();
+  X.translate(cx+96,cy+72);
+  X.fillStyle='#ffffff';X.beginPath();X.arc(0,0,34,0,Math.PI*2);X.fill();
+  X.strokeStyle=P.a;X.lineWidth=3.5;X.stroke();
+  drawVecIcon(det.ic2,0,0,22,P.t);
+  X.restore();
+
+  txt(det.sub,cx,586,23,'#0f172a','center',900);
+ }else if(mgStyle===0){
   const slideIn=eo(cl(t/0.4));
   X.save();
   X.translate(-(1-slideIn)*30,0);
@@ -908,7 +966,6 @@ function fullBroll(k,t,o){
   X.fillStyle='#0f172a';X.beginPath();X.arc(0,0,26,0,Math.PI*2);X.fill();
   txt('→',0,1,26,'#ffffff','center',900);
   X.restore();
-
  }else if(mgStyle===1){
   const cx=360,cy=388;
   const ringR=105+Math.sin(A*3)*5;
@@ -927,29 +984,6 @@ function fullBroll(k,t,o){
    rr(bx-10,565-bh,20,bh,8);X.fill();
   }
   txt(det.sub,360,598,21,'#0f172a','center',900);
-
- }else if(mgStyle===2){
-  const mWords=extractMeaningfulWords(activeSent).slice(0,3).map(w=>w.toUpperCase());
-  const stepIcons=[det.ic1,det.ic2,'star'];
-  const activeIdx=Math.min(2,Math.floor(prog*3));
-
-  X.strokeStyle=al(P.t,0.3);X.lineWidth=6;
-  X.beginPath();X.moveTo(165,410);X.lineTo(555,410);X.stroke();
-  X.strokeStyle=P.a;X.lineWidth=6;
-  X.beginPath();X.moveTo(165,410);X.lineTo(165+prog*390,410);X.stroke();
-
-  [0,1,2].forEach(i=>{
-   const cx=165+i*195,cy=410,act=(i===activeIdx);
-   const sc=act?(1.12+Math.sin(A*4)*0.04):0.95;
-   X.save();X.translate(cx,cy);X.scale(sc,sc);
-   X.fillStyle=act?P.a:'#f8fafc';
-   X.beginPath();X.arc(0,0,66,0,Math.PI*2);X.fill();
-   X.strokeStyle=act?'#0f172a':P.t;X.lineWidth=act?5:3.5;X.stroke();
-   drawVecIcon(stepIcons[i],0,0,34,act?'#0f172a':P.t);
-   X.restore();
-   txt(mWords[i]||('POIN '+(i+1)),cx,cy+112,18,act?'#0f172a':'#475569','center',900);
-  });
-
  }else{
   const cx=360,cy=408;
   X.save();
@@ -972,7 +1006,7 @@ function fullBroll(k,t,o){
 
 /* ===== MOTION GRAPHIC B-ROLL KOTAK KECIL ATAS KARAKTER ===== */
 function smallBroll(k,t,o){
- const e=eo(cl(t/.38));
+ const e=eo(cl(t/.35));
  const activeSent=getActiveBrollClause();
  const det=extractSmartVisual(activeSent,TITLE);
  const cardStyle=(SEED+k)%3;
@@ -1011,11 +1045,11 @@ function smallBroll(k,t,o){
 const SCN={
  cover(t){
   drawBrightVariedBg('cover',P.a);
-  const u=bk(cl(t/.32));
+  const u=bk(cl(t/.28));
   const ly=COVER_LAYOUT;
 
   X.save();
-  X.globalAlpha*=cl(t/.20);
+  X.globalAlpha*=cl(t/.16);
   if(ly===0||ly===2){
    X.fillStyle=P.a;rr(230,115,260,38,19);X.fill();
    txt(TX.kicker.toUpperCase(),360,134,16,'#091017','center',900);
@@ -1089,7 +1123,7 @@ const SCN={
   drawBrightVariedBg('studio',P.t);
   char({ox:115});
   X.save();
-  X.fillStyle='rgba(255,255,255,0.90)';rr(56,1120,608,125,20);X.fill();
+  X.fillStyle='rgba(255,255,255,0.92)';rr(56,1120,608,125,20);X.fill();
   X.strokeStyle=P.a;X.lineWidth=3;rr(56,1120,608,125,20);X.stroke();
   txt(TX.src,360,1145,17,P.t,'center',900);
   SRC.slice(0,2).forEach((s,i)=>txt(s,360,1178+i*30,fz(s,560,15),'#0f172a','center',700));
@@ -1097,7 +1131,7 @@ const SCN={
  }
 };
 
-/* ===== BAGIAN 3: KINETIC TYPOGRAPHY CLEAN (KARAKTER) & GLASS PILL CERAH (B-ROLL) ===== */
+/* ===== BAGIAN 3: SUBTITLE 100% CLEAN TANPA BACKGROUND KATA + MENEBAL PER 1 KATA ===== */
 function activeWordIdx(l){
  if(!l||!l.w||!l.w.length)return-1;
  if(tm<l.ss)return-1;
@@ -1131,20 +1165,20 @@ function buildCharDynamicSub(l){
    const rowFont=AE_FONTS[(SEED+li+pageId+rowIdx)%AE_FONTS.length];
    const items=rowSlice.map((w,k)=>{
     const ff=w.em?AE_EM_FONT:rowFont;
-    const fWeight=w.em?'italic 900':'900';
-    const sz=w.em?56:48;
-    X.font=`${fWeight} ${sz}px ${ff}`;
+    // Lebar dihitung dengan font tebal (900) agar tidak bertabrakan saat kata aktif menebal
+    const baseSz=w.em?46:42;
+    X.font=`900 ${baseSz}px ${ff}`;
     const ww=X.measureText(w.s).width;
-    return{s:w.s,em:w.em,idx:wIdx+(rowIdx===0?k:splitAt+k),ww,ff,fWeight,sz};
+    return{s:w.s,em:w.em,idx:wIdx+(rowIdx===0?k:splitAt+k),ww,ff,baseSz};
    });
-   const totalSlotW=items.reduce((acc,it)=>acc+Math.ceil(it.ww*1.10)+16,0);
+   const totalSlotW=items.reduce((acc,it)=>acc+Math.ceil(it.ww*1.12)+16,0);
    const fitScale=totalSlotW>440?(440/totalSlotW):1;
    let xCursor=38;
    items.forEach(it=>{
-    const adjSz=Math.max(30,Math.round(it.sz*fitScale));
-    X.font=`${it.fWeight} ${adjSz}px ${it.ff}`;
+    const adjSz=Math.max(28,Math.round(it.baseSz*fitScale));
+    X.font=`900 ${adjSz}px ${it.ff}`;
     const adjW=X.measureText(it.s).width;
-    const slotW=Math.ceil(adjW*1.10)+16;
+    const slotW=Math.ceil(adjW*1.12)+16;
     out.push({...it,sz:adjSz,ww:adjW,slotW,row:rowIdx,x:xCursor,pageId});
     xCursor+=slotW;
    });
@@ -1160,16 +1194,15 @@ function buildBrollSingleLine(l,maxW){
  const pages=[];
  let cur=[],cw=0;
  words.forEach((w,idx)=>{
-  const sz=w.em?36:33;
-  const fWeight=w.em?'900':'800';
-  X.font=`${fWeight} ${sz}px ${SANS}`;
+  const baseSz=w.em?38:35;
+  X.font=`900 ${baseSz}px ${SANS}`;
   const ww=X.measureText(w.s).width;
-  const slotW=Math.ceil(ww*1.06)+13;
+  const slotW=Math.ceil(ww*1.10)+14;
   if(cur.length>0&&cw+slotW>maxW){
    pages.push(cur);
    cur=[];cw=0;
   }
-  cur.push({s:w.s,em:w.em,idx,ww,slotW,sz,fWeight});
+  cur.push({s:w.s,em:w.em,idx,ww,slotW,sz:baseSz});
   cw+=slotW;
  });
  if(cur.length)pages.push(cur);
@@ -1187,23 +1220,24 @@ function buildBrollSingleLine(l,maxW){
 }
 
 function drawSubs(){
- if(cvL>0.35)return;
+ // Tidak tampil saat sampul masih tampil penuh
+ if(tm < COVER_HOLD) return;
  const l=L[li];if(!l)return;
  const sc=l[0];
  const isCharSpeakingOnly=(sc==='title'||sc==='a'||sc==='c'||sc==='end');
  const aw=activeWordIdx(l);
  if(aw<0)return;
 
- const voicePulse=CS.speaking?(1+CS.energy*0.09):1.0;
+ const voicePulse=CS.speaking?(1+CS.energy*0.08):1.0;
 
  if(isCharSpeakingOnly){
-  /* SUBTITLE KARAKTER: CLEAN KINETIC TYPOGRAPHY (TANPA BACKGROUND KATA!) */
+  /* SUBTITLE KARAKTER: 100% CLEAN TANPA BACKGROUND KATA, MENEBAL & MEMBESAR PER 1 KATA */
   if(lay!==li*2+1){cap=buildCharDynamicSub(l);lay=li*2+1}
   if(!cap.length)return;
 
   const activeItem=cap.find(it=>it.idx===aw)||cap[cap.length-1];
   const currentPage=activeItem.pageId;
-  const baseY=126;
+  const baseY=128;
   const lineH=68;
 
   X.save();
@@ -1215,29 +1249,33 @@ function drawSubs(){
 
    let scWord=1,yOff=0,xOff=0,rot=0;
    if(AE_STYLE===0){
-    scWord=(0.82+0.18*pop)*(act?(1.09*voicePulse):1.0);
-    yOff=(1-pop)*12-(act?4:0);
+    scWord=(0.86+0.14*pop)*(act?(1.12*voicePulse):0.96);
+    yOff=(1-pop)*10-(act?3:0);
    }else if(AE_STYLE===1){
-    scWord=act?(1.08*voicePulse):1.0;
-    yOff=(1-pop)*22;
+    scWord=act?(1.12*voicePulse):0.96;
+    yOff=(1-pop)*20;
    }else if(AE_STYLE===2){
-    scWord=(0.75+0.25*bk(pop))*(act?(1.07*voicePulse):1.0);
-    rot=act?Math.sin(A*12)*0.02:0;
+    scWord=(0.80+0.20*bk(pop))*(act?(1.10*voicePulse):0.96);
+    rot=act?Math.sin(A*12)*0.018:0;
    }else{
-    scWord=act?(1.09*voicePulse):1.0;
-    xOff=(1-pop)*-18;
+    scWord=act?(1.12*voicePulse):0.96;
+    xOff=(1-pop)*-16;
    }
+
+   // Kata aktif menebal (900), kata lainnya normal (600) -> bersih tanpa kotak blok!
+   const weightStr = act ? (item.em ? 'italic 900' : '900') : (item.em ? 'italic 600' : '600');
 
    X.save();
    X.translate(item.x+xOff,baseY+item.row*lineH+yOff);
    X.rotate(rot);
    X.scale(scWord,scWord);
-   X.globalAlpha=0.35+0.65*pop;
+   X.globalAlpha=act?1.0:(0.35+0.55*pop);
 
-   X.font=`${item.fWeight} ${item.sz}px ${item.ff}`;
+   X.font=`${weightStr} ${item.sz}px ${item.ff}`;
    X.textAlign='left';X.textBaseline='middle';X.lineJoin='round';
-   X.shadowColor='rgba(15,23,42,0.45)';X.shadowBlur=10;X.shadowOffsetY=4;
-   X.lineWidth=6.5;X.strokeStyle='rgba(15,23,42,0.95)';
+   X.shadowColor='rgba(15,23,42,0.40)';X.shadowBlur=8;X.shadowOffsetY=3;
+   X.lineWidth=act?6.5:4.5;
+   X.strokeStyle='rgba(15,23,42,0.95)';
    X.strokeText(item.s,0,0);
    X.shadowColor='transparent';
    X.fillStyle=act?P.a:(item.em?'#fde047':'#ffffff');
@@ -1246,8 +1284,8 @@ function drawSubs(){
   });
   X.restore();
  }else{
-  /* SUBTITLE B-ROLL: CLEAN BRIGHT GLASS PILL DENGAN WARNA CERAH ELEGAN */
-  if(lay!==li*2+2){cap=buildBrollSingleLine(l,600);lay=li*2+2}
+  /* SUBTITLE B-ROLL FULL & KECIL: 100% CLEAN TANPA BACKGROUND KATA, MENEBAL PER 1 KATA */
+  if(lay!==li*2+2){cap=buildBrollSingleLine(l,620);lay=li*2+2}
   if(!cap.length)return;
 
   const activeItem=cap.find(it=>it.idx===aw)||cap[cap.length-1];
@@ -1255,92 +1293,90 @@ function drawSubs(){
   const lineItems=cap.filter(it=>it.pageId===currentPage&&it.idx<=aw);
   if(!lineItems.length)return;
 
-  const allPageItems=cap.filter(it=>it.pageId===currentPage);
-  const boxW=Math.min(640,Math.max(200,allPageItems[0].totalW+48));
-  const boxX=360-boxW/2;
   const y=SUBY;
 
   X.save();
-  X.shadowColor='rgba(15,23,42,0.14)';X.shadowBlur=16;X.shadowOffsetY=6;
-  X.fillStyle='rgba(255,255,255,0.94)';
-  rr(boxX,y-32,boxW,64,32);
-  X.fill();
-  X.shadowColor='transparent';
-  X.strokeStyle=P.a;X.lineWidth=3.5;
-  rr(boxX,y-32,boxW,64,32);
-  X.stroke();
-
   lineItems.forEach(item=>{
    const act=(item.idx===aw);
-   X.font=`${item.fWeight} ${item.sz}px ${SANS}`;
-   X.textAlign='left';X.textBaseline='middle';X.lineJoin='round';
-   if(act){
-    X.fillStyle=al(P.a,0.22);
-    rr(item.x-6,y-22,item.ww+12,44,12);
-    X.fill();
-   }
-   X.fillStyle=act?P.t:(item.em?P.p:'#0f172a');
-   X.fillText(item.s,item.x,y-(act?1:0));
+   const weightStr = act ? '900' : '600';
+   const scWord = act ? (1.12 * voicePulse) : 0.96;
+
+   X.save();
+   X.translate(item.x + item.ww*0.5, y - (act?2:0));
+   X.scale(scWord, scWord);
+   X.font=`${weightStr} ${item.sz}px ${SANS}`;
+   X.textAlign='center';X.textBaseline='middle';X.lineJoin='round';
+   X.shadowColor='rgba(15,23,42,0.35)';X.shadowBlur=8;X.shadowOffsetY=3;
+   X.lineWidth=act?6.0:4.0;
+   X.strokeStyle='rgba(15,23,42,0.95)';
+   X.strokeText(item.s,0,0);
+   X.shadowColor='transparent';
+   X.fillStyle=act?P.a:(item.em?'#fde047':'#ffffff');
+   X.fillText(item.s,0,0);
+   X.restore();
   });
   X.restore();
  }
 }
 
-/* ===== TRANSISI MASUK & KELUAR ALA KREATOR SOSMED ===== */
+/* ===== TRANSISI MASUK & KELUAR YANG TERLIHAT JELAS + SFX ===== */
 function applySceneMotion(mode,t){
- const dur=0.28;
+ const dur=0.35;
  if(t>=dur)return;
  const u=cl(t/dur);
  const e=eo(u);
  const style=(TRANS_STYLE+li)%4;
  if(style===0){
-  // Whip-Pan Slide Masuk
-  X.translate((1-e)*42*trDir,0);
+  // Whip-Pan Geser Samping Penuh Energi
+  X.translate((1-e)*140*trDir,0);
  }else if(style===1){
-  // Zoom-Pop Masuk
-  const sc=0.95+0.05*e;
+  // Zoom-Punch Masuk
+  const sc=0.86+0.14*e;
   X.translate(360,640);X.scale(sc,sc);X.translate(-360,-640);
  }else if(style===2){
-  // Vertical Slide-Up Smooth
-  X.translate(0,(1-e)*28);
+  // Slide-Up Cepat
+  X.translate(0,(1-e)*110);
  }else{
-  // Gentle Tilt-In
-  X.translate(360,640);X.rotate((1-e)*0.018*trDir);X.translate(-360,-640);
+  // Swirl Tilt Masuk
+  const sc=0.90+0.10*e;
+  X.translate(360,640);X.rotate((1-e)*0.06*trDir);X.scale(sc,sc);X.translate(-360,-640);
  }
 }
 
 function drawTransition(){
  const dt=now-trT;
- if(dt<0||dt>0.26)return;
- const u=dt/0.26;
+ if(dt<0||dt>0.32)return;
+ const u=dt/0.32;
  const alpha=Math.sin(u*Math.PI);
  const style=(TRANS_STYLE+li)%4;
 
  X.save();
  if(style===0||style===2){
-  // Light Sweep Wipe
-  const sweepX=-200+u*1120;
-  const grad=X.createLinearGradient(sweepX-140,0,sweepX+140,0);
+  // Wipe Bar Warna Aksen + Kilauan Cahaya
+  const sweepX=-260+u*1240;
+  const grad=X.createLinearGradient(sweepX-180,0,sweepX+180,0);
   grad.addColorStop(0,'rgba(255,255,255,0)');
-  grad.addColorStop(0.5,al('#ffffff',alpha*0.42));
+  grad.addColorStop(0.5,al(P.a,alpha*0.48));
   grad.addColorStop(1,'rgba(255,255,255,0)');
   X.fillStyle=grad;
   X.fillRect(0,0,W,H);
  }else if(style===1){
-  // Iris Ring Zoom
-  const rad=80+u*640;
-  X.strokeStyle=al(P.a,alpha*0.55);
-  X.lineWidth=10*(1-u*0.6);
+  // Iris Ring Zoom Dinamis
+  const rad=60+u*720;
+  X.strokeStyle=al(P.a,alpha*0.75);
+  X.lineWidth=16*(1-u*0.5);
   X.beginPath();X.arc(360,640,rad,0,Math.PI*2);X.stroke();
  }else{
-  // Soft Flash Dissolve
-  X.fillStyle=al('#ffffff',alpha*0.24);
-  X.fillRect(0,0,W,H);
+  // Curtain Split Wipe
+  const hBar=(1-u)*160;
+  X.fillStyle=al(P.t,alpha*0.55);
+  X.fillRect(0,0,W,hBar);
+  X.fillRect(0,H-hBar,W,hBar);
  }
  X.restore();
 }
 
-/* ---------- MESIN AUDIO: SFX SOSMED + BACKSOUND BERVARIASI ---------- */
+/* ---------- MESIN AUDIO PREVIEW BROWSER ---------- */
 let ac=null,dest=null,gainM=null,gainBgm=null,gainVo=null,gainSfx=null;
 function initAudio(){
  if(ac){if(ac.state==='suspended')ac.resume().catch(()=>{});return}
@@ -1348,8 +1384,8 @@ function initAudio(){
  ac=new AC();
  dest=ac.createMediaStreamDestination();
  gainM=ac.createGain();gainM.gain.value=1.0;
- gainBgm=ac.createGain();gainBgm.gain.value=0.16;
- gainSfx=ac.createGain();gainSfx.gain.value=0.88;
+ gainBgm=ac.createGain();gainBgm.gain.value=0.18;
+ gainSfx=ac.createGain();gainSfx.gain.value=0.90;
  gainVo=ac.createGain();gainVo.gain.value=1.25;
  gainBgm.connect(gainM);
  gainSfx.connect(gainM);
@@ -1363,27 +1399,15 @@ function initAudio(){
 function sfxTransition(dir=1){
  if(!ac)return;
  const t=ac.currentTime;
- // Whoosh Swipe
  const o1=ac.createOscillator(),g1=ac.createGain();
  o1.type='sine';
  o1.frequency.setValueAtTime(dir>0?170:360,t);
  o1.frequency.exponentialRampToValueAtTime(dir>0?680:190,t+0.20);
  g1.gain.setValueAtTime(0.001,t);
- g1.gain.linearRampToValueAtTime(0.22,t+0.04);
+ g1.gain.linearRampToValueAtTime(0.24,t+0.04);
  g1.gain.exponentialRampToValueAtTime(0.001,t+0.22);
  o1.connect(g1);g1.connect(gainSfx);
  o1.start(t);o1.stop(t+0.24);
-
- // Crisp Pop Accent
- const o2=ac.createOscillator(),g2=ac.createGain();
- o2.type='triangle';
- o2.frequency.setValueAtTime(587.33,t+0.03);
- o2.frequency.exponentialRampToValueAtTime(880.00,t+0.14);
- g2.gain.setValueAtTime(0.001,t+0.03);
- g2.gain.linearRampToValueAtTime(0.13,t+0.05);
- g2.gain.exponentialRampToValueAtTime(0.001,t+0.17);
- o2.connect(g2);g2.connect(gainSfx);
- o2.start(t+0.03);o2.stop(t+0.18);
 }
 
 function sfx(k){
@@ -1409,7 +1433,7 @@ function bgmTick(){
  o.type=(SEED%2===0)?'sine':'triangle';
  o.frequency.setValueAtTime(f,t);
  g.gain.setValueAtTime(0.001,t);
- g.gain.linearRampToValueAtTime(0.16,t+0.06);
+ g.gain.linearRampToValueAtTime(0.18,t+0.06);
  g.gain.exponentialRampToValueAtTime(0.001,t+0.58);
  o.connect(g);g.connect(gainBgm);
  o.start(t);o.stop(t+0.60);
@@ -1433,7 +1457,7 @@ function startVoFrom(offset){
 }
 
 /* ---------- render utama ---------- */
-let prevCvVisible=true;
+let prevInCover=true;
 function render(ts){
  if(!last)last=ts;
  DT=cl((ts-last)/1000,.001,.05);last=ts;now=ts/1000;
@@ -1449,20 +1473,14 @@ function render(ts){
    tm=LEN;playing=false;stopVoNode();updatePlayIcon();
    if(exporting)finishExport();
   }
-  if(tm<COVER_HOLD){
-   cvL=1;
-  }else{
-   cvL=Math.max(0,cvL-DT*4.5);
-  }
- }else{
-  if(tm<=0.01)cvL=1;
  }
- const cvVisible=(cvL>0.02);
- if(prevCvVisible&&!cvVisible){
-  trT=now;trDir=1;
-  if(playing)sfxTransition(1);
+
+ const inCover = (tm < COVER_HOLD);
+ if(prevInCover && !inCover){
+  trT = now; trDir = 1;
+  if(playing) sfxTransition(1);
  }
- prevCvVisible=cvVisible;
+ prevInCover = inCover;
 
  A+=DT*SPD;
  const nli=lineAt(tm);
@@ -1471,7 +1489,7 @@ function render(ts){
   const sc=L[li]?L[li][0]:'a';
   if(sc!==pScene){
    pScene=sc;
-   if(!cvVisible){
+   if(!inCover){
     trT=now;trDir=(li%2===0)?1:-1;
     if(playing)sfxTransition(trDir);
    }
@@ -1484,16 +1502,8 @@ function render(ts){
  X.save();X.scale(SX,SY);
  const sc=L[li]?L[li][0]:'title';
  const scT=Math.max(0,tm-(L[li]?L[li].t0:0));
- if(cvVisible){
-  if(cvL<0.99&&SCN[sc]){
-   SCN[sc](scT);
-  }
-  X.save();
-  const zOut=1+(1-cvL)*0.06;
-  X.translate(360,640);X.scale(zOut,zOut);X.translate(-360,-640);
-  X.globalAlpha=cvL;
+ if(inCover){
   SCN.cover(A);
-  X.restore();
  }else if(SCN[sc]){
   X.save();
   applySceneMotion(sc,scT);
@@ -1517,7 +1527,7 @@ function updatePlayIcon(){$('pi').innerHTML=playing?'<rect x="6" y="5" width="4"
 function togglePlay(){
  initAudio();if(ac.state==='suspended')ac.resume();
  if(!playing){
-  if(tm>=LEN-.05){tm=0;spoken=-1;pScene=null;cvL=1;mNext=0}
+  if(tm>=LEN-.05){tm=0;spoken=-1;pScene=null;mNext=0}
   playing=true;
   startVoFrom(tm);
  }else{
@@ -1527,12 +1537,12 @@ function togglePlay(){
 }
 frame.onclick=()=>exporting?0:togglePlay();
 $('play').onclick=()=>exporting?0:togglePlay();
-$('restart').onclick=()=>{if(exporting)return;tm=0;spoken=-1;pScene=null;cvL=1;mNext=0;playing=false;stopVoNode();updatePlayIcon()};
+$('restart').onclick=()=>{if(exporting)return;tm=0;spoken=-1;pScene=null;mNext=0;playing=false;stopVoNode();updatePlayIcon()};
 $('tl').onclick=e=>{
  if(exporting)return;
  const r=$('tl').getBoundingClientRect();
  tm=cl((e.clientX-r.left)/r.width)*LEN;
- spoken=-1;lay=-1;cvL=tm<COVER_HOLD?1:0;mNext=0;
+ spoken=-1;lay=-1;mNext=0;
  if(playing)startVoFrom(tm);
 };
 
@@ -1553,7 +1563,7 @@ $('exp').onclick=async()=>{
   $('exp').textContent='Ekspor video HD';$('exp').classList.remove('rec');
   show('Video berhasil diekspor!');
  };
- exporting=true;tm=0;spoken=-1;pScene=null;cvL=1;mNext=0;playing=true;updatePlayIcon();
+ exporting=true;tm=0;spoken=-1;pScene=null;mNext=0;playing=true;updatePlayIcon();
  $('exp').textContent='Merekam HD...';$('exp').classList.add('rec');
  rec.start(200);
  startVoFrom(0);
@@ -1567,7 +1577,7 @@ window.__SERVER_MODE = new URLSearchParams(window.location.search).get('autorend
 
 const FONTS_READY=Promise.race([
  Promise.all([
-  ...['600','700','800','900'].map(w=>document.fonts.load(w+' 40px Poppins')),
+  ...['500','600','700','800','900'].map(w=>document.fonts.load(w+' 40px Poppins')),
   document.fonts.load('800 40px "Playfair Display"'),
   document.fonts.load('700 40px "Noto Sans"'),
   ...(FN?[document.fonts.load('800 40px '+FN)]:[])
@@ -1575,13 +1585,20 @@ const FONTS_READY=Promise.race([
  new Promise(r=>setTimeout(r,5000))
 ]).catch(()=>{});
 
+let prevServerCover = true;
 window.__renderFrameAt = function(tSec){
  DT = 1/30;
  tm = cl(tSec, 0, LEN);
  now = tm;
  A = tm * SPD;
  playing = true;
- cvL = tm < COVER_HOLD ? 1 : Math.max(0, 1 - (tm - COVER_HOLD) * 4.5);
+
+ const inCover = (tm < COVER_HOLD);
+ if(prevServerCover && !inCover){
+  trT = now;
+  trDir = 1;
+ }
+ prevServerCover = inCover;
 
  const nli = lineAt(tm);
  if(nli !== li){
@@ -1590,7 +1607,7 @@ window.__renderFrameAt = function(tSec){
   if(sc !== pScene){
    pScene = sc;
    trDir = (li % 2 === 0) ? 1 : -1;
-   if(cvL <= 0.02) trT = now;
+   if(!inCover) trT = now;
   }
  }
  charTick();
@@ -1599,17 +1616,8 @@ window.__renderFrameAt = function(tSec){
  X.scale(SX, SY);
  const sc = L[li] ? L[li][0] : 'title';
  const scT = Math.max(0, tm - (L[li] ? L[li].t0 : 0));
- const cvVisible = (cvL > 0.02);
- if(cvVisible){
-  if(cvL < 0.99 && SCN[sc]){
-   SCN[sc](scT);
-  }
-  X.save();
-  const zOut = 1 + (1 - cvL) * 0.06;
-  X.translate(360, 640); X.scale(zOut, zOut); X.translate(-360, -640);
-  X.globalAlpha = cvL;
+ if(inCover){
   SCN.cover(A);
-  X.restore();
  }else if(SCN[sc]){
   X.save();
   applySceneMotion(sc, scT);
