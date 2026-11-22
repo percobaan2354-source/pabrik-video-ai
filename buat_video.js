@@ -50,7 +50,6 @@ function parseUkuran(uk) {
       isVertical: false
     };
   }
-  // Default 9:16 (YouTube Shorts, TikTok, Instagram Reels)
   return {
     width: 720,
     height: 1280,
@@ -288,7 +287,6 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
   ]
 }`;
 
-  // Otomatis ambil daftar model aktif dari akun Gemini API kamu + daftar cadangan resmi
   let models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-flash-preview", "gemini-flash-latest"];
   try {
     const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
@@ -382,7 +380,13 @@ async function main() {
   await new Promise(r => server.listen(8080, r));
 
   const browser = await chromium.launch({
-    args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required', '--disable-dev-shm-usage']
+    args: [
+      '--no-sandbox',
+      '--autoplay-policy=no-user-gesture-required',
+      '--disable-dev-shm-usage',
+      '--use-gl=angle',
+      '--use-angle=swiftshader'
+    ]
   });
 
   try {
@@ -397,20 +401,60 @@ async function main() {
       if (msg.type() === 'error') console.log('[Halaman] console.error:', msg.text());
     });
 
-    const downloadPromise = page.waitForEvent('download', { timeout: 240000 });
-    await page.goto('http://localhost:8080/render_siap.html?autorender=1', { waitUntil: 'networkidle' });
+    // Tangkap blob langsung saat <a download="hasil_mentah.webm"> dibuat di browser
+    await page.addInitScript(() => {
+      const origCreateObjectURL = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = function(obj) {
+        if (obj instanceof Blob && obj.type && obj.type.includes('video')) {
+          window.__EXPORT_BLOB = obj;
+        }
+        return origCreateObjectURL(obj);
+      };
+    });
 
-    const download = await downloadPromise;
-    await download.saveAs('hasil_mentah.webm');
+    await page.goto('http://localhost:8080/render_siap.html?autorender=1', { waitUntil: 'domcontentloaded' });
+
+    // Tunggu sampai rekaman di browser selesai (maksimal 240 detik)
+    await page.waitForFunction(() => window.__EXPORT_DONE === true || Boolean(window.__EXPORT_BLOB), {
+      timeout: 240000,
+      polling: 500
+    });
+
+    // Ambil data biner WebM langsung dari browser (tidak tergantung dialog download OS)
+    const base64Video = await page.evaluate(async () => {
+      const blob = window.__EXPORT_BLOB;
+      if (!blob) throw new Error('Blob hasil rekaman tidak ditemukan.');
+      const buf = await blob.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      return btoa(binary);
+    });
+
+    fs.writeFileSync('hasil_mentah.webm', Buffer.from(base64Video, 'base64'));
   } finally {
     await browser.close().catch(() => {});
     server.close();
   }
   console.log(`   (render browser selesai, ${detikBerjalan()} detik berjalan)`);
 
-  // Gunakan audio hasil campuran template.html (VO + SFX Transisi + Backsound)
-  console.log('Mengemas MP4 final (Video HD + VO + SFX Transisi + Backsound)...');
-  execSync(`ffmpeg -y -i hasil_mentah.webm -map 0:v:0 -map 0:a:0 -c:v libx264 -preset veryfast -crf 20 -r 30 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart video_jadi.mp4`, { stdio: 'inherit' });
+  // Cek apakah hasil_mentah.webm memiliki trek audio; jika tidak, sisipkan vo.mp3 otomatis
+  let hasAudio = false;
+  try {
+    const streams = execSync('ffprobe -v error -select_streams a -show_entries stream=codec_type -of csv=p=0 hasil_mentah.webm').toString().trim();
+    hasAudio = streams.length > 0;
+  } catch (e) { hasAudio = false; }
+
+  console.log('Mengemas MP4 final (Video HD + Audio)...');
+  if (hasAudio) {
+    execSync(`ffmpeg -y -i hasil_mentah.webm -map 0:v:0 -map 0:a:0 -c:v libx264 -preset veryfast -crf 20 -r 30 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart video_jadi.mp4`, { stdio: 'inherit' });
+  } else {
+    console.log('Trek audio WebM kosong, menggabungkan video dengan vo.mp3...');
+    execSync(`ffmpeg -y -i hasil_mentah.webm -i vo.mp3 -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -crf 20 -r 30 -pix_fmt yuv420p -c:a aac -b:a 192k -shortest -movflags +faststart video_jadi.mp4`, { stdio: 'inherit' });
+  }
 
   const ukuranFile = fs.statSync('video_jadi.mp4').size;
   let durasiTeks = '-';
