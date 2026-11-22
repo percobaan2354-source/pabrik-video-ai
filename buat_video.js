@@ -288,45 +288,54 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
   ]
 }`;
 
-  const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest", "gemma-3-27b-it"];
+  // Otomatis ambil daftar model aktif dari akun Gemini API kamu + daftar cadangan resmi
+  let models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-flash-preview", "gemini-flash-latest"];
+  try {
+    const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
+    const listJson = await listRes.json();
+    if (Array.isArray(listJson.models)) {
+      const valid = listJson.models
+        .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+        .map(m => m.name.replace('models/', ''))
+        .filter(n => /flash|pro/i.test(n) && !/embedding|vision|aqa|tts|image/i.test(n));
+      if (valid.length > 0) {
+        models = [...new Set([...models, ...valid])];
+      }
+    }
+  } catch (e) { /* pakai daftar bawaan */ }
+
   let lastApiError = "";
 
-  for (let putaran = 1; putaran <= 5; putaran++) {
+  for (let putaran = 1; putaran <= 3; putaran++) {
     for (const model of models) {
       try {
         console.log(`Putaran ${putaran}: mencoba ${model}...`);
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
-        const payload = JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
-        });
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: AbortSignal.timeout(45000),
-          body: payload
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
         });
         const json = await res.json();
         if (json.candidates && json.candidates[0]) {
           let raw = json.candidates[0].content.parts[0].text.trim();
           const awal = raw.indexOf('{');
           const akhir = raw.lastIndexOf('}');
-          if (awal !== -1 && akhir !== -1) {
-            raw = raw.slice(awal, akhir + 1);
-          }
+          if (awal !== -1 && akhir !== -1) raw = raw.slice(awal, akhir + 1);
           const hasil = JSON.parse(raw);
           return rapikanNaskah(hasil, dim, ttsInfo);
         }
         lastApiError = `${model}: ${JSON.stringify(json.error || json)}`;
         console.log(`Gagal (${model}) ->`, lastApiError);
       } catch (err) {
-        lastApiError = `${model} timeout/network/format: ${err.message}`;
-        console.log(`Timeout/Error jaringan/format (${model}) ->`, err.message);
+        lastApiError = `${model} error: ${err.message}`;
+        console.log(`Error (${model}) ->`, err.message);
       }
     }
-    console.log("Menunggu 8 detik sebelum putaran berikutnya...");
-    await tunggu(8000);
+    await tunggu(5000);
   }
-  throw new Error('Gagal menghasilkan naskah dari Gemini API setelah 5x putaran. Detail: ' + lastApiError);
+  throw new Error('Gagal menghasilkan naskah dari Gemini API. Detail: ' + lastApiError);
 }
 
 async function main() {
@@ -399,7 +408,7 @@ async function main() {
   }
   console.log(`   (render browser selesai, ${detikBerjalan()} detik berjalan)`);
 
-  // [FIX PENTING] Gunakan audio hasil campuran template.html (VO + SFX Transisi + Backsound)
+  // Gunakan audio hasil campuran template.html (VO + SFX Transisi + Backsound)
   console.log('Mengemas MP4 final (Video HD + VO + SFX Transisi + Backsound)...');
   execSync(`ffmpeg -y -i hasil_mentah.webm -map 0:v:0 -map 0:a:0 -c:v libx264 -preset veryfast -crf 20 -r 30 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart video_jadi.mp4`, { stdio: 'inherit' });
 
