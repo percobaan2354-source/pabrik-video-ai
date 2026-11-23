@@ -108,7 +108,7 @@ const hash = s => {let h=2166136261;for(const c of s){h^=c.charCodeAt(0);h=Math.
 const SEED = hash(TITLE+'|'+VARIAN+'|'+TX.t1+'|'+TX.t2);
 const rnd = (()=>{let a=SEED;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}})();
 
-/* ===== DATABASE 12 GENRE (PALET TERANG CERAH & BERVARIASI V32.0) ===== */
+/* ===== DATABASE 12 GENRE (PALET TERANG CERAH & BERVARIASI V33.0) ===== */
 const GENRE_DB={
  sejarah:{pal:{a:'#d97706',t:'#0284c7',p:'#ea580c',g:'#059669',b1:'#fef3c7',b2:'#fde68a',sky:'#fffbeb'},icons:['wall_clock','book','shield','trophy','star'],bgm:[220.00,261.63,293.66,329.63,392.00,329.63]},
  horor:{pal:{a:'#0284c7',t:'#4f46e5',p:'#e11d48',g:'#0d9488',b1:'#e0e7ff',b2:'#c7d2fe',sky:'#eef2ff'},icons:['moon','eye','flame','wall_clock','shield'],bgm:[146.83,155.56,174.61,155.56,138.59,146.83]},
@@ -140,9 +140,9 @@ function detectGenre12(){
  return'fakta';
 }
 
-/* ===== SMART VISUAL DETECTOR V32.0 (UNIK TIAP ADEGAN B-ROLL & BEDA VIDEO) ===== */
+/* ===== SMART VISUAL DETECTOR V33.0 (LANGSUNG BACA NASKAH VO TIAP ADEGAN B-ROLL) ===== */
 const STOP_WORDS=new Set([
- 'yang','dan','di','ke','dari','ini','itu','untuk','pada','dengan','adalah','sebagai','dalam','oleh','akan','juga','atau','karena','jika','bila','saat','ketika','sebelum','sesudah','setelah','lalu','kemudian','mereka','kami','kita','kamu','dia','ia','orang','manusia','para','semua','setiap','banyak','beberapa','satu','dua','tiga','empat','lima','enam','tujuh','delapan','sembilan','sepuluh','sekitar','hampir','sangat','lebih','paling','bisa','dapat','harus','mau','ingin','pernah','sering','selalu','belum','sudah','telah','sedang','masih','lagi','saja','cuma','hanya','bukan','tidak','nggak','gak','tak','ada','punya','jadi','menjadi','buat','membuat','disebut','bernama','secara','hal','cara','bagian','tahap','kali','sampai','hingga','antara','selama','tengah','awal','akhir','mungkin','ternyata','padahal','namun','tapi','tetapi','kalau','misalnya','contoh','kayak','seperti','gini','begitu','sih','nih','deh','dong','ya','kan','sekali','waktu','dulu','zaman','era','hari','bikin','malah','makin','banget','aja','lo','gue','lu','bayangkan','coba','lihat','enggak','sebuah','layaknya','masuk','mode','justru','kunci','tercepat','segera','sekadar','bahkan','biar','ngira','alasan','aslinya','jauh','serius','urusan','khusus','darurat','kalo','sengaja','tetap'
+ 'yang','dan','di','ke','dari','ini','itu','untuk','pada','dengan','adalah','sebagai','dalam','oleh','akan','juga','atau','karena','jika','bila','saat','ketika','sebelum','sesudah','setelah','lalu','kemudian','mereka','kami','kita','kamu','dia','ia','orang','manusia','para','semua','setiap','banyak','beberapa','satu','dua','tiga','empat','lima','enam','tujuh','delapan','sembilan','sepuluh','sekitar','hampir','sangat','lebih','paling','bisa','dapat','harus','mau','ingin','pernah','sering','selalu','belum','sudah','telah','sedang','masih','lagi','saja','cuma','hanya','bukan','tidak','nggak','gak','tak','ada','punya','jadi','menjadi','buat','membuat','disebut','bernama','secara','hal','cara','bagian','tahap','kali','sampai','hingga','antara','selama','tengah','awal','akhir','mungkin','ternyata','padahal','namun','tapi','tetapi','kalau','misalnya','contoh','kayak','seperti','gini','begitu','sih','nih','deh','dong','ya','kan','sekali','waktu','dulu','zaman','era','hari','bikin','malah','makin','banget','aja','lo','gue','lu','bayangkan','coba','lihat','enggak','sebuah','layaknya','masuk','mode','justru','kunci','tercepat','segera','sekadar','bahkan','biar','ngira','alasan','aslinya','jauh','serius','urusan','khusus','darurat','kalo','sengaja','tetap','menyangka','sering','kita','abaikan','berkat','detail','kecil','ribuan'
 ]);
 
 function extractMeaningfulWords(sentence){
@@ -156,57 +156,98 @@ const ACTIVE_GENRE=detectGenre12();
 const G_SPEC=GENRE_DB[ACTIVE_GENRE]||GENRE_DB.fakta;
 const P=G_SPEC.pal;
 
-const VISUAL_RULES=[
- {re:/pulpen|tutup pulpen|tinta|pena|bolpoin|menggigit/,ic1:'pen_cap',ic2:'air_flow',kicker:'DESAIN 3D',title:'TUTUP PULPEN',sub:'Lubang Ventilasi Udara'},
- {re:/jalur napas|pernapasan|paru|udara|oksigen|tertelan|tersedak|bernapas/,ic1:'lungs',ic2:'air_flow',kicker:'FUNGSI PENYELAMAT',title:'JALUR NAPAS',sub:'Aliran Udara Tetap Terbuka'},
- {re:/anak|balita|keluarga|rumah|keselamatan|keamanan|perlindungan|melindungi/,ic1:'shield',ic2:'heart',kicker:'PERLINDUNGAN',title:'KEAMANAN ANAK',sub:'Desain Aman di Rumah'},
- {re:/perusahaan|bic|pabrik|industri|standar|iso|produksi|merek|sembilan puluhan/,ic1:'factory',ic2:'trophy',kicker:'STANDAR GLOBAL',title:'REGULASI INDUSTRI',sub:'Sertifikasi Internasional'},
- {re:/jam dinding|jam weker|jarum jam|berdetak|waktu|detik|menit/,ic1:'wall_clock',ic2:'moon',kicker:'VISUAL 3D',title:'WAKTU & RITME',sub:'Detak Waktu Berjalan'},
- {re:/singa|harimau|predator|dikejar|hewan|binatang/,ic1:'lion',ic2:'bolt',kicker:'VISUAL 3D',title:'ANCAMAN & REFLEKS',sub:'Mode Waspada Aktif'},
- {re:/hormon|kortisol|adrenalin|kimia|reaksi/,ic1:'bolt',ic2:'heart',kicker:'REAKSI TUBUH',title:'HORMON & ENERGI',sub:'Pemicu Kewaspadaan'},
- {re:/jantung|berdegup|denyut|darah|tekanan/,ic1:'heart',ic2:'bolt',kicker:'RESPON JANTUNG',title:'DETAK JANTUNG',sub:'Ritme & Sirkulasi'},
- {re:/kamar mandi|gayung|bak air|mandi|sabun|air dingin|shower|toilet|wc/,ic1:'dipper',ic2:'wave',kicker:'KAMAR MANDI',title:'AIR & SUHU',sub:'Ilustrasi Keseharian'},
- {re:/lilin|lampu|listrik|penerangan|terang|gelap|malam/,ic1:'moon',ic2:'lamp',kicker:'SUASANA RUANG',title:'CAHAYA & GELAP',sub:'Perubahan Suasana'},
- {re:/sejarawan|catatan|buku|dokumen|arsip|tulisan|naskah|riset|penelitian|sejarah|kuno/,ic1:'book',ic2:'doc',kicker:'BUKTI RISET',title:'ARSIP SEJARAH',sub:'Catatan & Bukti Ilmiah'},
- {re:/tidur|kasur|bifasik|mimpi|insomnia|melek|ngantuk|merem|bersin|mata/,ic1:'eye',ic2:'brain',kicker:'REFLEKS TUBUH',title:'RESPON OTOMATIS',sub:'Mekanisme Alami Tubuh'},
- {re:/otak|pikiran|mental|fokus|psikologi|sadar|tubuh|saraf/,ic1:'brain',ic2:'bolt',kicker:'SISTEM SARAF',title:'KENDALI OTAK',sub:'Sinyal Saraf Pusat'},
- {re:/uang|kaya|bisnis|saham|emas|sukses|cuan|modal|harga|ekonomi/,ic1:'coin',ic2:'trophy',kicker:'NILAI EKONOMI',title:'STRATEGI FINANSIAL',sub:'Pertumbuhan & Nilai'},
- {re:/planet|luar angkasa|matahari|bumi|bintang|sains|teknologi|robot|ai|satelit/,ic1:'sun',ic2:'chip',kicker:'FAKTA SAINS',title:'FENOMENA SAINS',sub:'Eksplorasi & Teknologi'},
- {re:/gunung|lava|gempa|tsunami|badai|api|bencana|banjir|air|laut|samudra/,ic1:'flame',ic2:'wave',kicker:'FENOMENA ALAM',title:'KEKUATAN ALAM',sub:'Dinamika Bumi'}
+/* Katalog Visual 3D Lengkap — Dipilih langsung berdasarkan Naskah VO yang sedang diucapkan */
+const VISUAL_CATALOG=[
+ {id:'floating_hat',re:/topi melayang|topi terbang|topi pesulap|topi/,ic1:'floating_hat',ic2:'wind_swirl',kicker:'VISUAL NASKAH',title:'TOPI MELAYANG',sub:'Ilustrasi Adegan VO'},
+ {id:'ink_pen',re:/tinta|macet|mengering|menulis|ujung pena|bolpoin/,ic1:'ink_bottle',ic2:'pen_nib',kicker:'MITOS UMUM',title:'TINTA & PENA',sub:'Anggapan Soal Tinta Kering'},
+ {id:'pen_cap',re:/pulpen|tutup pulpen|lubang kecil|ventilasi/,ic1:'pen_cap',ic2:'air_flow',kicker:'DESAIN 3D',title:'TUTUP PULPEN',sub:'Lubang Ventilasi Udara'},
+ {id:'child_safety',re:/anak|balita|menggigit|tertutup|keselamatan|keamanan|melindungi/,ic1:'child_shield',ic2:'heart',kicker:'PERLINDUNGAN',title:'KEAMANAN ANAK',sub:'Desain Aman Jika Tertelan'},
+ {id:'airway_lungs',re:/jalur napas|pernapasan|paru|udara|oksigen|tertelan|tersedak|bernapas|mengalir|korban/,ic1:'lungs',ic2:'air_flow',kicker:'FUNGSI PENYELAMAT',title:'JALUR NAPAS',sub:'Aliran Udara Tetap Terbuka'},
+ {id:'lifesaver',re:/nyawa|terselamatkan|menyelamatkan|hidup|darurat|pertolongan|medis|dokter/,ic1:'lifebuoy',ic2:'heart',kicker:'DAMPAK NYATA',title:'PENYELAMAT NYAWA',sub:'Detail Kecil Berarti Besar'},
+ {id:'factory_iso',re:/perusahaan|bic|pabrik|industri|standar|iso|produksi|merek|sembilan puluhan/,ic1:'factory',ic2:'trophy',kicker:'STANDAR GLOBAL',title:'REGULASI INDUSTRI',sub:'Sertifikasi Keselamatan'},
+ {id:'wall_clock',re:/jam dinding|jam weker|jarum jam|berdetak|waktu|detik|menit|jam/,ic1:'wall_clock',ic2:'moon',kicker:'VISUAL WAKTU',title:'WAKTU & RITME',sub:'Detak Waktu Berjalan'},
+ {id:'lion_predator',re:/singa|harimau|predator|dikejar|hewan|binatang|liar/,ic1:'lion',ic2:'bolt',kicker:'ANCAMAN ALAM',title:'INSTING BERTAHAN',sub:'Respon Waspada Aktif'},
+ {id:'heart_pulse',re:/jantung|berdegup|denyut|darah|tekanan|adrenalin|kortisol/,ic1:'heart',ic2:'bolt',kicker:'REAKSI TUBUH',title:'DETAK & HORMON',sub:'Sirkulasi & Kewaspadaan'},
+ {id:'bathroom_water',re:/kamar mandi|gayung|bak air|mandi|sabun|air dingin|shower|toilet|wc/,ic1:'dipper',ic2:'wave',kicker:'KESEHARIAN',title:'AIR & SUHU',sub:'Ilustrasi Kamar Mandi'},
+ {id:'light_dark',re:/lilin|lampu|listrik|penerangan|terang|gelap|malam|cahaya/,ic1:'lamp',ic2:'moon',kicker:'SUASANA',title:'CAHAYA & GELAP',sub:'Perubahan Suasana'},
+ {id:'history_book',re:/sejarawan|catatan|buku|dokumen|arsip|tulisan|naskah|riset|penelitian|sejarah|kuno/,ic1:'book',ic2:'doc',kicker:'ARSIP RISET',title:'CATATAN SEJARAH',sub:'Bukti & Dokumentasi'},
+ {id:'brain_reflex',re:/otak|pikiran|mental|fokus|psikologi|sadar|tubuh|saraf|tidur|mimpi|bersin|merem|mata/,ic1:'brain',ic2:'eye',kicker:'SISTEM TUBUH',title:'REFLEKS & OTAK',sub:'Mekanisme Alami Tubuh'},
+ {id:'money_wealth',re:/uang|kaya|bisnis|saham|emas|sukses|cuan|modal|harga|ekonomi/,ic1:'coin',ic2:'trophy',kicker:'NILAI EKONOMI',title:'STRATEGI FINANSIAL',sub:'Pertumbuhan & Nilai'},
+ {id:'space_science',re:/planet|luar angkasa|matahari|bumi|bintang|sains|teknologi|robot|ai|satelit|roket/,ic1:'planet',ic2:'chip',kicker:'EKSPLORASI SAINS',title:'FENOMENA SAINS',sub:'Teknologi & Semesta'},
+ {id:'nature_disaster',re:/gunung|lava|gempa|tsunami|badai|api|bencana|banjir|air|laut|samudra|angin/,ic1:'flame',ic2:'wave',kicker:'KEKUATAN ALAM',title:'FENOMENA ALAM',sub:'Dinamika Bumi'}
 ];
 
-function extractSmartVisual(sentence,fallbackTitle,aiHint='',excludeIcons=new Set()){
- const q=((aiHint||'')+' '+(sentence||'')).toLowerCase();
- const words=extractMeaningfulWords((aiHint||'')+' '+(sentence||''));
- const top1=(words[0]||fallbackTitle||'FAKTA').toUpperCase();
- const top2=(words[1]&&words[1].toUpperCase()!==top1?words[1]:'UTAMA').toUpperCase();
+/* Deteksi Visual Cerdas Berbasis Naskah VO + Hint AI dari masing-masing kalimat B-Roll */
+function detectVisualFromVoScript(voSentence, aiHintObj, excludeIds=new Set()){
+ const voClean=(voSentence||'').replace(/\*/g,'').trim();
+ const hintObj=(aiHintObj&&typeof aiHintObj==='object')?aiHintObj:{};
+ const hintText=typeof aiHintObj==='string'?aiHintObj:(hintObj.obj||'');
+ const q=(hintText+' '+voClean).toLowerCase();
 
- // Cari kecocokan aturan yang ikonnya belum dipakai di adegan B-Roll sebelumnya
- for(const rule of VISUAL_RULES){
-  if(rule.re.test(q) && !excludeIcons.has(rule.ic1)){
-   return{ic1:rule.ic1,ic2:rule.ic2,kicker:rule.kicker,title:rule.title,sub:rule.sub};
+ // 1. Cari kecocokan langsung dari kata-kata di naskah VO pada adegan B-Roll tersebut
+ let matched=null;
+ for(const item of VISUAL_CATALOG){
+  if(item.re.test(q) && !excludeIds.has(item.id)){
+   matched=item;
+   break;
   }
  }
 
- // Fallback dinamis berdasarkan kata menonjol kalimat VO + ikon unik dari genre
- const availIcons=G_SPEC.icons.filter(ic=>!excludeIcons.has(ic));
- const ic1=availIcons[0]||G_SPEC.icons[(excludeIcons.size)%G_SPEC.icons.length];
- const ic2=availIcons[1]||G_SPEC.icons[(excludeIcons.size+1)%G_SPEC.icons.length];
- return{ic1,ic2,kicker:TX.kicker,title:top1,sub:top2!=='UTAMA'?top2:'FAKTA MENARIK'};
+ // 2. Jika belum ketemu yang belum dipakai, cari tanpa excludeIds
+ if(!matched){
+  for(const item of VISUAL_CATALOG){
+   if(item.re.test(q)){
+    matched=item;
+    break;
+   }
+  }
+ }
+
+ // 3. Bangun judul & subjudul B-Roll yang 100% mencerminkan kalimat VO di adegan ini
+ const words=extractMeaningfulWords(voClean);
+ const autoTitle=(words.slice(0,2).join(' ')||TX.t1).toUpperCase();
+ const autoSub=voClean.length>36?(voClean.slice(0,34).trim()+'…'):voClean;
+
+ if(matched){
+  return{
+   id:matched.id,
+   ic1:matched.ic1,
+   ic2:matched.ic2,
+   kicker:(hintObj.kicker||matched.kicker).toUpperCase(),
+   title:(hintObj.title||matched.title).toUpperCase(),
+   sub:hintObj.sub||matched.sub,
+   voQuote:voClean
+  };
+ }
+
+ // 4. Fallback unik per video & per kalimat VO (tidak pernah kembar antar B-Roll)
+ const fallbackIcons=['pen_cap','lifebuoy','brain','coin','planet','lamp','book','shield'];
+ const avail=fallbackIcons.filter(ic=>!excludeIds.has(ic));
+ const ic1=avail[0]||fallbackIcons[excludeIds.size%fallbackIcons.length];
+ const ic2=avail[1]||fallbackIcons[(excludeIds.size+1)%fallbackIcons.length];
+ return{
+  id:ic1,
+  ic1,
+  ic2,
+  kicker:(hintObj.kicker||'VISUAL NASKAH').toUpperCase(),
+  title:(hintObj.title||autoTitle).toUpperCase(),
+  sub:hintObj.sub||autoSub||'Ilustrasi Adegan VO',
+  voQuote:voClean
+ };
 }
 
-const TITLE_OBJ=extractSmartVisual(TITLE+' '+TX.t1+' '+TX.t2,TX.t1);
+const TITLE_OBJ=detectVisualFromVoScript(TITLE+' '+TX.t1+' '+TX.t2,null);
 
-/* Pre-compute visual B-Roll untuk b1, b2, b3, b4 agar DIJAMIN UNIK & BEDA-BEDA tiap adegan */
+/* Pemetaan Visual B-Roll Per Adegan (b1, b2, b3, b4) — Dijamin Beda-Beda & Sesuai Naskah VO Masing-Masing! */
 const SCENE_BROLL_MAP={};
 {
- const usedIcons=new Set();
+ const usedIds=new Set();
  ['b1','b2','b3','b4'].forEach(sc=>{
   const scLines=L.filter(x=>x[0]===sc);
-  const combinedText=scLines.map(x=>x.t).join(' ');
-  const combinedHint=scLines.map(x=>x[4]||'').join(' ');
-  const vis=extractSmartVisual(combinedText,TITLE,combinedHint,usedIcons);
-  usedIcons.add(vis.ic1);
+  const voText=scLines.map(x=>x.t).join(' ');
+  const aiHint=scLines.map(x=>x[4]).find(Boolean)||'';
+  const vis=detectVisualFromVoScript(voText,aiHint,usedIds);
+  usedIds.add(vis.id);
   SCENE_BROLL_MAP[sc]=vis;
  });
 }
@@ -235,7 +276,6 @@ const COVER_LAYOUT=SEED%4;
 const SPD=.96+rnd()*.14;
 const SUBY=1025;
 
-const SC={title:['Pembuka','hook cerita',P.a],b1:['Bukti Utama','b-roll luas',P.t],a:['Fakta Utama','cerita santai',P.g],b2:['Detail Mikro','b-roll kecil',P.p],b3:['Pemindaian','bukti terungkap',P.t],cta:['Mau bikin video begini?','cek link di bio',P.a],c:['Sudut Pandang','refleksi',P.g],b4:['Puncak Cerita','klimaks',P.p],end:['Penutup','kesan akhir',P.t]};
 let LEN=40;
 
 /* ---------- bahasa & segmentasi kata ---------- */
@@ -261,7 +301,7 @@ function tok(str){const out=[];str.split('*').forEach((part,i)=>{if(!part)return
  else part.split(/(\s+)/).forEach(w=>{if(!w)return;if(/^\s+$/.test(w)){if(out.length)out[out.length-1].sp=true}else out.push({s:w,em,sp:false})})});return out}
 
 function calcWordWeights(words){
- return words.map((w,idx)=>{
+ return words.map((w)=>{
   const clean=w.s.replace(/[^a-zA-Z0-9\u00C0-\u024F\u3040-\u9fff]/g,'');
   const vowels=(clean.match(/[aiueoAIUEO]/g)||[]).length;
   let wt=Math.max(1.8,clean.length*0.55+vowels*0.50);
@@ -374,7 +414,7 @@ function alignLinesToVoAudio(audioBuffer){
 function retime(){Object.keys(S0).forEach(k=>delete S0[k]);
  const bodyDur = Math.max(4, LEN - COVER_HOLD);
  let acc = COVER_HOLD, pa=null, kk=0;
- L.forEach((l,idx)=>{
+ L.forEach((l)=>{
   l.d = bodyDur * l.wt / (tot||1);
   l.t0 = acc;
   acc += l.d;
@@ -744,13 +784,12 @@ function drawCoverProps(){
  X.restore();
 }
 
-/* ===== RENDERER OBJEK 3D ISOMETRIC & CLAY 3D BERDIMENSI SUPER DETAIL ===== */
+/* ===== RENDERER OBJEK 3D ISOMETRIC & CLAY 3D BERDIMENSI SESUAI NASKAH VO ===== */
 function draw3DObject(type,x,y,r,col){
  X.save();
  X.translate(x,y);
  X.lineCap='round';X.lineJoin='round';
 
- // Bayangan lantai 3D lembut di bawah objek
  X.save();
  const shG=X.createRadialGradient(0,r*0.95,r*0.1,0,r*0.95,r*0.78);
  shG.addColorStop(0,'rgba(15,23,42,0.24)');
@@ -765,7 +804,40 @@ function draw3DObject(type,x,y,r,col){
  const cMid=col;
  const cDark=shade(col,-60);
 
- if(type==='pen_cap'){
+ if(type==='floating_hat'){
+  const levY=Math.sin(A*3.2)*10;
+  X.save();
+  X.translate(0,levY-6);
+  X.rotate(Math.sin(A*2.1)*0.08);
+  const hatG=X.createLinearGradient(-r*0.5,-r*0.7,r*0.5,r*0.4);
+  hatG.addColorStop(0,'#334155');hatG.addColorStop(0.45,'#1e293b');hatG.addColorStop(1,'#020617');
+  X.fillStyle=hatG;
+  X.beginPath();
+  X.moveTo(-r*0.42,-r*0.58);X.lineTo(r*0.42,-r*0.58);
+  X.lineTo(r*0.50,r*0.24);X.lineTo(-r*0.50,r*0.24);X.closePath();X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
+  X.fillStyle=col;rr(-r*0.48,r*0.02,r*0.96,r*0.18,4);X.fill();X.stroke();
+  X.fillStyle='#1e293b';
+  X.beginPath();X.ellipse(0,r*0.26,r*0.86,r*0.22,0,0,Math.PI*2);X.fill();X.stroke();
+  X.strokeStyle='#0284c7';X.lineWidth=3.5;
+  [-0.5,0,0.5].forEach(wx=>{
+   X.beginPath();X.moveTo(wx*r,r*0.58);X.lineTo(wx*r,r*0.82);X.stroke();
+  });
+  X.restore();
+
+ }else if(type==='ink_bottle'||type==='pen_nib'){
+  const botG=X.createLinearGradient(-r*0.5,-r*0.2,r*0.5,r*0.7);
+  botG.addColorStop(0,'#bae6fd');botG.addColorStop(0.5,'#38bdf8');botG.addColorStop(1,'#0369a1');
+  X.fillStyle=botG;
+  rr(-r*0.48,-r*0.24,r*0.96,r*0.94,18);X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
+  X.fillStyle='#1e1b4b';
+  rr(-r*0.38,r*0.05,r*0.76,r*0.56,12);X.fill();
+  X.fillStyle=cTop;rr(-r*0.32,-r*0.56,r*0.64,r*0.32,8);X.fill();X.stroke();
+  X.fillStyle='#ffffff';
+  X.beginPath();X.moveTo(0,-r*0.88);X.lineTo(r*0.20,-r*0.42);X.lineTo(-r*0.20,-r*0.42);X.closePath();X.fill();X.stroke();
+
+ }else if(type==='pen_cap'){
   X.save();
   X.rotate(-0.20 + Math.sin(A*2.2)*0.05);
   const bodyG=X.createLinearGradient(-r*0.38,0,r*0.38,0);
@@ -820,6 +892,16 @@ function draw3DObject(type,x,y,r,col){
   });
   X.strokeStyle='#0284c7';X.lineWidth=4.5;
   X.beginPath();X.moveTo(0,-r*0.92);X.lineTo(0,r*0.12);X.stroke();
+
+ }else if(type==='lifebuoy'){
+  X.fillStyle='#ef4444';X.beginPath();X.arc(0,0,r*0.86,0,Math.PI*2);X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=3.5;X.stroke();
+  X.fillStyle='#ffffff';
+  [0,1,2,3].forEach(k=>{
+   const a=k*Math.PI/2-0.28;
+   X.beginPath();X.moveTo(0,0);X.arc(0,0,r*0.85,a,a+0.56);X.closePath();X.fill();
+  });
+  X.fillStyle='#f8fafc';X.beginPath();X.arc(0,0,r*0.40,0,Math.PI*2);X.fill();X.stroke();
 
  }else if(type==='factory'){
   const fFront=X.createLinearGradient(-r*0.8,-r*0.2,0,r*0.7);
@@ -880,7 +962,7 @@ function draw3DObject(type,x,y,r,col){
   X.fillStyle='rgba(255,255,255,0.65)';
   X.beginPath();X.ellipse(-r*0.42,-r*0.34,r*0.16,r*0.09,-0.5,0,Math.PI*2);X.fill();
 
- }else if(type==='shield'){
+ }else if(type==='shield'||type==='child_shield'){
   const sG=X.createLinearGradient(-r*0.7,-r*0.8,r*0.7,r*0.8);
   sG.addColorStop(0,cTop);sG.addColorStop(0.5,cMid);sG.addColorStop(1,cDark);
   X.fillStyle=sG;
@@ -902,6 +984,14 @@ function draw3DObject(type,x,y,r,col){
   X.fillStyle=cG;X.beginPath();X.arc(0,0,r*0.84,0,Math.PI*2);X.fill();
   X.strokeStyle='#0f172a';X.lineWidth=3.6;X.stroke();
   txt('$',0,2,r*0.95,'#0f172a','center',900);
+
+ }else if(type==='planet'){
+  const pG=X.createRadialGradient(-r*0.25,-r*0.25,r*0.1,0,0,r*0.75);
+  pG.addColorStop(0,'#bae6fd');pG.addColorStop(0.5,'#0284c7');pG.addColorStop(1,'#1e3a8a');
+  X.fillStyle=pG;X.beginPath();X.arc(0,0,r*0.66,0,Math.PI*2);X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
+  X.strokeStyle='#f59e0b';X.lineWidth=8;
+  X.beginPath();X.ellipse(0,0,r*0.98,r*0.24,-0.32,0,Math.PI*2);X.stroke();
 
  }else{
   const g3d=X.createRadialGradient(-r*0.28,-r*0.28,r*0.08,0,0,r*0.92);
@@ -935,10 +1025,10 @@ function draw3DObject(type,x,y,r,col){
 function getSceneBrollVisual(){
  const cur=L[li];
  const sc=cur?cur[0]:'b1';
- return SCENE_BROLL_MAP[sc]||extractSmartVisual(TITLE,TITLE,'');
+ return SCENE_BROLL_MAP[sc]||detectVisualFromVoScript(cur?cur.t:TITLE,cur?cur[4]:'');
 }
 
-/* ===== MOTION GRAPHIC B-ROLL FULL LAYAR (1 OBJEK 3D UTAMA PALING MENONJOL) ===== */
+/* ===== MOTION GRAPHIC B-ROLL FULL LAYAR (1 OBJEK 3D UTAMA SESUAI NASKAH VO) ===== */
 function fullBroll(k,t,o){
  const e=eo(cl(t/.35));
  const camZoom=1.0+Math.min(0.06,t*0.012);
@@ -974,11 +1064,11 @@ function fullBroll(k,t,o){
  draw3DObject(det.ic1,0,0,114,P.a);
  X.restore();
 
- txt(det.sub,cx,586,23,'#0f172a','center',900);
+ txt(det.sub,cx,586,fz(det.sub,540,22),'#0f172a','center',900);
  X.restore();
 }
 
-/* ===== MOTION GRAPHIC B-ROLL KOTAK KECIL 3D (2 ELEMEN 3D KONTRAS SESUAI VO) ===== */
+/* ===== MOTION GRAPHIC B-ROLL KOTAK KECIL 3D (2 ELEMEN 3D KONTRAS SESUAI NASKAH VO) ===== */
 function smallBroll(k,t,o){
  const e=eo(cl(t/.35));
  const det=getSceneBrollVisual();
@@ -1008,7 +1098,7 @@ function smallBroll(k,t,o){
  X.fillStyle=al(P.t,0.15);rr(-118,-68,236,30,15);X.fill();
  txt(det.kicker,0,-53,14,P.t,'center',900);
  txt(det.title,0,-6,fz(det.title,270,32,SERIF),'#0f172a','center',900,0,SERIF);
- txt(det.sub,0,40,20,'#334155','center',800);
+ txt(det.sub,0,40,fz(det.sub,270,19),'#334155','center',800);
  X.restore();
 }
 
@@ -1102,7 +1192,7 @@ const SCN={
  }
 };
 
-/* ===== BAGIAN 3: SUBTITLE AFTER EFFECTS ANTI-NEMPEL + PRESISI PER 1 KATA ===== */
+/* ===== BAGIAN 3: SUBTITLE AFTER EFFECTS PAS & PRESISI PER 1 KATA ===== */
 function activeWordIdx(l){
  if(!l||!l.w||!l.w.length)return-1;
  if(tm<l.ss)return-1;
@@ -1137,19 +1227,20 @@ function buildCharDynamicSub(l){
    const items=rowSlice.map((w,k)=>{
     const ff=w.em?AE_EM_FONT:rowFont;
     const baseSz=w.em?46:42;
-    // Ukur lebar terburuk (italic 900) agar kata tidak pernah bertabrakan saat membesar
-    X.font=`italic 900 ${baseSz}px ${ff}`;
+    const weightPrefix=w.em?'italic 900':'900';
+    X.font=`${weightPrefix} ${baseSz}px ${ff}`;
     const ww=X.measureText(w.s).width;
-    return{s:w.s,em:w.em,idx:wIdx+(rowIdx===0?k:splitAt+k),ww,ff,baseSz};
+    return{s:w.s,em:w.em,idx:wIdx+(rowIdx===0?k:splitAt+k),ww,ff,baseSz,weightPrefix};
    });
-   const totalSlotW=items.reduce((acc,it)=>acc+Math.ceil(it.ww*1.16)+20,0);
-   const fitScale=totalSlotW>440?(440/totalSlotW):1;
+   // Jarak spasi pas & natural (1.07x lebar aktif + 11px spasi antar kata)
+   const totalSlotW=items.reduce((acc,it)=>acc+Math.ceil(it.ww*1.07)+11,0);
+   const fitScale=totalSlotW>430?(430/totalSlotW):1;
    let xCursor=36;
    items.forEach(it=>{
     const adjSz=Math.max(26,Math.round(it.baseSz*fitScale));
-    X.font=`italic 900 ${adjSz}px ${it.ff}`;
+    X.font=`${it.weightPrefix} ${adjSz}px ${it.ff}`;
     const adjW=X.measureText(it.s).width;
-    const slotW=Math.ceil(adjW*1.16)+20;
+    const slotW=Math.ceil(adjW*1.07)+11;
     out.push({...it,sz:adjSz,ww:adjW,slotW,row:rowIdx,x:xCursor,pageId});
     xCursor+=slotW;
    });
@@ -1168,7 +1259,7 @@ function buildBrollSingleLine(l,maxW){
   const baseSz=w.em?38:35;
   X.font=`900 ${baseSz}px ${SANS}`;
   const ww=X.measureText(w.s).width;
-  const slotW=Math.ceil(ww*1.12)+15;
+  const slotW=Math.ceil(ww*1.10)+13;
   if(cur.length>0&&cw+slotW>maxW){
    pages.push(cur);
    cur=[];cw=0;
@@ -1198,7 +1289,7 @@ function drawSubs(){
  const aw=activeWordIdx(l);
  if(aw<0)return;
 
- const voicePulse=CS.speaking?(1+CS.energy*0.06):1.0;
+ const voicePulse=CS.speaking?(1+CS.energy*0.05):1.0;
 
  if(isCharSpeakingOnly){
   if(lay!==li*2+1){cap=buildCharDynamicSub(l);lay=li*2+1}
@@ -1207,7 +1298,7 @@ function drawSubs(){
   const activeItem=cap.find(it=>it.idx===aw)||cap[cap.length-1];
   const currentPage=activeItem.pageId;
   const baseY=128;
-  const lineH=72;
+  const lineH=68;
 
   X.save();
   cap.forEach(item=>{
@@ -1218,17 +1309,17 @@ function drawSubs(){
 
    let scWord=1,yOff=0,xOff=0,rot=0;
    if(AE_STYLE===0){
-    scWord=(0.88+0.12*pop)*(act?(1.08*voicePulse):0.96);
-    yOff=(1-pop)*9-(act?2:0);
+    scWord=(0.90+0.10*pop)*(act?(1.06*voicePulse):0.98);
+    yOff=(1-pop)*8-(act?2:0);
    }else if(AE_STYLE===1){
-    scWord=act?(1.08*voicePulse):0.96;
-    yOff=(1-pop)*16;
+    scWord=act?(1.06*voicePulse):0.98;
+    yOff=(1-pop)*14;
    }else if(AE_STYLE===2){
-    scWord=(0.84+0.16*bk(pop))*(act?(1.08*voicePulse):0.96);
-    rot=act?Math.sin(A*12)*0.014:0;
+    scWord=(0.86+0.14*bk(pop))*(act?(1.06*voicePulse):0.98);
+    rot=act?Math.sin(A*12)*0.012:0;
    }else{
-    scWord=act?(1.08*voicePulse):0.96;
-    xOff=(1-pop)*-10;
+    scWord=act?(1.06*voicePulse):0.98;
+    xOff=(1-pop)*-8;
    }
 
    const weightStr = act ? (item.em ? 'italic 900' : '900') : (item.em ? 'italic 600' : '600');
@@ -1237,7 +1328,7 @@ function drawSubs(){
    X.translate(item.x+xOff,baseY+item.row*lineH+yOff);
    X.rotate(rot);
    X.scale(scWord,scWord);
-   X.globalAlpha=act?1.0:(0.42+0.50*pop);
+   X.globalAlpha=act?1.0:(0.46+0.48*pop);
 
    X.font=`${weightStr} ${item.sz}px ${item.ff}`;
    X.textAlign='left';X.textBaseline='middle';X.lineJoin='round';
@@ -1266,7 +1357,7 @@ function drawSubs(){
   lineItems.forEach(item=>{
    const act=(item.idx===aw);
    const weightStr = act ? '900' : '600';
-   const scWord = act ? (1.09 * voicePulse) : 0.97;
+   const scWord = act ? (1.08 * voicePulse) : 0.97;
 
    X.save();
    X.translate(item.x + item.ww*0.5, y - (act?2:0));
@@ -1304,7 +1395,6 @@ function applySceneEnterExit(sc,tAbs){
  const outDur=0.28;
  const style=(TRANS_STYLE+li)%4;
 
- // Animasi Masuk Adegan
  if(tIn<inDur){
   const e=eo(cl(tIn/inDur));
   X.globalAlpha*=e;
@@ -1321,7 +1411,6 @@ function applySceneEnterExit(sc,tAbs){
   }
  }
 
- // Animasi Keluar Adegan sebelum berpindah ke adegan berikutnya
  if(tLeft<outDur){
   const uOut=1-cl(tLeft/outDur);
   const eOut=uOut*uOut;
