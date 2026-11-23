@@ -184,24 +184,39 @@ function generateBgmAndSfxWav(filePath, durationSec, videoData, sceneTimes) {
   fs.writeFileSync(filePath, buffer);
 }
 
-async function generateVoiceOver(teksBersih) {
+/* ===== ELEVENLABS VO DENGAN TIMESTAMP PRESISI PER BARIS & PER KATA ===== */
+async function generateVoiceOverWithTimestamps(lines) {
   if (!ELEVENLABS_API_KEY) {
     throw new Error('ELEVENLABS_API_KEY kosong/belum terbaca!');
   }
 
-  console.log(`Membuat VO wajib ElevenLabs (Voice ID: ${ELEVENLABS_VOICE_ID})...`);
+  // Gabungkan kalimat dengan pemisah baris baru agar jeda napas alami & indeks karakter akurat
+  const lineTexts = lines.map(l => l[2].replace(/\*/g, '').trim());
+  const fullText = lineTexts.join('\n');
+
+  // Hitung rentang indeks karakter untuk tiap baris di dalam fullText
+  const lineCharRanges = [];
+  let cursor = 0;
+  for (let i = 0; i < lineTexts.length; i++) {
+    const startChar = cursor;
+    const endChar = cursor + lineTexts[i].length - 1;
+    lineCharRanges.push({ startChar, endChar, text: lineTexts[i] });
+    cursor = endChar + 2; // +1 untuk '\n'
+  }
+
+  console.log(`Membuat VO wajib ElevenLabs + Timestamps (Voice ID: ${ELEVENLABS_VOICE_ID})...`);
   let errTerakhir = null;
+
   for (let percobaan = 1; percobaan <= 3; percobaan++) {
     try {
-      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`, {
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/with-timestamps`, {
         method: 'POST',
         headers: {
           'xi-api-key': ELEVENLABS_API_KEY,
-          'Content-Type': 'application/json',
-          'Accept': 'audio/mpeg'
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          text: teksBersih,
+          text: fullText,
           model_id: 'eleven_multilingual_v2',
           voice_settings: {
             stability: 0.48,
@@ -220,11 +235,50 @@ async function generateVoiceOver(teksBersih) {
         throw new Error(`ElevenLabs menolak (${res.status}): ${errText}`);
       }
 
-      const buf = Buffer.from(await res.arrayBuffer());
+      const data = await res.json();
+      if (!data.audio_base64) throw new Error('Respon ElevenLabs tidak berisi audio_base64.');
+
+      const buf = Buffer.from(data.audio_base64, 'base64');
       if (buf.length < 1000) throw new Error('File VO terlalu kecil, kemungkinan rusak.');
       fs.writeFileSync('vo.mp3', buf);
-      console.log(`VO ElevenLabs berhasil dibuat! (${formatMB(buf.length)})`);
-      return;
+
+      // Petakan timestamp asli dari ElevenLabs ke setiap baris & setiap kata!
+      const align = data.alignment || data.normalized_alignment;
+      const lineTimings = [];
+
+      if (align && Array.isArray(align.character_start_times_seconds) && Array.isArray(align.character_end_times_seconds)) {
+        const starts = align.character_start_times_seconds;
+        const ends = align.character_end_times_seconds;
+
+        for (let i = 0; i < lineCharRanges.length; i++) {
+          const { startChar, endChar, text } = lineCharRanges[i];
+          const sIdx = Math.min(startChar, starts.length - 1);
+          const eIdx = Math.min(endChar, ends.length - 1);
+
+          const ss = starts[sIdx] ?? 0;
+          const se = ends[eIdx] ?? (ss + 1.5);
+
+          // Ekstrak timestamp per kata di dalam baris ini
+          const wordTimes = [];
+          const wordRegex = /\S+/g;
+          let m;
+          while ((m = wordRegex.exec(text)) !== null) {
+            const wStartChar = Math.min(startChar + m.index, starts.length - 1);
+            const wEndChar = Math.min(startChar + m.index + m[0].length - 1, ends.length - 1);
+            wordTimes.push([
+              starts[wStartChar] ?? ss,
+              ends[wEndChar] ?? se
+            ]);
+          }
+
+          lineTimings.push({ ss, se, wordTimes });
+        }
+        console.log(`VO ElevenLabs + Timestamps presisi berhasil! (${formatMB(buf.length)}, ${lineTimings.length} baris tersinkron)`);
+      } else {
+        console.log(`VO ElevenLabs berhasil (${formatMB(buf.length)}), memakai fallback alignment.`);
+      }
+
+      return lineTimings;
     } catch (err) {
       errTerakhir = err;
       if (err.fatal) throw err;
@@ -280,7 +334,7 @@ async function kirimDokumenTelegram(filePath, caption) {
   if (!json.ok) throw new Error('Gagal kirim dokumen Telegram: ' + JSON.stringify(json));
 }
 
-/* ===== MODUL AUTO-UPLOAD PUBLIC KE YOUTUBE VIA UPLOAD-POST API ===== */
+/* ===== MODUL AUTO-UPLOAD PUBLIC KE YOUTUBE VIA UPLOAD-POST API (DIPERTAHANKAN) ===== */
 async function uploadKeUploadPost(filePath, videoData) {
   if (!UPLOAD_POST_API_KEY) {
     throw new Error('UPLOAD_POST_API_KEY kosong atau belum diset di GitHub Secrets.');
@@ -406,9 +460,6 @@ ATURAN KETAT V33.0 (WAJIB SINKRON NASKAH VO <-> VISUAL B-ROLL):
      * "c" (1-2 baris sudut pandang / refleksi karakter)
      * "b4" (1-2 baris visual B-Roll full layar ketiga — visual WAJIB menggambarkan persis apa yang diucapkan VO pada baris "b4" ini, dan WAJIB berbeda dari b1, b2, & b3!)
      * "end" (1 baris penutup berkesan TANPA CTA)
-   - Contoh konsistensi VO & elemen ke-5 pada adegan B-Roll:
-     * Jika VO di b1 berkata: "Banyak yang menyangka lubang ini biar *tinta* nggak macet." -> elemen ke-5 wajib: {"obj":"tinta pena","kicker":"MITOS UMUM","title":"TINTA & PENA","sub":"Anggapan Soal Tinta Kering"}
-     * Jika VO di b1 berkata: "Bayangkan ada *topi melayang* di udara tanpa tali." -> elemen ke-5 wajib: {"obj":"topi melayang","kicker":"ILUSI VISUAL","title":"TOPI MELAYANG","sub":"Melayang Bebas di Udara"}
    - Mood: "n" (santai), "d" (dramatis), "e" (semangat), "s" (tenang).
    - FX opsional (boleh kosong ""): "c" (lonceng di baris kedua cta), "p" (pop).
 3. "tx":
@@ -517,11 +568,10 @@ async function main() {
   const videoData = await buatNaskahJSON(dim, ttsInfo);
   console.log(`   (naskah selesai, ${detikBerjalan()} detik berjalan, ${videoData.lines.length} kalimat)`);
 
+  console.log('2/5 Membuat suara Voice Over (VO) ElevenLabs + Timestamps...');
+  const lineTimings = await generateVoiceOverWithTimestamps(videoData.lines);
+  videoData.lineTimings = lineTimings;
   fs.writeFileSync('data.json', JSON.stringify(videoData, null, 2), 'utf8');
-
-  console.log('2/5 Membuat suara Voice Over (VO) ElevenLabs...');
-  const teksBersih = videoData.lines.map(l => l[2].replace(/\*/g, '')).join(' ');
-  await generateVoiceOver(teksBersih);
   console.log(`   (VO selesai, ${detikBerjalan()} detik berjalan)`);
   await kirimPesanTelegram('✅ Naskah & suara VO selesai. Sekarang merender video 3D HD + Watermark @raii.punyacerita...');
 
