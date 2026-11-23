@@ -321,29 +321,31 @@ async function buatNaskahJSON(dim, ttsInfo) {
     ? '9-10 kalimat storytelling santai & mengalir (maksimal 10-12 kata per kalimat agar total durasi baca 38-50 detik)'
     : '12-15 kalimat padat dan informatif (untuk video landscape 16:9)';
 
-  const prompt = `Kamu adalah penulis skrip & sutradara video animasi storytelling 3D V32.0.
+  const prompt = `Kamu adalah penulis skrip & sutradara video animasi storytelling 3D V33.0.
 Buatkan data lengkap dalam format JSON MURNI (tanpa teks pembuka/penutup) untuk video berikut:
 - Judul: "${JUDUL}"
 - Bahasa Video: ${BAHASA} (kode BCP-47: ${ttsInfo.langCode})
 - Ukuran: ${UKURAN} (${dim.width}x${dim.height})
 
-ATURAN KETAT V32.0:
+ATURAN KETAT V33.0 (WAJIB SINKRON NASKAH VO <-> VISUAL B-ROLL):
 1. Gaya bahasa wajib seperti bercerita santai (*storytelling* yang enak didengar, mengalir alami, tidak kaku) dalam bahasa ${BAHASA}.
 2. Buat ${jumlahKalimat} di dalam array "lines". Berikan tanda koma/titik yang jelas antar kalimat agar jeda intonasi suara terdeteksi presisi.
-   Format tiap elemen: ["kunci_adegan", "mood", "Kalimat dengan *kata* ditekankan.", "fx_opsional", "objek_visual_3d_unik"]
+   Format tiap elemen: ["kunci_adegan", "mood", "Kalimat VO dengan *kata* ditekankan.", "fx_opsional", {"obj":"kata kunci objek di kalimat VO","kicker":"KATEGORI","title":"JUDUL 2 KATA SESUAI VO","sub":"Penjelasan singkat 3-4 kata sesuai VO"}]
    - Kunci adegan WAJIB menggunakan urutan ini:
      * "title" (1 baris pembuka langsung ke topik utama yang santai & bikin penasaran)
-     * "b1" (1-2 baris penjelasan visual B-Roll full layar pertama — fokus ke 1 objek utama paling menonjol)
+     * "b1" (1-2 baris visual B-Roll full layar pertama — visual WAJIB menggambarkan persis apa yang diucapkan VO pada baris "b1" ini!)
      * "a" (1-2 baris cerita utama dari karakter)
-     * "b2" (1-2 baris detail mikro B-Roll kecil — WAJIB berbeda objek dari b1)
-     * "b3" (1-2 baris bukti perbandingan / mekanisme B-Roll full layar kedua — WAJIB berbeda objek dari b1 & b2)
+     * "b2" (1-2 baris visual B-Roll kotak kecil — visual WAJIB menggambarkan persis apa yang diucapkan VO pada baris "b2" ini, dan WAJIB berbeda dari b1!)
+     * "b3" (1-2 baris visual B-Roll full layar kedua — visual WAJIB menggambarkan persis apa yang diucapkan VO pada baris "b3" ini, dan WAJIB berbeda dari b1 & b2!)
      * "cta" (2 baris ajakan di TENGAH video: baris 1 "Mau bikin video kayak gini juga?" dan baris 2 "Langsung aja cek *link di bio*.")
      * "c" (1-2 baris sudut pandang / refleksi karakter)
-     * "b4" (1-2 baris puncak fakta B-Roll full layar ketiga — WAJIB berbeda objek dari b1, b2, & b3)
+     * "b4" (1-2 baris visual B-Roll full layar ketiga — visual WAJIB menggambarkan persis apa yang diucapkan VO pada baris "b4" ini, dan WAJIB berbeda dari b1, b2, & b3!)
      * "end" (1 baris penutup berkesan TANPA CTA)
+   - Contoh konsistensi VO & elemen ke-5 pada adegan B-Roll:
+     * Jika VO di b1 berkata: "Banyak yang menyangka lubang ini biar *tinta* nggak macet." -> elemen ke-5 wajib: {"obj":"tinta pena","kicker":"MITOS UMUM","title":"TINTA & PENA","sub":"Anggapan Soal Tinta Kering"}
+     * Jika VO di b1 berkata: "Bayangkan ada *topi melayang* di udara tanpa tali." -> elemen ke-5 wajib: {"obj":"topi melayang","kicker":"ILUSI VISUAL","title":"TOPI MELAYANG","sub":"Melayang Bebas di Udara"}
    - Mood: "n" (santai), "d" (dramatis), "e" (semangat), "s" (tenang).
    - FX opsional (boleh kosong ""): "c" (lonceng di baris kedua cta), "p" (pop).
-   - objek_visual_3d_unik: tuliskan 1-2 kata benda konkret paling menonjol yang berbeda-beda di setiap adegan B-Roll (contoh untuk b1: "tutup pulpen", b2: "perlindungan anak", b3: "jalur napas", b4: "pabrik industri") agar semua B-Roll tampil unik dan tidak pernah kembar!
 3. "tx":
    - "kicker": kategori singkat 1-2 kata (contoh: "SAINS TUBUH", "FAKTA UNIK", "PSIKOLOGI", "SEJARAH").
    - "t1": 1-2 kata judul besar baris atas di sampul (maksimal 14 huruf).
@@ -372,16 +374,16 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
     "src": "Sumber"
   },
   "lines": [
-    ["title", "d", "Kalimat pembuka pertama dengan *penekanan*.", "", "objek utama"],
-    ["b1", "n", "Kalimat visual pertama yang menjelaskan objek utama.", "p", "objek 1"],
-    ["a", "n", "Kalimat fakta utama dari karakter.", "", ""],
-    ["b2", "e", "Kalimat detail mikro yang *mengejutkan*.", "p", "objek 2"],
-    ["b3", "d", "Kalimat perbandingan sebelum dan sesudah.", "", "objek 3"],
-    ["cta", "n", "Mau bikin video kayak gini juga?", "", ""],
-    ["cta", "e", "Langsung aja cek *link di bio*.", "c", ""],
-    ["c", "n", "Kalimat sudut pandang dan refleksi.", "", ""],
-    ["b4", "d", "Kalimat puncak bukti terpenting.", "", "objek 4"],
-    ["end", "s", "Kalimat penutup yang meninggalkan *kesan*.", "", ""]
+    ["title", "d", "Kalimat pembuka pertama dengan *penekanan*.", "", null],
+    ["b1", "n", "Kalimat visual pertama sesuai naskah.", "p", {"obj":"objek utama vo","kicker":"FAKTA UTAMA","title":"JUDUL B1","sub":"Keterangan B1"}],
+    ["a", "n", "Kalimat fakta utama dari karakter.", "", null],
+    ["b2", "e", "Kalimat detail mikro sesuai naskah.", "p", {"obj":"objek mikro vo","kicker":"DETAIL MIKRO","title":"JUDUL B2","sub":"Keterangan B2"}],
+    ["b3", "d", "Kalimat mekanisme sesuai naskah.", "", {"obj":"objek mekanisme vo","kicker":"MEKANISME","title":"JUDUL B3","sub":"Keterangan B3"}],
+    ["cta", "n", "Mau bikin video kayak gini juga?", "", null],
+    ["cta", "e", "Langsung aja cek *link di bio*.", "c", null],
+    ["c", "n", "Kalimat sudut pandang dan refleksi.", "", null],
+    ["b4", "d", "Kalimat puncak bukti sesuai naskah.", "", {"obj":"objek puncak vo","kicker":"BUKTI NYATA","title":"JUDUL B4","sub":"Keterangan B4"}],
+    ["end", "s", "Kalimat penutup yang meninggalkan *kesan*.", "", null]
   ]
 }`;
 
@@ -435,18 +437,18 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
 }
 
 async function main() {
-  console.log(`Mulai produksi V32.0: "${JUDUL}" (${UKURAN}, ${BAHASA})`);
+  console.log(`Mulai produksi V33.0: "${JUDUL}" (${UKURAN}, ${BAHASA})`);
   const dim = parseUkuran(UKURAN);
   const ttsInfo = pilihSuaraTTS(BAHASA);
 
   await kirimPesanTelegram(
-    `🏭 Pabrik Video 3D V32.0 mulai bekerja!\n\n` +
+    `🏭 Pabrik Video 3D V33.0 mulai bekerja!\n\n` +
     `📌 Judul: ${JUDUL}\n` +
     `📐 Ukuran: ${UKURAN} (${dim.width}x${dim.height})\n` +
     `🌐 Bahasa: ${BAHASA}`
   );
 
-  console.log('1/4 Meracik naskah & adegan 3D V32.0...');
+  console.log('1/4 Meracik naskah & adegan 3D V33.0...');
   const videoData = await buatNaskahJSON(dim, ttsInfo);
   console.log(`   (naskah selesai, ${detikBerjalan()} detik berjalan, ${videoData.lines.length} kalimat)`);
 
@@ -458,7 +460,7 @@ async function main() {
   console.log(`   (VO selesai, ${detikBerjalan()} detik berjalan)`);
   await kirimPesanTelegram('✅ Naskah & suara VO selesai. Sekarang merender video 3D HD + Watermark @raii.punyacerita...');
 
-  console.log('3/4 Merakit file HTML V32.0...');
+  console.log('3/4 Merakit file HTML V33.0...');
   let html = fs.readFileSync('template.html', 'utf8');
   html = html.replace('__TITLE__', videoData.title);
   html = html.replace('__ASPECT__', dim.aspect);
@@ -570,7 +572,7 @@ async function main() {
     if (!isNaN(d)) durasiTeks = d.toFixed(1) + ' detik';
   } catch (e) { /* abaikan */ }
 
-  const infoYoutube = `🎬 VIDEO 3D V32.0 SELESAI DIRENDER!\n\n📌 Judul:\n${videoData.title}\n\n📝 Deskripsi:\n${videoData.desc}\n\n📚 Sumber:\n${videoData.src.map(s => '- ' + s).join('\n')}\n\n🏷️ Tags:\n${videoData.tags}`;
+  const infoYoutube = `🎬 VIDEO 3D V33.0 SELESAI DIRENDER!\n\n📌 Judul:\n${videoData.title}\n\n📝 Deskripsi:\n${videoData.desc}\n\n📚 Sumber:\n${videoData.src.map(s => '- ' + s).join('\n')}\n\n🏷️ Tags:\n${videoData.tags}`;
 
   const infoTeknis = `\n\n⏱️ Durasi: ${durasiTeks} | 💾 ${formatMB(ukuranFile)} | 🕐 Proses: ${detikBerjalan()} dtk`;
   if (ukuranFile > 49 * 1024 * 1024) {
