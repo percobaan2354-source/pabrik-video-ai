@@ -4,11 +4,14 @@ const http = require('http');
 const { execSync, spawn } = require('child_process');
 const { chromium } = require('playwright');
 
-const GEMINI_API_KEY      = (process.env.GEMINI_API_KEY || '').trim();
-const TELEGRAM_TOKEN      = (process.env.TELEGRAM_TOKEN || '').trim();
-const TELEGRAM_CHAT_ID    = (process.env.TELEGRAM_CHAT_ID || '').trim();
-const ELEVENLABS_API_KEY  = (process.env.ELEVENLABS_API_KEY || '').trim();
-const ELEVENLABS_VOICE_ID = (process.env.ELEVENLABS_VOICE_ID || 'nPczCjzI2devNBz1zQrb').trim();
+const GEMINI_API_KEY        = (process.env.GEMINI_API_KEY || '').trim();
+const TELEGRAM_TOKEN        = (process.env.TELEGRAM_TOKEN || '').trim();
+const TELEGRAM_CHAT_ID      = (process.env.TELEGRAM_CHAT_ID || '').trim();
+const ELEVENLABS_API_KEY    = (process.env.ELEVENLABS_API_KEY || '').trim();
+const ELEVENLABS_VOICE_ID   = (process.env.ELEVENLABS_VOICE_ID || 'nPczCjzI2devNBz1zQrb').trim();
+const YOUTUBE_CLIENT_ID     = (process.env.YOUTUBE_CLIENT_ID || '').trim();
+const YOUTUBE_CLIENT_SECRET = (process.env.YOUTUBE_CLIENT_SECRET || '').trim();
+const YOUTUBE_REFRESH_TOKEN = (process.env.YOUTUBE_REFRESH_TOKEN || '').trim();
 
 const JUDUL  = (process.env.INPUT_JUDUL  || "Kenapa Kita Merem Saat Bersin?").trim();
 const UKURAN = (process.env.INPUT_UKURAN || "9:16").trim();
@@ -278,6 +281,113 @@ async function kirimDokumenTelegram(filePath, caption) {
   if (!json.ok) throw new Error('Gagal kirim dokumen Telegram: ' + JSON.stringify(json));
 }
 
+/* ===== MODUL AUTO-UPLOAD YOUTUBE DATA API V3 ===== */
+async function getYouTubeAccessToken() {
+  if (!YOUTUBE_CLIENT_ID || !YOUTUBE_CLIENT_SECRET || !YOUTUBE_REFRESH_TOKEN) {
+    throw new Error('Secrets YouTube (YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET / YOUTUBE_REFRESH_TOKEN) kosong atau belum dipetakan di workflow YAML.');
+  }
+
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: YOUTUBE_CLIENT_ID,
+      client_secret: YOUTUBE_CLIENT_SECRET,
+      refresh_token: YOUTUBE_REFRESH_TOKEN,
+      grant_type: 'refresh_token'
+    })
+  });
+
+  const data = await res.json();
+  if (!res.ok || !data.access_token) {
+    throw new Error(`Gagal menukar Refresh Token YouTube: ${JSON.stringify(data)}`);
+  }
+  return data.access_token;
+}
+
+async function uploadKeYouTube(filePath, videoData) {
+  console.log('5/5 Mengunggah video otomatis ke YouTube...');
+  const accessToken = await getYouTubeAccessToken();
+  const fileSize = fs.statSync(filePath).size;
+
+  const fullDescription =
+    `${videoData.desc}\n\n` +
+    `Sumber:\n${(videoData.src || []).map(s => '- ' + s).join('\n')}\n\n` +
+    `${videoData.tags}`;
+
+  const cleanTags = (videoData.tags || '')
+    .split(/[\s,]+/)
+    .map(t => t.replace(/^#/, '').trim())
+    .filter(Boolean)
+    .slice(0, 15);
+
+  const metadata = {
+    snippet: {
+      title: (videoData.title || JUDUL).slice(0, 100),
+      description: fullDescription.slice(0, 4900),
+      tags: cleanTags,
+      categoryId: '27' // 27 = Education
+    },
+    status: {
+      privacyStatus: 'public', // Akan otomatis terkunci Private jika aplikasi OAuth belum terverifikasi
+      selfDeclaredMadeForKids: false
+    }
+  };
+
+  // Langkah A: Inisiasi Resumable Upload
+  const initRes = await fetch(
+    'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json; charset=UTF-8',
+        'X-Upload-Content-Length': String(fileSize),
+        'X-Upload-Content-Type': 'video/mp4'
+      },
+      body: JSON.stringify(metadata)
+    }
+  );
+
+  if (!initRes.ok) {
+    const errText = await initRes.text();
+    throw new Error(`Gagal inisiasi upload YouTube (${initRes.status}): ${errText}`);
+  }
+
+  const uploadUrl = initRes.headers.get('location');
+  if (!uploadUrl) {
+    throw new Error('URL resumable upload tidak diterima dari YouTube.');
+  }
+
+  // Langkah B: Kirim file biner video_jadi.mp4
+  const videoBuffer = fs.readFileSync(filePath);
+  const uploadRes = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Length': String(fileSize),
+      'Content-Type': 'video/mp4'
+    },
+    body: videoBuffer
+  });
+
+  const uploadData = await uploadRes.json();
+  if (!uploadRes.ok || !uploadData.id) {
+    throw new Error(`Gagal upload file ke YouTube (${uploadRes.status}): ${JSON.stringify(uploadData)}`);
+  }
+
+  const isShort = (videoData.width < videoData.height);
+  const videoUrl = isShort
+    ? `https://youtube.com/shorts/${uploadData.id}`
+    : `https://youtu.be/${uploadData.id}`;
+
+  console.log(`   (Upload YouTube selesai! ID: ${uploadData.id}, Status: ${uploadData.status?.privacyStatus})`);
+  return {
+    id: uploadData.id,
+    url: videoUrl,
+    privacyStatus: uploadData.status?.privacyStatus || 'private'
+  };
+}
+
 function rapikanNaskah(data, dim, ttsInfo) {
   if (!data || typeof data !== 'object') throw new Error('Naskah dari Gemini bukan objek JSON yang valid.');
   if (!Array.isArray(data.lines)) throw new Error('Naskah dari Gemini tidak punya array "lines".');
@@ -448,26 +558,26 @@ async function main() {
     `🌐 Bahasa: ${BAHASA}`
   );
 
-  console.log('1/4 Meracik naskah & adegan 3D V33.0...');
+  console.log('1/5 Meracik naskah & adegan 3D V33.0...');
   const videoData = await buatNaskahJSON(dim, ttsInfo);
   console.log(`   (naskah selesai, ${detikBerjalan()} detik berjalan, ${videoData.lines.length} kalimat)`);
 
   fs.writeFileSync('data.json', JSON.stringify(videoData, null, 2), 'utf8');
 
-  console.log('2/4 Membuat suara Voice Over (VO) ElevenLabs...');
+  console.log('2/5 Membuat suara Voice Over (VO) ElevenLabs...');
   const teksBersih = videoData.lines.map(l => l[2].replace(/\*/g, '')).join(' ');
   await generateVoiceOver(teksBersih);
   console.log(`   (VO selesai, ${detikBerjalan()} detik berjalan)`);
   await kirimPesanTelegram('✅ Naskah & suara VO selesai. Sekarang merender video 3D HD + Watermark @raii.punyacerita...');
 
-  console.log('3/4 Merakit file HTML V33.0...');
+  console.log('3/5 Merakit file HTML V33.0...');
   let html = fs.readFileSync('template.html', 'utf8');
   html = html.replace('__TITLE__', videoData.title);
   html = html.replace('__ASPECT__', dim.aspect);
   html = html.replace('__VIDEO_DATA_JSON__', JSON.stringify(videoData));
   fs.writeFileSync('render_siap.html', html, 'utf8');
 
-  console.log('4/4 Merender video HD 30 FPS di cloud...');
+  console.log('4/5 Merender video HD 30 FPS di cloud...');
   const server = http.createServer((req, res) => {
     const reqUrl = req.url.split('?')[0];
     const filePath = path.join(__dirname, reqUrl === '/' ? 'render_siap.html' : reqUrl);
@@ -587,8 +697,21 @@ async function main() {
     }
   }
 
-  await kirimPesanTelegram(infoYoutube + infoTeknis);
-  console.log('Selesai! Video sudah dikirim ke Telegram.');
+  // Upload otomatis ke YouTube
+  let infoUploadYT = '';
+  try {
+    const hasilYT = await uploadKeYouTube('video_jadi.mp4', videoData);
+    infoUploadYT =
+      `\n\n📺 AUTO-UPLOAD YOUTUBE BERHASIL!\n` +
+      `🔗 Link: ${hasilYT.url}\n` +
+      `🔒 Status: ${hasilYT.privacyStatus.toUpperCase()} (Buka YouTube Studio di HP untuk ubah ke Public)`;
+  } catch (ytErr) {
+    console.error('Upload YouTube gagal:', ytErr.message);
+    infoUploadYT = `\n\n⚠️ Auto-Upload YouTube gagal: ${ytErr.message}`;
+  }
+
+  await kirimPesanTelegram(infoYoutube + infoTeknis + infoUploadYT);
+  console.log('Selesai! Video sudah dikirim ke Telegram & diproses ke YouTube.');
 }
 
 main().catch(async err => {
