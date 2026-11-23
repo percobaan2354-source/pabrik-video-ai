@@ -4,14 +4,13 @@ const http = require('http');
 const { execSync, spawn } = require('child_process');
 const { chromium } = require('playwright');
 
-const GEMINI_API_KEY        = (process.env.GEMINI_API_KEY || '').trim();
-const TELEGRAM_TOKEN        = (process.env.TELEGRAM_TOKEN || '').trim();
-const TELEGRAM_CHAT_ID      = (process.env.TELEGRAM_CHAT_ID || '').trim();
-const ELEVENLABS_API_KEY    = (process.env.ELEVENLABS_API_KEY || '').trim();
-const ELEVENLABS_VOICE_ID   = (process.env.ELEVENLABS_VOICE_ID || 'nPczCjzI2devNBz1zQrb').trim();
-const YOUTUBE_CLIENT_ID     = (process.env.YOUTUBE_CLIENT_ID || '').trim();
-const YOUTUBE_CLIENT_SECRET = (process.env.YOUTUBE_CLIENT_SECRET || '').trim();
-const YOUTUBE_REFRESH_TOKEN = (process.env.YOUTUBE_REFRESH_TOKEN || '').trim();
+const GEMINI_API_KEY      = (process.env.GEMINI_API_KEY || '').trim();
+const TELEGRAM_TOKEN      = (process.env.TELEGRAM_TOKEN || '').trim();
+const TELEGRAM_CHAT_ID    = (process.env.TELEGRAM_CHAT_ID || '').trim();
+const ELEVENLABS_API_KEY  = (process.env.ELEVENLABS_API_KEY || '').trim();
+const ELEVENLABS_VOICE_ID = (process.env.ELEVENLABS_VOICE_ID || 'nPczCjzI2devNBz1zQrb').trim();
+const UPLOAD_POST_API_KEY = (process.env.UPLOAD_POST_API_KEY || '').trim();
+const UPLOAD_POST_USER    = (process.env.UPLOAD_POST_USER || 'default').trim();
 
 const JUDUL  = (process.env.INPUT_JUDUL  || "Kenapa Kita Merem Saat Bersin?").trim();
 const UKURAN = (process.env.INPUT_UKURAN || "9:16").trim();
@@ -281,35 +280,13 @@ async function kirimDokumenTelegram(filePath, caption) {
   if (!json.ok) throw new Error('Gagal kirim dokumen Telegram: ' + JSON.stringify(json));
 }
 
-/* ===== MODUL AUTO-UPLOAD YOUTUBE DATA API V3 ===== */
-async function getYouTubeAccessToken() {
-  if (!YOUTUBE_CLIENT_ID || !YOUTUBE_CLIENT_SECRET || !YOUTUBE_REFRESH_TOKEN) {
-    throw new Error('Secrets YouTube (YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET / YOUTUBE_REFRESH_TOKEN) kosong atau belum dipetakan di workflow YAML.');
+/* ===== MODUL AUTO-UPLOAD PUBLIC KE YOUTUBE VIA UPLOAD-POST API ===== */
+async function uploadKeUploadPost(filePath, videoData) {
+  if (!UPLOAD_POST_API_KEY) {
+    throw new Error('UPLOAD_POST_API_KEY kosong atau belum diset di GitHub Secrets.');
   }
 
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: YOUTUBE_CLIENT_ID,
-      client_secret: YOUTUBE_CLIENT_SECRET,
-      refresh_token: YOUTUBE_REFRESH_TOKEN,
-      grant_type: 'refresh_token'
-    })
-  });
-
-  const data = await res.json();
-  if (!res.ok || !data.access_token) {
-    throw new Error(`Gagal menukar Refresh Token YouTube: ${JSON.stringify(data)}`);
-  }
-  return data.access_token;
-}
-
-async function uploadKeYouTube(filePath, videoData) {
-  console.log('5/5 Mengunggah video otomatis ke YouTube...');
-  const accessToken = await getYouTubeAccessToken();
-  const fileSize = fs.statSync(filePath).size;
-
+  console.log(`5/5 Mengunggah video PUBLIC ke YouTube via Upload-Post (user: ${UPLOAD_POST_USER})...`);
   const fullDescription =
     `${videoData.desc}\n\n` +
     `Sumber:\n${(videoData.src || []).map(s => '- ' + s).join('\n')}\n\n` +
@@ -319,73 +296,51 @@ async function uploadKeYouTube(filePath, videoData) {
     .split(/[\s,]+/)
     .map(t => t.replace(/^#/, '').trim())
     .filter(Boolean)
-    .slice(0, 15);
+    .slice(0, 15)
+    .join(',');
 
-  const metadata = {
-    snippet: {
-      title: (videoData.title || JUDUL).slice(0, 100),
-      description: fullDescription.slice(0, 4900),
-      tags: cleanTags,
-      categoryId: '27' // 27 = Education
-    },
-    status: {
-      privacyStatus: 'public', // Akan otomatis terkunci Private jika aplikasi OAuth belum terverifikasi
-      selfDeclaredMadeForKids: false
-    }
-  };
+  const form = new FormData();
+  const fileBuffer = fs.readFileSync(filePath);
+  const blob = new Blob([fileBuffer], { type: 'video/mp4' });
 
-  // Langkah A: Inisiasi Resumable Upload
-  const initRes = await fetch(
-    'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json; charset=UTF-8',
-        'X-Upload-Content-Length': String(fileSize),
-        'X-Upload-Content-Type': 'video/mp4'
-      },
-      body: JSON.stringify(metadata)
-    }
-  );
+  form.append('video', blob, path.basename(filePath));
+  form.append('user', UPLOAD_POST_USER);
+  form.append('platform[]', 'youtube');
+  form.append('title', (videoData.title || JUDUL).slice(0, 100));
+  form.append('youtube_title', (videoData.title || JUDUL).slice(0, 100));
+  form.append('youtube_description', fullDescription.slice(0, 4900));
+  if (cleanTags) form.append('youtube_tags', cleanTags);
+  form.append('youtube_privacy', 'public');
+  form.append('privacyStatus', 'public');
 
-  if (!initRes.ok) {
-    const errText = await initRes.text();
-    throw new Error(`Gagal inisiasi upload YouTube (${initRes.status}): ${errText}`);
-  }
-
-  const uploadUrl = initRes.headers.get('location');
-  if (!uploadUrl) {
-    throw new Error('URL resumable upload tidak diterima dari YouTube.');
-  }
-
-  // Langkah B: Kirim file biner video_jadi.mp4
-  const videoBuffer = fs.readFileSync(filePath);
-  const uploadRes = await fetch(uploadUrl, {
-    method: 'PUT',
+  const res = await fetch('https://api.upload-post.com/api/upload', {
+    method: 'POST',
     headers: {
-      'Content-Length': String(fileSize),
-      'Content-Type': 'video/mp4'
+      Authorization: `Apikey ${UPLOAD_POST_API_KEY}`
     },
-    body: videoBuffer
+    body: form
   });
 
-  const uploadData = await uploadRes.json();
-  if (!uploadRes.ok || !uploadData.id) {
-    throw new Error(`Gagal upload file ke YouTube (${uploadRes.status}): ${JSON.stringify(uploadData)}`);
+  const rawText = await res.text();
+  let json;
+  try {
+    json = JSON.parse(rawText);
+  } catch (e) {
+    throw new Error(`Respon Upload-Post bukan JSON (${res.status}): ${rawText.slice(0, 300)}`);
   }
 
-  const isShort = (videoData.width < videoData.height);
-  const videoUrl = isShort
-    ? `https://youtube.com/shorts/${uploadData.id}`
-    : `https://youtu.be/${uploadData.id}`;
+  if (!res.ok || json.success === false) {
+    throw new Error(`Upload-Post gagal (${res.status}): ${JSON.stringify(json)}`);
+  }
 
-  console.log(`   (Upload YouTube selesai! ID: ${uploadData.id}, Status: ${uploadData.status?.privacyStatus})`);
-  return {
-    id: uploadData.id,
-    url: videoUrl,
-    privacyStatus: uploadData.status?.privacyStatus || 'private'
-  };
+  const ytRes = json.results?.youtube || json.data?.youtube || json;
+  const videoUrl =
+    ytRes?.url ||
+    ytRes?.video_url ||
+    (ytRes?.id ? `https://youtube.com/shorts/${ytRes.id}` : 'Sudah tayang Public di channel YouTube kamu!');
+
+  console.log('   (Auto-upload YouTube Public selesai!)', JSON.stringify(json));
+  return { url: videoUrl };
 }
 
 function rapikanNaskah(data, dim, ttsInfo) {
@@ -697,21 +652,18 @@ async function main() {
     }
   }
 
-  // Upload otomatis ke YouTube
+  // Auto-upload PUBLIC ke YouTube via Upload-Post API
   let infoUploadYT = '';
   try {
-    const hasilYT = await uploadKeYouTube('video_jadi.mp4', videoData);
-    infoUploadYT =
-      `\n\n📺 AUTO-UPLOAD YOUTUBE BERHASIL!\n` +
-      `🔗 Link: ${hasilYT.url}\n` +
-      `🔒 Status: ${hasilYT.privacyStatus.toUpperCase()} (Buka YouTube Studio di HP untuk ubah ke Public)`;
-  } catch (ytErr) {
-    console.error('Upload YouTube gagal:', ytErr.message);
-    infoUploadYT = `\n\n⚠️ Auto-Upload YouTube gagal: ${ytErr.message}`;
+    const hasilYT = await uploadKeUploadPost('video_jadi.mp4', videoData);
+    infoUploadYT = `\n\n🚀 AUTO-UPLOAD YOUTUBE (PUBLIC) BERHASIL!\n🔗 Link: ${hasilYT.url}`;
+  } catch (upErr) {
+    console.error('Upload-Post gagal:', upErr.message);
+    infoUploadYT = `\n\n⚠️ Auto-Upload YouTube gagal: ${upErr.message}`;
   }
 
   await kirimPesanTelegram(infoYoutube + infoTeknis + infoUploadYT);
-  console.log('Selesai! Video sudah dikirim ke Telegram & diproses ke YouTube.');
+  console.log('Selesai! Video sudah dikirim ke Telegram & dipublikasikan ke YouTube.');
 }
 
 main().catch(async err => {
