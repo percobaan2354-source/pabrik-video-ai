@@ -75,6 +75,7 @@ const TX = Object.assign({
  src:'Sumber'
 }, DATA.tx || {});
 const L = Array.isArray(DATA.lines) ? DATA.lines : [];
+const LINE_TIMINGS = Array.isArray(DATA.lineTimings) ? DATA.lineTimings : [];
 const CW = DATA.width || 720;
 const CH = DATA.height || 1280;
 const SX = CW / 720;
@@ -117,7 +118,7 @@ const GENRE_DB={
  bisnis:{pal:{a:'#ca8a04',t:'#0284c7',p:'#ea580c',g:'#059669',b1:'#fef9c3',b2:'#dbeafe',sky:'#fffbeb'},icons:['coin','trophy','bolt','check','shield'],bgm:[261.63,329.63,392.00,523.25,392.00,329.63]},
  drama:{pal:{a:'#db2777',t:'#2563eb',p:'#e11d48',g:'#d97706',b1:'#fce7f3',b2:'#dbeafe',sky:'#fff1f2'},icons:['heart','book','wall_clock','star','leaf'],bgm:[220.00,261.63,329.63,349.23,329.63,261.63]},
  psikologi:{pal:{a:'#0284c7',t:'#0d9488',p:'#f59e0b',g:'#10b981',b1:'#ccfbf1',b2:'#e0f2fe',sky:'#f0fdfa'},icons:['brain','bed','moon','heart','wall_clock'],bgm:[246.94,293.66,369.99,440.00,369.99,293.66]},
- mitologi:{pal:{a:'#b45309',t:'#059669',p:'#7e22ce',g:'#0d9488',b1:'#d1fae5',b2:'#fef3c7',sky:'#ecfdf5'},icons:['flame','moon','star','shield','bolt'],bgm:[196.00,233.08,293.66,349.23,392.00,293.66]},
+ mitologi:{pal:{a:'#b45309',t:'#059669',p:'#7e22ce',g:'#0d9488',b1:'#d1fae5',b2:'#fef3c7',sky:'#ecfdf5'},icons:['flame','moon','star','shield','bolt'],bgm:[196.00,233.08,293.66,349.23,392.00,329.66]},
  sains:{pal:{a:'#0284c7',t:'#7c3aed',p:'#0891b2',g:'#4f46e5',b1:'#e0f2fe',b2:'#ede9fe',sky:'#f0f9ff'},icons:['sun','moon','chip','bolt','star'],bgm:[261.63,311.13,392.00,466.16,523.25,392.00]},
  bencana:{pal:{a:'#ea580c',t:'#475569',p:'#dc2626',g:'#d97706',b1:'#ffedd5',b2:'#e2e8f0',sky:'#fff7ed'},icons:['flame','bolt','wave','shield','wall_clock'],bgm:[146.83,174.61,196.00,220.00,174.61,146.83]},
  biografi:{pal:{a:'#d97706',t:'#ea580c',p:'#db2777',g:'#059669',b1:'#fef3c7',b2:'#fed7aa',sky:'#fffbeb'},icons:['book','lamp','trophy','wall_clock','star'],bgm:[261.63,293.66,329.63,392.00,440.00,392.00]},
@@ -168,13 +169,13 @@ const VISUAL_CATALOG=[
  {id:'wall_clock',re:/jam dinding|jam weker|jarum jam|berdetak|waktu|detik|menit|jam/,ic1:'wall_clock',ic2:'moon',kicker:'VISUAL WAKTU',title:'WAKTU & RITME',sub:'Detak Waktu Berjalan'},
  {id:'lion_predator',re:/singa|harimau|predator|dikejar|hewan|binatang|liar/,ic1:'lion',ic2:'bolt',kicker:'ANCAMAN ALAM',title:'INSTING BERTAHAN',sub:'Respon Waspada Aktif'},
  {id:'heart_pulse',re:/jantung|berdegup|denyut|darah|tekanan|adrenalin|kortisol/,ic1:'heart',ic2:'bolt',kicker:'REAKSI TUBUH',title:'DETAK & HORMON',sub:'Sirkulasi & Kewaspadaan'},
- {id:'bathroom_water',re:/kamar mandi|gayung|bak air|mandi|sabun|air dingin|shower|toilet|wc/,ic1:'dipper',ic2:'wave',kicker:'KESEHARIAN',title:'AIR & SUHU',sub:'Ilustrasi Kamar Mandi'},
+ {id:'bathroom_water',re:/kamar mandi|gayung|bak air|mandi|sabun|air dingin|shower|toilet|wc|saluran|drainase|selokan|genangan/,ic1:'dipper',ic2:'wave',kicker:'SISTEM AIR',title:'ALIRAN & DRAINASE',sub:'Sirkulasi Air Terkendali'},
  {id:'light_dark',re:/lilin|lampu|listrik|penerangan|terang|gelap|malam|cahaya/,ic1:'lamp',ic2:'moon',kicker:'SUASANA',title:'CAHAYA & GELAP',sub:'Perubahan Suasana'},
  {id:'history_book',re:/sejarawan|catatan|buku|dokumen|arsip|tulisan|naskah|riset|penelitian|sejarah|kuno/,ic1:'book',ic2:'doc',kicker:'ARSIP RISET',title:'CATATAN SEJARAH',sub:'Bukti & Dokumentasi'},
  {id:'brain_reflex',re:/otak|pikiran|mental|fokus|psikologi|sadar|tubuh|saraf|tidur|mimpi|bersin|merem|mata/,ic1:'brain',ic2:'eye',kicker:'SISTEM TUBUH',title:'REFLEKS & OTAK',sub:'Mekanisme Alami Tubuh'},
  {id:'money_wealth',re:/uang|kaya|bisnis|saham|emas|sukses|cuan|modal|harga|ekonomi/,ic1:'coin',ic2:'trophy',kicker:'NILAI EKONOMI',title:'STRATEGI FINANSIAL',sub:'Pertumbuhan & Nilai'},
  {id:'space_science',re:/planet|luar angkasa|matahari|bumi|bintang|sains|teknologi|robot|ai|satelit|roket/,ic1:'planet',ic2:'chip',kicker:'EKSPLORASI SAINS',title:'FENOMENA SAINS',sub:'Teknologi & Semesta'},
- {id:'nature_disaster',re:/gunung|lava|gempa|tsunami|badai|api|bencana|banjir|air|laut|samudra|angin/,ic1:'flame',ic2:'wave',kicker:'KEKUATAN ALAM',title:'FENOMENA ALAM',sub:'Dinamika Bumi'}
+ {id:'nature_disaster',re:/gunung|lava|gempa|tsunami|badai|api|bencana|banjir|air|laut|samudra|angin|karat|korosi/,ic1:'shield',ic2:'wave',kicker:'KETAHANAN MATERIAL',title:'PERLINDUNGAN',sub:'Desain Tahan Kondisi Ekstrem'}
 ];
 
 /* Deteksi Visual Cerdas Berbasis Naskah VO + Hint AI dari masing-masing kalimat B-Roll */
@@ -184,7 +185,6 @@ function detectVisualFromVoScript(voSentence, aiHintObj, excludeIds=new Set()){
  const hintText=typeof aiHintObj==='string'?aiHintObj:(hintObj.obj||'');
  const q=(hintText+' '+voClean).toLowerCase();
 
- // 1. Cari kecocokan langsung dari kata-kata di naskah VO pada adegan B-Roll tersebut
  let matched=null;
  for(const item of VISUAL_CATALOG){
   if(item.re.test(q) && !excludeIds.has(item.id)){
@@ -193,7 +193,6 @@ function detectVisualFromVoScript(voSentence, aiHintObj, excludeIds=new Set()){
   }
  }
 
- // 2. Jika belum ketemu yang belum dipakai, cari tanpa excludeIds
  if(!matched){
   for(const item of VISUAL_CATALOG){
    if(item.re.test(q)){
@@ -203,7 +202,6 @@ function detectVisualFromVoScript(voSentence, aiHintObj, excludeIds=new Set()){
   }
  }
 
- // 3. Bangun judul & subjudul B-Roll yang 100% mencerminkan kalimat VO di adegan ini
  const words=extractMeaningfulWords(voClean);
  const autoTitle=(words.slice(0,2).join(' ')||TX.t1).toUpperCase();
  const autoSub=voClean.length>36?(voClean.slice(0,34).trim()+'…'):voClean;
@@ -220,8 +218,7 @@ function detectVisualFromVoScript(voSentence, aiHintObj, excludeIds=new Set()){
   };
  }
 
- // 4. Fallback unik per video & per kalimat VO (tidak pernah kembar antar B-Roll)
- const fallbackIcons=['pen_cap','lifebuoy','brain','coin','planet','lamp','book','shield'];
+ const fallbackIcons=['pen_cap','shield','brain','coin','planet','lamp','book','heart'];
  const avail=fallbackIcons.filter(ic=>!excludeIds.has(ic));
  const ic1=avail[0]||fallbackIcons[excludeIds.size%fallbackIcons.length];
  const ic2=avail[1]||fallbackIcons[(excludeIds.size+1)%fallbackIcons.length];
@@ -238,13 +235,13 @@ function detectVisualFromVoScript(voSentence, aiHintObj, excludeIds=new Set()){
 
 const TITLE_OBJ=detectVisualFromVoScript(TITLE+' '+TX.t1+' '+TX.t2,null);
 
-/* Pemetaan Visual B-Roll Per Adegan (b1, b2, b3, b4) — Dijamin Beda-Beda & Sesuai Naskah VO Masing-Masing! */
+/* Pemetaan Visual B-Roll Per Adegan (b1, b2, b3, b4) — Memakai x[2] agar langsung terbaca! */
 const SCENE_BROLL_MAP={};
 {
  const usedIds=new Set();
  ['b1','b2','b3','b4'].forEach(sc=>{
   const scLines=L.filter(x=>x[0]===sc);
-  const voText=scLines.map(x=>x.t).join(' ');
+  const voText=scLines.map(x=>String(x[2]||'').replace(/\*/g,'')).join(' ');
   const aiHint=scLines.map(x=>x[4]).find(Boolean)||'';
   const vis=detectVisualFromVoScript(voText,aiHint,usedIds);
   usedIds.add(vis.id);
@@ -322,7 +319,34 @@ L.forEach(l=>{
  tot+=l.wt;
 });
 
-/* ===== DETEKSI INTONASI & JEDA VO PRESISI (SETELAH JEDA SAMPUL COVER_HOLD) ===== */
+/* ===== SINKRONISASI PRESISI PER BARIS & PER KATA DARI ELEVENLABS TIMESTAMPS ===== */
+function applyExactElevenLabsTimings(){
+ if(!LINE_TIMINGS || LINE_TIMINGS.length !== NL) return false;
+ for(let idx=0; idx<NL; idx++){
+  const lt = LINE_TIMINGS[idx];
+  const realStart = COVER_HOLD + Math.max(0, Number(lt.ss) || 0);
+  const realEnd   = COVER_HOLD + Math.max((Number(lt.ss) || 0) + 0.25, Number(lt.se) || 0.5);
+
+  L[idx].t0 = (idx === 0) ? COVER_HOLD : Math.max(COVER_HOLD, realStart - 0.04);
+  L[idx].ss = realStart;
+  L[idx].se = realEnd;
+
+  if(Array.isArray(lt.wordTimes) && lt.wordTimes.length === L[idx].w.length){
+   L[idx].wTimes = lt.wordTimes.map(pair => [
+    COVER_HOLD + Math.max(0, Number(pair[0]) || 0),
+    COVER_HOLD + Math.max(0, Number(pair[1]) || 0)
+   ]);
+  }else{
+   L[idx].wTimes = null;
+  }
+ }
+ for(let idx=0; idx<NL; idx++){
+  L[idx].d = (idx < NL - 1 ? L[idx + 1].t0 : LEN) - L[idx].t0;
+ }
+ return true;
+}
+
+/* Fallback deteksi gelombang audio jika LINE_TIMINGS tidak tersedia */
 function alignLinesToVoAudio(audioBuffer){
  if(!audioBuffer||!NL)return;
  const data=audioBuffer.getChannelData(0);
@@ -422,7 +446,8 @@ function retime(){Object.keys(S0).forEach(k=>delete S0[k]);
   l.se = l.t0 + l.d * 0.94;
   l.wTimes = null;
  });
- if(voBuf)alignLinesToVoAudio(voBuf);
+ const exactApplied = applyExactElevenLabsTimings();
+ if(!exactApplied && voBuf) alignLinesToVoAudio(voBuf);
  L.forEach(l=>{if(l[0]!==pa){pa=l[0];kk=0;S0[pa]=l.t0}l.s=kk++});
 }
 retime();
@@ -607,7 +632,7 @@ function vol(){const l=L[li];
   const r=Math.sqrt(s/anBuf.length);
   if(r>=.012)return cl(Math.pow(r*9.5,.76),0,1);
  }
- return(tm>=l.ss&&tm<=l.se)?cl(.32+.44*Math.abs(S(A*10.5))*(.55+.45*Math.abs(S(A*4.5)))):0;
+ return(tm>=l.ss&&tm<=l.se)?cl(.36+.46*Math.abs(S(A*11.5))*(.55+.45*Math.abs(S(A*4.8)))):0;
 }
 
 function charTick(){
@@ -630,10 +655,10 @@ function charTick(){
  const e0=(aw>=0&&cap[aw]&&cap[aw].em)?1:0;
  CS.ev+=((playing?e0:0)-CS.ev)*(1-Math.pow(.02,DT));
 
- const amp={e:1.2,d:1.05,s:.65}[l[1]]||0.9;
- const targetTilt=playing?((S(A*1.9)*.024+S(A*3.2)*.010)*amp*(CS.speaking?1:.35)):S(A*.7)*.010;
- const targetSway=playing?((S(A*1.45)*6+S(A*2.7)*2.5)*amp*(CS.speaking?1:.4)):S(A*.65)*2.0;
- const targetBounce=playing?(CS.mv*10*amp+CS.ev*5):0;
+ const amp={e:1.25,d:1.10,s:.70}[l[1]]||0.95;
+ const targetTilt=playing?((S(A*2.1)*.028+S(A*3.6)*.012)*amp*(CS.speaking?1:.35)):S(A*.7)*.010;
+ const targetSway=playing?((S(A*1.6)*7+S(A*3.0)*3.0)*amp*(CS.speaking?1:.4)):S(A*.65)*2.0;
+ const targetBounce=playing?(CS.mv*12*amp+CS.ev*6):0;
 
  const mvLerp=1-Math.pow(.005,DT);
  CS.tilt+=(targetTilt-CS.tilt)*mvLerp;
@@ -669,7 +694,7 @@ function char(o={}){
 
  const x=char._x+CS.sway;
  const y=char._y-CS.bounce+S(A*2.0)*3.5;
- const s=char._s*(1+CS.mv*0.02);
+ const s=char._s*(1+CS.mv*0.022);
  const r=char._r+CS.tilt;
 
  let DW=550,DH=DW*cim.height/cim.width;
@@ -902,6 +927,15 @@ function draw3DObject(type,x,y,r,col){
    X.beginPath();X.moveTo(0,0);X.arc(0,0,r*0.85,a,a+0.56);X.closePath();X.fill();
   });
   X.fillStyle='#f8fafc';X.beginPath();X.arc(0,0,r*0.40,0,Math.PI*2);X.fill();X.stroke();
+
+ }else if(type==='dipper'||type==='wave'){
+  const wG=X.createLinearGradient(-r*0.8,-r*0.3,r*0.8,r*0.6);
+  wG.addColorStop(0,'#7dd3fc');wG.addColorStop(0.5,'#0284c7');wG.addColorStop(1,'#0369a1');
+  X.fillStyle=wG;
+  rr(-r*0.82,-r*0.25,r*1.64,r*0.85,20);X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
+  X.strokeStyle='#ffffff';X.lineWidth=5;
+  X.beginPath();X.moveTo(-r*0.52,r*0.12);X.quadraticCurveTo(-r*0.25,-r*0.08,0,r*0.12);X.quadraticCurveTo(r*0.25,r*0.32,r*0.52,r*0.12);X.stroke();
 
  }else if(type==='factory'){
   const fFront=X.createLinearGradient(-r*0.8,-r*0.2,0,r*0.7);
@@ -1200,6 +1234,7 @@ function activeWordIdx(l){
  if(l.wTimes&&l.wTimes.length===l.w.length){
   for(let i=0;i<l.wTimes.length;i++){
    if(tm>=l.wTimes[i][0]&&tm<=l.wTimes[i][1])return i;
+   if(i<l.wTimes.length-1 && tm>l.wTimes[i][1] && tm<l.wTimes[i+1][0])return i;
   }
  }
  const dur=Math.max(0.18,l.se-l.ss);
@@ -1232,7 +1267,6 @@ function buildCharDynamicSub(l){
     const ww=X.measureText(w.s).width;
     return{s:w.s,em:w.em,idx:wIdx+(rowIdx===0?k:splitAt+k),ww,ff,baseSz,weightPrefix};
    });
-   // Jarak spasi pas & natural (1.07x lebar aktif + 11px spasi antar kata)
    const totalSlotW=items.reduce((acc,it)=>acc+Math.ceil(it.ww*1.07)+11,0);
    const fitScale=totalSlotW>430?(430/totalSlotW):1;
    let xCursor=36;
