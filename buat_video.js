@@ -14,6 +14,8 @@ const JUDUL  = (process.env.INPUT_JUDUL  || "Kenapa Kita Merem Saat Bersin?").tr
 const UKURAN = (process.env.INPUT_UKURAN || "9:16").trim();
 const BAHASA = (process.env.INPUT_BAHASA || "Indonesia").trim();
 
+const COVER_HOLD_SEC = 1.35; // Jeda sampul di awal sebelum VO & subtitle dimulai
+
 const tunggu = (ms) => new Promise(r => setTimeout(r, ms));
 const WAKTU_MULAI = Date.now();
 function detikBerjalan() {
@@ -48,8 +50,8 @@ function pilihSuaraTTS(bahasa) {
   return { langCode: 'id-ID' };
 }
 
-/* ===== GENERATOR AUDIO BACKSOUND LEMBUT & SFX TRANSISI RENYAH (WAV) ===== */
-function generateBgmAndSfxWav(filePath, durationSec, videoData) {
+/* ===== GENERATOR AUDIO BACKSOUND LEMBUT & SFX WHOOSH SOSMED REALISTIS (WAV) ===== */
+function generateBgmAndSfxWav(filePath, durationSec, videoData, sceneTimes) {
   const sr = 44100;
   const numSamples = Math.ceil(durationSec * sr);
   const left = new Float32Array(numSamples);
@@ -63,7 +65,6 @@ function generateBgmAndSfxWav(filePath, durationSec, videoData) {
   }
   seed = seed >>> 0;
 
-  // 6 Skala Melodi Backsound berbeda untuk tiap video
   const SCALES = [
     [261.63, 329.63, 392.00, 493.88, 523.25, 392.00],
     [220.00, 261.63, 329.63, 392.00, 440.00, 329.63],
@@ -75,7 +76,7 @@ function generateBgmAndSfxWav(filePath, durationSec, videoData) {
   const scale = SCALES[seed % SCALES.length];
   const beatDur = 0.42 + (seed % 5) * 0.04;
 
-  // 1. Sintesis Backsound Melodis Stereo (Dikecilkan agar pas di latar belakang, tapi tetap terasa)
+  // 1. Sintesis Backsound Melodis Stereo (Lembut di latar belakang, tidak menyaingi VO)
   for (let i = 0; i < numSamples; i++) {
     const t = i / sr;
     const step = Math.floor(t / beatDur);
@@ -86,40 +87,81 @@ function generateBgmAndSfxWav(filePath, durationSec, videoData) {
     const bassFreq = scale[0] * 0.5;
     const bassEnv = Math.exp(-((t % (beatDur * 2)) * 1.6));
 
-    const lead = (Math.sin(2 * Math.PI * freq * t) * 0.70 + Math.sin(2 * Math.PI * freq * 2 * t) * 0.20) * env * 0.068;
-    const pad = Math.sin(2 * Math.PI * (freq * 0.5) * t + 0.4) * 0.032;
-    const bass = Math.sin(2 * Math.PI * bassFreq * t) * bassEnv * 0.058;
+    const lead = (Math.sin(2 * Math.PI * freq * t) * 0.70 + Math.sin(2 * Math.PI * freq * 2 * t) * 0.20) * env * 0.062;
+    const pad = Math.sin(2 * Math.PI * (freq * 0.5) * t + 0.4) * 0.028;
+    const bass = Math.sin(2 * Math.PI * bassFreq * t) * bassEnv * 0.050;
 
     const pan = Math.sin(t * 0.7) * 0.25;
     left[i]  = (lead * (1 - pan)) + pad + bass;
     right[i] = (lead * (1 + pan)) + pad + bass;
   }
 
-  // 2. SFX Transisi Sosmed (Whip-Whoosh + Sub-Punch + Crisp Chime) yang Jelas Terdengar
-  const lines = Array.isArray(videoData.lines) ? videoData.lines : [];
-  let prevSc = null;
-  const totalLines = lines.length || 1;
-  lines.forEach((l, idx) => {
-    const sc = l[0];
-    if (sc !== prevSc) {
-      prevSc = sc;
-      const startSec = idx === 0 ? 0.45 : (idx / totalLines) * Math.max(1, durationSec - 1.5);
-      const startSample = Math.floor(startSec * sr);
-      const sfxLen = Math.floor(0.32 * sr);
-      for (let j = 0; j < sfxLen && (startSample + j) < numSamples; j++) {
-        const u = j / sfxLen;
-        const env = Math.sin(u * Math.PI);
-        // Whip-Whoosh sweep frekuensi tinggi agar menembus suara VO
-        const fSweep = 220 + u * 960;
-        const whoosh = Math.sin(2 * Math.PI * fSweep * (j / sr)) * env * 0.52;
-        // Crisp Pop & Chime di awal transisi
-        const pop = (u < 0.28) ? Math.sin(2 * Math.PI * 1050 * (j / sr)) * (1 - u / 0.28) * 0.44 : 0;
-        // Sub-Bass Thump
-        const sub = Math.sin(2 * Math.PI * (110 - u * 55) * (j / sr)) * (1 - u) * 0.48;
-        left[startSample + j]  += whoosh + pop + sub;
-        right[startSample + j] += whoosh + pop + sub;
+  // PRNG deterministik untuk White/Pink Noise (Suara angin Whoosh asli seperti CapCut/Premiere)
+  let rngState = (seed ^ 0x9e3779b9) >>> 0;
+  function nextNoise() {
+    rngState ^= rngState << 13;
+    rngState ^= rngState >>> 17;
+    rngState ^= rngState << 5;
+    return ((rngState >>> 0) / 2147483648) - 1;
+  }
+
+  // Helper sintesis 3 jenis SFX Whoosh sosmed realistis (tanpa gelombang rendah mirip bunyi kentut!)
+  function addRealWhooshSfx(startSec, variant) {
+    const startSample = Math.floor(startSec * sr);
+    const sfxLen = Math.floor(0.30 * sr);
+    const v = variant % 3;
+
+    // Biquad Bandpass Filter menyapu frekuensi angin whoosh
+    let y1 = 0, y2 = 0, x1 = 0, x2 = 0;
+    for (let j = 0; j < sfxLen && (startSample + j) < numSamples; j++) {
+      const u = j / sfxLen;
+      const env = Math.sin(Math.pow(u, 0.75) * Math.PI);
+      const rawNoise = nextNoise();
+
+      // Variasi 0: Air Whoosh naik (350Hz -> 2400Hz)
+      // Variasi 1: Reverse Swish turun (2600Hz -> 420Hz)
+      // Variasi 2: Whip Air + Soft Chime (400Hz -> 2800Hz + nada kristal tinggi)
+      const fc = v === 0
+        ? (350 + Math.pow(u, 1.3) * 2050)
+        : (v === 1 ? (2600 * Math.pow(0.16, u)) : (400 + u * 2400));
+      const Q = v === 1 ? 3.2 : 2.1;
+
+      const w0 = (2 * Math.PI * fc) / sr;
+      const alpha = Math.sin(w0) / (2 * Q);
+      const b0 = alpha, b1 = 0, b2 = -alpha;
+      const a0 = 1 + alpha, a1 = -2 * Math.cos(w0), a2 = 1 - alpha;
+
+      const y = (b0 / a0) * rawNoise + (b1 / a0) * x1 + (b2 / a0) * x2 - (a1 / a0) * y1 - (a2 / a0) * y2;
+      x2 = x1; x1 = rawNoise;
+      y2 = y1; y1 = y;
+
+      let sampleVal = y * env * 2.6;
+
+      // Tambahan nada chime kristal halus di variasi 2
+      if (v === 2 && u > 0.12) {
+        const cu = (u - 0.12) / 0.88;
+        const chime = Math.sin(2 * Math.PI * 1318.5 * (j / sr)) * Math.exp(-cu * 5.5) * 0.18;
+        sampleVal += chime;
       }
+
+      const stereoPan = v === 0 ? (u - 0.5) * 0.4 : (0.5 - u) * 0.4;
+      left[startSample + j]  += sampleVal * (1 - stereoPan);
+      right[startSample + j] += sampleVal * (1 + stereoPan);
     }
+  }
+
+  // 2. Tempelkan SFX Whoosh TEPAT di timestamp pergantian adegan (bukan di tengah B-Roll!)
+  const transitions = [];
+  let prevSc = null;
+  (sceneTimes || []).forEach((st) => {
+    if (st.sc !== prevSc) {
+      prevSc = st.sc;
+      transitions.push(st.t0);
+    }
+  });
+
+  transitions.forEach((tSec, idx) => {
+    addRealWhooshSfx(Math.max(0.05, tSec - 0.04), idx);
   });
 
   const dataSize = numSamples * 4;
@@ -276,9 +318,10 @@ function rapikanNaskah(data, dim, ttsInfo) {
     if (!data.tags.toLowerCase().includes('#shorts')) data.tags += ' #Shorts';
   }
 
-  data.lang   = ttsInfo.langCode;
-  data.width  = dim.width;
-  data.height = dim.height;
+  data.lang      = ttsInfo.langCode;
+  data.width     = dim.width;
+  data.height    = dim.height;
+  data.coverHold = COVER_HOLD_SEC;
   return data;
 }
 
@@ -287,31 +330,31 @@ async function buatNaskahJSON(dim, ttsInfo) {
     ? '9-10 kalimat storytelling santai & mengalir (maksimal 10-12 kata per kalimat agar total durasi baca 38-50 detik)'
     : '12-15 kalimat padat dan informatif (untuk video landscape 16:9)';
 
-  const prompt = `Kamu adalah penulis skrip & sutradara video animasi storytelling 3D V30.0.
+  const prompt = `Kamu adalah penulis skrip & sutradara video animasi storytelling 3D V31.0.
 Buatkan data lengkap dalam format JSON MURNI (tanpa teks pembuka/penutup) untuk video berikut:
 - Judul: "${JUDUL}"
 - Bahasa Video: ${BAHASA} (kode BCP-47: ${ttsInfo.langCode})
 - Ukuran: ${UKURAN} (${dim.width}x${dim.height})
 
-ATURAN KETAT V30.0:
+ATURAN KETAT V31.0:
 1. Gaya bahasa wajib seperti bercerita santai (*storytelling* yang enak didengar, mengalir alami, tidak kaku) dalam bahasa ${BAHASA}.
 2. Buat ${jumlahKalimat} di dalam array "lines". Berikan tanda koma/titik yang jelas antar kalimat agar jeda intonasi suara terdeteksi presisi.
    Format tiap elemen: ["kunci_adegan", "mood", "Kalimat dengan *kata* ditekankan.", "fx_opsional", "objek_visual_3d"]
    - Kunci adegan WAJIB menggunakan urutan ini:
      * "title" (1 baris pembuka langsung ke topik utama yang santai & bikin penasaran)
-     * "b1" (1-2 baris penjelasan visual B-Roll full layar pertama)
+     * "b1" (1-2 baris penjelasan visual B-Roll full layar pertama — fokus ke 1 objek utama paling menonjol)
      * "a" (1-2 baris cerita utama dari karakter)
-     * "b2" (1-2 baris detail mikro B-Roll kecil)
-     * "b3" (1-2 baris bukti perbandingan / mekanisme B-Roll full layar kedua)
+     * "b2" (1-2 baris detail mikro B-Roll kecil — fokus ke 2 objek yang saling berkaitan)
+     * "b3" (1-2 baris bukti perbandingan / mekanisme B-Roll full layar kedua — fokus ke 1 objek utama paling menonjol)
      * "cta" (2 baris ajakan di TENGAH video: baris 1 "Mau bikin video kayak gini juga?" dan baris 2 "Langsung aja cek *link di bio*.")
      * "c" (1-2 baris sudut pandang / refleksi karakter)
-     * "b4" (1-2 baris puncak fakta B-Roll full layar ketiga)
+     * "b4" (1-2 baris puncak fakta B-Roll full layar ketiga — fokus ke 1 objek utama paling menonjol)
      * "end" (1 baris penutup berkesan TANPA CTA)
    - Mood: "n" (santai), "d" (dramatis), "e" (semangat), "s" (tenang).
-   - FX opsional (boleh kosong ""): "b" (boom), "k" (hantaman), "c" (lonceng di baris kedua cta), "p" (pop).
-   - objek_visual_3d: tuliskan 1-2 kata benda utama yang sedang dibahas di baris itu (contoh: "tutup pulpen", "jalur napas", "pabrik industri", "jam dinding", "jantung", "singa") agar model 3D muncul 100% sesuai ucapan VO!
+   - FX opsional (boleh kosong ""): "c" (lonceng di baris kedua cta), "p" (pop).
+   - objek_visual_3d: tuliskan 1-2 kata benda konkret paling menonjol yang sedang dibahas di adegan itu (contoh: "tutup pulpen", "jalur napas", "pabrik industri", "jam dinding", "jantung", "singa", "buku sejarah", "planet") agar model 3D muncul 100% sesuai ucapan VO!
 3. "tx":
-   - "kicker": kategori singkat 1-2 kata (contoh: "SAINS TUBUH", "FAKTA UNIK", "PSIKOLOGI").
+   - "kicker": kategori singkat 1-2 kata (contoh: "SAINS TUBUH", "FAKTA UNIK", "PSIKOLOGI", "SEJARAH").
    - "t1": 1-2 kata judul besar baris atas di sampul (maksimal 14 huruf).
    - "t2": 1-2 kata judul besar baris bawah di sampul (maksimal 14 huruf).
 4. "src": berikan 2 sumber riset nyata dan kredibel terkait topik judul.
@@ -338,15 +381,15 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
     "src": "Sumber"
   },
   "lines": [
-    ["title", "d", "Kalimat pembuka pertama dengan *penekanan*.", "b", "objek utama"],
+    ["title", "d", "Kalimat pembuka pertama dengan *penekanan*.", "", "objek utama"],
     ["b1", "n", "Kalimat visual pertama yang menjelaskan objek utama.", "p", "objek utama"],
     ["a", "n", "Kalimat fakta utama dari karakter.", "", ""],
     ["b2", "e", "Kalimat detail mikro yang *mengejutkan*.", "p", "objek mikro"],
-    ["b3", "d", "Kalimat perbandingan sebelum dan sesudah.", "k", "mekanisme"],
+    ["b3", "d", "Kalimat perbandingan sebelum dan sesudah.", "", "mekanisme"],
     ["cta", "n", "Mau bikin video kayak gini juga?", "", ""],
     ["cta", "e", "Langsung aja cek *link di bio*.", "c", ""],
     ["c", "n", "Kalimat sudut pandang dan refleksi.", "", ""],
-    ["b4", "d", "Kalimat puncak bukti terpenting.", "b", "bukti industri"],
+    ["b4", "d", "Kalimat puncak bukti terpenting.", "", "bukti industri"],
     ["end", "s", "Kalimat penutup yang meninggalkan *kesan*.", "", ""]
   ]
 }`;
@@ -401,18 +444,18 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
 }
 
 async function main() {
-  console.log(`Mulai produksi V30.0: "${JUDUL}" (${UKURAN}, ${BAHASA})`);
+  console.log(`Mulai produksi V31.0: "${JUDUL}" (${UKURAN}, ${BAHASA})`);
   const dim = parseUkuran(UKURAN);
   const ttsInfo = pilihSuaraTTS(BAHASA);
 
   await kirimPesanTelegram(
-    `🏭 Pabrik Video 3D V30.0 mulai bekerja!\n\n` +
+    `🏭 Pabrik Video 3D V31.0 mulai bekerja!\n\n` +
     `📌 Judul: ${JUDUL}\n` +
     `📐 Ukuran: ${UKURAN} (${dim.width}x${dim.height})\n` +
     `🌐 Bahasa: ${BAHASA}`
   );
 
-  console.log('1/4 Meracik naskah & adegan 3D V30.0...');
+  console.log('1/4 Meracik naskah & adegan 3D V31.0...');
   const videoData = await buatNaskahJSON(dim, ttsInfo);
   console.log(`   (naskah selesai, ${detikBerjalan()} detik berjalan, ${videoData.lines.length} kalimat)`);
 
@@ -422,9 +465,9 @@ async function main() {
   const teksBersih = videoData.lines.map(l => l[2].replace(/\*/g, '')).join(' ');
   await generateVoiceOver(teksBersih);
   console.log(`   (VO selesai, ${detikBerjalan()} detik berjalan)`);
-  await kirimPesanTelegram('✅ Naskah & suara VO selesai. Sekarang merender video 3D HD + Backsound + SFX...');
+  await kirimPesanTelegram('✅ Naskah & suara VO selesai. Sekarang merender video 3D HD + Sampul Jeda + SFX Whoosh...');
 
-  console.log('3/4 Merakit file HTML V30.0...');
+  console.log('3/4 Merakit file HTML V31.0...');
   let html = fs.readFileSync('template.html', 'utf8');
   html = html.replace('__TITLE__', videoData.title);
   html = html.replace('__ASPECT__', dim.aspect);
@@ -469,13 +512,15 @@ async function main() {
     });
 
     const totalDetik = await page.evaluate(() => window.__VIDEO_LEN || 40);
+    const sceneTimes = await page.evaluate(() => window.__SCENE_TIMES || []);
     const fps = 30;
     const totalFrame = Math.ceil(totalDetik * fps);
     console.log(`   Merender ${totalFrame} frame (${totalDetik} detik @ ${fps} FPS)...`);
 
-    // Buat backsound lembut & SFX transisi renyah sesuai durasi video
-    generateBgmAndSfxWav('bgm_sfx.wav', totalDetik, videoData);
+    // Buat backsound lembut & SFX Whoosh sosmed persis di timestamp pergantian adegan
+    generateBgmAndSfxWav('bgm_sfx.wav', totalDetik, videoData, sceneTimes);
 
+    const delayMs = Math.round(COVER_HOLD_SEC * 1000);
     const ffArgs = [
       '-y',
       '-f', 'image2pipe',
@@ -484,7 +529,7 @@ async function main() {
       '-i', 'pipe:0',
       '-i', 'vo.mp3',
       '-i', 'bgm_sfx.wav',
-      '-filter_complex', '[1:a]volume=1.15[vo];[2:a]volume=1.05[bgm];[vo][bgm]amix=inputs=2:duration=first:normalize=0[aout]',
+      '-filter_complex', `[1:a]adelay=${delayMs}|${delayMs},volume=1.18[vo];[2:a]volume=1.05[bgm];[vo][bgm]amix=inputs=2:duration=longest:normalize=0[aout]`,
       '-map', '0:v:0',
       '-map', '[aout]',
       '-c:v', 'libx264',
@@ -535,7 +580,7 @@ async function main() {
     if (!isNaN(d)) durasiTeks = d.toFixed(1) + ' detik';
   } catch (e) { /* abaikan */ }
 
-  const infoYoutube = `🎬 VIDEO 3D V30.0 SELESAI DIRENDER!\n\n📌 Judul:\n${videoData.title}\n\n📝 Deskripsi:\n${videoData.desc}\n\n📚 Sumber:\n${videoData.src.map(s => '- ' + s).join('\n')}\n\n🏷️ Tags:\n${videoData.tags}`;
+  const infoYoutube = `🎬 VIDEO 3D V31.0 SELESAI DIRENDER!\n\n📌 Judul:\n${videoData.title}\n\n📝 Deskripsi:\n${videoData.desc}\n\n📚 Sumber:\n${videoData.src.map(s => '- ' + s).join('\n')}\n\n🏷️ Tags:\n${videoData.tags}`;
 
   const infoTeknis = `\n\n⏱️ Durasi: ${durasiTeks} | 💾 ${formatMB(ukuranFile)} | 🕐 Proses: ${detikBerjalan()} dtk`;
   if (ukuranFile > 49 * 1024 * 1024) {
