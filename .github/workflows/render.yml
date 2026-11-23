@@ -46,45 +46,18 @@ jobs:
           npm install
           npx playwright install chromium
 
-      - name: Jalankan produksi & render video V8.8
+      - name: Jalankan produksi & render video V33.0
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           INPUT_JUDUL: ${{ github.event.inputs.judul }}
           INPUT_UKURAN: ${{ github.event.inputs.ukuran }}
           INPUT_BAHASA: ${{ github.event.inputs.bahasa }}
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1280x1280x24" node buat_video.js
-
-      - name: Upload ke YouTube Shorts via Apps Script
-        env:
-          APPS_SCRIPT_WEBHOOK_URL: ${{ secrets.APPS_SCRIPT_WEBHOOK_URL }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          INPUT_JUDUL: ${{ github.event.inputs.judul }}
-        run: |
-          node -e '
-          const fs = require("fs");
-          async function run() {
-            const meta = fs.existsSync("data.json") ? JSON.parse(fs.readFileSync("data.json", "utf8")) : {};
-            const form = new FormData();
-            form.append("file", new Blob([fs.readFileSync("video_jadi.mp4")], { type: "video/mp4" }), "video_jadi.mp4");
-            const up = await fetch("https://tmpfiles.org/api/v1/upload", { method: "POST", body: form }).then(r => r.json());
-            const videoUrl = up.data.url.replace("tmpfiles.org/", "tmpfiles.org/dl/");
-            const res = await fetch(process.env.APPS_SCRIPT_WEBHOOK_URL, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                video_url: videoUrl,
-                judul: meta.judul || meta.title || process.env.INPUT_JUDUL || "Video Edukasi #Shorts",
-                deskripsi: meta.deskripsi || meta.description || "Dibuat otomatis #Shorts",
-                tags: meta.tags || ["shorts", "edukasi", "fakta"],
-                chat_id: process.env.TELEGRAM_CHAT_ID
-              })
-            });
-            console.log("Respon Apps Script:", await res.text());
-          }
-          run().catch(err => { console.error(err); process.exit(1); });
-          '
