@@ -28,9 +28,9 @@ const THREADS_ACCESS_TOKEN = process.env.THREADS_ACCESS_TOKEN || '';
 const FB_PAGE_ID = process.env.FB_PAGE_ID || '';
 const FB_PAGE_ACCESS_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN || '';
 
-// Opsional: Base URL publik tempat output_final.mp4 bisa diakses oleh server Meta (IG/Threads), misal dari GitHub Release / Cloudflare R2 / ngrok
+// Opsional: Base URL publik tempat output_final.mp4 bisa diakses server Meta (IG/Threads), misal dari GitHub Release / Cloudflare R2
 const PUBLIC_VIDEO_URL = process.env.PUBLIC_VIDEO_URL || '';
-// Opsional: Webhook universal (n8n / Make / Zapier / API custom) yang menerima multipart video + metadata
+// Opsional: Webhook universal (n8n / Make / Zapier / Postiz) yang menerima multipart video + metadata sekaligus
 const SOCIAL_WEBHOOK_URL = process.env.SOCIAL_WEBHOOK_URL || '';
 
 const COVER_HOLD_SEC = 1.35;
