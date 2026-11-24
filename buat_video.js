@@ -1,4 +1,4 @@
-/* ===== SCRIPT UTAMA: buat_video.js (Versi Asli Lengkap dengan Notifikasi Telegram & Auto-Upload YouTube) ===== */
+/* ===== SCRIPT UTAMA: buat_video.js (FIX: Hilangkan Bug Tombol Play, Fix Rasio Shorts Penuh, & Fix BGM + SFX) ===== */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -15,7 +15,6 @@ const JUDUL = process.env.INPUT_JUDUL || process.env.JUDUL || 'Fakta Unik yang J
 const BAHASA = process.env.INPUT_BAHASA || process.env.BAHASA || 'Indonesia';
 const UKURAN = process.env.INPUT_UKURAN || process.env.UKURAN || '9:16';
 
-// Kredensial Upload YouTube
 const YT_CLIENT_ID = process.env.YT_CLIENT_ID || '';
 const YT_CLIENT_SECRET = process.env.YT_CLIENT_SECRET || '';
 const YT_REFRESH_TOKEN = process.env.YT_REFRESH_TOKEN || '';
@@ -326,25 +325,35 @@ async function buatAudioTTS(lines, outPath, ttsInfo) {
   return null;
 }
 
+/* ===== FIX AUDIO: MELODI BGM JELAS & SFX PERGANTIAN ADEGAN TERDENGAR ===== */
 function mixAudioWithBgmAndSfx(voPath, sceneTimes, totalLenSec, seedNum, outWavPath) {
-  const freqs = [261.63, 329.63, 392.00, 493.88, 392.00, 329.63];
-  const shift = 1 + ((seedNum % 5) - 2) * 0.03;
-  const f1 = (freqs[seedNum % freqs.length] * shift).toFixed(2);
-  const f2 = (freqs[(seedNum + 2) % freqs.length] * shift).toFixed(2);
-  const f3 = (freqs[(seedNum + 4) % freqs.length] * 0.5 * shift).toFixed(2);
-
   const bgmTemp = 'bgm_temp.wav';
   const sfxTemp = 'sfx_temp.wav';
 
+  // 1. Buat BGM melodi berirama lembut (Lo-fi / Ambient Pluck) sepanjang durasi video
+  const notes = [261.63, 329.63, 392.00, 493.88, 392.00, 329.63, 293.66, 349.23];
+  const shift = 1 + ((seedNum % 5) - 2) * 0.03;
+  const fA = (notes[seedNum % notes.length] * shift).toFixed(2);
+  const fB = (notes[(seedNum + 2) % notes.length] * shift).toFixed(2);
+  const fC = (notes[(seedNum + 4) % notes.length] * shift).toFixed(2);
+  const fBass = (notes[seedNum % notes.length] * 0.5 * shift).toFixed(2);
+
   execSync(
-    `ffmpeg -y -f lavfi -i "sine=frequency=${f1}:duration=${totalLenSec}" ` +
-    `-f lavfi -i "sine=frequency=${f2}:duration=${totalLenSec}" ` +
-    `-f lavfi -i "sine=frequency=${f3}:duration=${totalLenSec}" ` +
-    `-filter_complex "[0:a]volume=0.025[a0];[1:a]volume=0.020[a1];[2:a]volume=0.028[a2];[a0][a1][a2]amix=inputs=3:normalize=0,lowpass=f=650,tremolo=f=0.45:d=0.35[out]" ` +
+    `ffmpeg -y -f lavfi -i "sine=frequency=${fA}:duration=${totalLenSec}" ` +
+    `-f lavfi -i "sine=frequency=${fB}:duration=${totalLenSec}" ` +
+    `-f lavfi -i "sine=frequency=${fC}:duration=${totalLenSec}" ` +
+    `-f lavfi -i "sine=frequency=${fBass}:duration=${totalLenSec}" ` +
+    `-filter_complex "` +
+    `[0:a]aeval='val(0)*max(0,sin(2*PI*1.2*t))':c=same,volume=0.075[a0];` +
+    `[1:a]aeval='val(0)*max(0,sin(2*PI*1.2*t+2.1))':c=same,volume=0.065[a1];` +
+    `[2:a]aeval='val(0)*max(0,sin(2*PI*1.2*t+4.2))':c=same,volume=0.065[a2];` +
+    `[3:a]volume=0.085[a3];` +
+    `[a0][a1][a2][a3]amix=inputs=4:normalize=0,lowpass=f=900,aecho=0.8:0.7:180:0.35[out]" ` +
     `-map "[out]" -ar 44100 -ac 2 "${bgmTemp}"`,
     { stdio: 'pipe' }
   );
 
+  // 2. Buat SFX Whoosh & Pop / Chime di setiap perpindahan adegan
   const triggers = [];
   const usedScenes = new Set();
   for (const st of sceneTimes) {
@@ -359,18 +368,25 @@ function mixAudioWithBgmAndSfx(voPath, sceneTimes, totalLenSec, seedNum, outWavP
   if (triggers.length > 0) {
     const inputs = [`-f lavfi -i "anullsrc=r=44100:cl=stereo:d=${totalLenSec}"`];
     const filters = [];
-    triggers.slice(0, 14).forEach((tr, idx) => {
+    const activeTr = triggers.slice(0, 14);
+    activeTr.forEach((tr, idx) => {
       const delayMs = Math.max(0, Math.round(tr.t * 1000));
       if (tr.type === 'c') {
-        inputs.push(`-f lavfi -i "sine=frequency=1046.5:duration=0.22"`);
-        filters.push(`[${idx + 1}:a]afade=t=in:ss=0:d=0.02,afade=t=out:st=0.06:d=0.16,volume=0.18,adelay=${delayMs}|${delayMs}[s${idx}]`);
+        // SFX Chime (denting CTA)
+        inputs.push(`-f lavfi -i "sine=frequency=1174.66:duration=0.28"`);
+        filters.push(`[${idx + 1}:a]afade=t=in:ss=0:d=0.015,afade=t=out:st=0.06:d=0.22,volume=0.35,adelay=${delayMs}|${delayMs}[s${idx}]`);
+      } else if (tr.type === 'p') {
+        // SFX Pop (muncul kartu B-roll)
+        inputs.push(`-f lavfi -i "sine=frequency=780:duration=0.14"`);
+        filters.push(`[${idx + 1}:a]afade=t=in:ss=0:d=0.01,afade=t=out:st=0.03:d=0.11,volume=0.38,adelay=${delayMs}|${delayMs}[s${idx}]`);
       } else {
-        inputs.push(`-f lavfi -i "anoisesrc=color=pink:duration=0.24:amplitude=0.28"`);
-        filters.push(`[${idx + 1}:a]bandpass=f=950:width_type=h:w=700,afade=t=in:ss=0:d=0.07,afade=t=out:st=0.10:d=0.14,volume=0.55,adelay=${delayMs}|${delayMs}[s${idx}]`);
+        // SFX Whoosh transisi adegan
+        inputs.push(`-f lavfi -i "anoisesrc=color=pink:duration=0.30:amplitude=0.5"`);
+        filters.push(`[${idx + 1}:a]bandpass=f=750:width_type=h:w=900,afade=t=in:ss=0:d=0.08,afade=t=out:st=0.12:d=0.18,volume=0.85,adelay=${delayMs}|${delayMs}[s${idx}]`);
       }
     });
-    const mixLabels = ['[0:a]', ...triggers.slice(0, 14).map((_, i) => `[s${i}]`)].join('');
-    filters.push(`${mixLabels}amix=inputs=${Math.min(14, triggers.length) + 1}:normalize=0[sfxout]`);
+    const mixLabels = ['[0:a]', ...activeTr.map((_, i) => `[s${i}]`)].join('');
+    filters.push(`${mixLabels}amix=inputs=${activeTr.length + 1}:normalize=0[sfxout]`);
 
     execSync(
       `ffmpeg -y ${inputs.join(' ')} -filter_complex "${filters.join(';')}" -map "[sfxout]" -ar 44100 -ac 2 "${sfxTemp}"`,
@@ -380,10 +396,11 @@ function mixAudioWithBgmAndSfx(voPath, sceneTimes, totalLenSec, seedNum, outWavP
     execSync(`ffmpeg -y -f lavfi -i "anullsrc=r=44100:cl=stereo:d=${totalLenSec}" -ar 44100 -ac 2 "${sfxTemp}"`, { stdio: 'pipe' });
   }
 
+  // 3. Gabungkan VO + BGM + SFX dengan keseimbangan volume yang jelas
   const voDelayMs = Math.round(COVER_HOLD_SEC * 1000);
   execSync(
     `ffmpeg -y -i "${voPath}" -i "${bgmTemp}" -i "${sfxTemp}" ` +
-    `-filter_complex "[0:a]adelay=${voDelayMs}|${voDelayMs},apad=whole_dur=${totalLenSec},volume=1.35[vo];[1:a]volume=0.85[bgm];[2:a]volume=1.0[sfx];[vo][bgm][sfx]amix=inputs=3:normalize=0,alimiter=limit=0.95[final]" ` +
+    `-filter_complex "[0:a]adelay=${voDelayMs}|${voDelayMs},apad=whole_dur=${totalLenSec},volume=1.25[vo];[1:a]volume=1.0[bgm];[2:a]volume=1.15[sfx];[vo][bgm][sfx]amix=inputs=3:normalize=0,alimiter=limit=0.96[final]" ` +
     `-map "[final]" -t ${totalLenSec} -ar 44100 -ac 2 "${outWavPath}"`,
     { stdio: 'pipe' }
   );
@@ -511,11 +528,19 @@ async function uploadKeYouTube(videoPath, data) {
 
     await kirimPesanTelegram(`✅ *Naskah & suara VO selesai.*\nSekarang merender video 3D HD + Watermark @raii.punyacerita...`);
 
-    console.log('3. Merakit index.html dari template.html...');
+    console.log('3. Merakit index.html dari template.html (Mode Full Canvas Tanpa Tombol Play)...');
     let tpl = fs.readFileSync('template.html', 'utf8');
     tpl = tpl.replace('__TITLE__', videoData.title.replace(/"/g, '&quot;'))
              .replace('__ASPECT__', dim.aspect)
              .replace('__VIDEO_DATA_JSON__', JSON.stringify(videoData));
+
+    // Suntikkan CSS khusus mode server agar tombol PUTAR, bar, dan frame tepi hilang total & canvas full 720x1280
+    const serverCleanCss = `<style>
+      .poster, .bar, .tl, .toast { display: none !important; opacity: 0 !important; visibility: hidden !important; }
+      body, .app, .frame { width: ${dim.width}px !important; height: ${dim.height}px !important; max-width: none !important; padding: 0 !important; margin: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+      canvas#cv { width: ${dim.width}px !important; height: ${dim.height}px !important; }
+    </style></head>`;
+    tpl = tpl.replace('</head>', serverCleanCss);
     fs.writeFileSync('index.html', tpl, 'utf8');
 
     console.log('4. Menjalankan browser & merekam frame video HD...');
@@ -524,7 +549,10 @@ async function uploadKeYouTube(videoPath, data) {
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     });
-    const page = await browser.newPage({ viewport: { width: dim.width, height: dim.height } });
+    const page = await browser.newPage({
+      viewport: { width: dim.width, height: dim.height },
+      deviceScaleFactor: 1
+    });
     await page.goto(`http://127.0.0.1:${port}/index.html?autorender=1`, { waitUntil: 'networkidle' });
 
     await page.waitForFunction(() => window.__ASSETS_READY === true, { timeout: 30000 });
@@ -540,7 +568,12 @@ async function uploadKeYouTube(videoPath, data) {
       const tSec = f / fps;
       await page.evaluate((t) => window.__renderFrameAt(t), tSec);
       const framePath = path.join('frames', `f_${String(f).padStart(5, '0')}.jpg`);
-      await page.locator('#cv').screenshot({ path: framePath, type: 'jpeg', quality: 92 });
+      await page.screenshot({
+        path: framePath,
+        type: 'jpeg',
+        quality: 94,
+        clip: { x: 0, y: 0, width: dim.width, height: dim.height }
+      });
       if (f % 150 === 0) console.log(`Render progress: ${f}/${totalFrames} frame...`);
     }
 
@@ -553,7 +586,7 @@ async function uploadKeYouTube(videoPath, data) {
 
     execSync(
       `ffmpeg -y -framerate ${fps} -i frames/f_%05d.jpg -i mixed_audio.wav ` +
-      `-vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" ` +
+      `-vf "scale=${dim.width}:${dim.height}:flags=lanczos,setsar=1" ` +
       `-c:v libx264 -preset fast -crf 20 -pix_fmt yuv420p -c:a aac -b:a 192k -shortest output_final.mp4`,
       { stdio: 'inherit' }
     );
