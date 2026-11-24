@@ -24,6 +24,8 @@ jobs:
   render-video:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write
 
     steps:
       - name: Ambil file pabrik dari repository
@@ -60,3 +62,13 @@ jobs:
           INPUT_BAHASA: ${{ github.event.inputs.bahasa }}
         run: |
           xvfb-run --auto-servernum --server-args="-screen 0 1280x1280x24" node buat_video.js
+
+      - name: Simpan video ke repository untuk auto-upload YouTube
+        env:
+          INPUT_JUDUL: ${{ github.event.inputs.judul }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add *.mp4
+          git commit -m "$INPUT_JUDUL" || exit 0
+          git push
