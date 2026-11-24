@@ -1,4 +1,4 @@
-/* ===== SCRIPT UTAMA: buat_video.js (Versi Auto-Pipeline & Render Lengkap) ===== */
+/* ===== SCRIPT UTAMA: buat_video.js (Versi Asli Lengkap dengan Notifikasi Telegram & Auto-Upload YouTube) ===== */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -8,28 +8,17 @@ const { chromium } = require('playwright');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || '';
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgDQGcFmaJgB';
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-const JUDUL = process.env.JUDUL || 'Fakta Unik yang Jarang Diketahui';
-const BAHASA = process.env.BAHASA || 'Indonesia';
-const UKURAN = process.env.UKURAN || '9:16';
+const JUDUL = process.env.INPUT_JUDUL || process.env.JUDUL || 'Fakta Unik yang Jarang Diketahui';
+const BAHASA = process.env.INPUT_BAHASA || process.env.BAHASA || 'Indonesia';
+const UKURAN = process.env.INPUT_UKURAN || process.env.UKURAN || '9:16';
 
+// Kredensial Upload YouTube
 const YT_CLIENT_ID = process.env.YT_CLIENT_ID || '';
 const YT_CLIENT_SECRET = process.env.YT_CLIENT_SECRET || '';
 const YT_REFRESH_TOKEN = process.env.YT_REFRESH_TOKEN || '';
-
-const IG_USER_ID = process.env.IG_USER_ID || '';
-const IG_ACCESS_TOKEN = process.env.IG_ACCESS_TOKEN || '';
-
-const THREADS_USER_ID = process.env.THREADS_USER_ID || '';
-const THREADS_ACCESS_TOKEN = process.env.THREADS_ACCESS_TOKEN || '';
-
-const FB_PAGE_ID = process.env.FB_PAGE_ID || '';
-const FB_PAGE_ACCESS_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN || '';
-
-const PUBLIC_VIDEO_URL = process.env.PUBLIC_VIDEO_URL || '';
-const SOCIAL_WEBHOOK_URL = process.env.SOCIAL_WEBHOOK_URL || '';
 
 const COVER_HOLD_SEC = 1.35;
 
@@ -80,6 +69,19 @@ function getBahasaConfig(bahasa) {
 
 const tunggu = (ms) => new Promise(r => setTimeout(r, ms));
 
+async function kirimPesanTelegram(pesan) {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: pesan, parse_mode: 'Markdown' })
+    });
+  } catch (e) {
+    console.error('Gagal kirim pesan Telegram:', e.message);
+  }
+}
+
 function rapikanNaskah(data, dim, ttsInfo) {
   if (!data || typeof data !== 'object') throw new Error('Naskah dari Gemini bukan objek JSON yang valid.');
   if (!Array.isArray(data.lines)) throw new Error('Naskah dari Gemini tidak punya array "lines".');
@@ -123,26 +125,17 @@ async function buatNaskahJSON(dim, ttsInfo) {
     ? '9-10 kalimat storytelling santai & mengalir (maksimal 10-12 kata per kalimat agar total durasi baca 38-50 detik)'
     : '12-15 kalimat padat dan informatif (untuk video landscape 16:9)';
 
-  const prompt = `Kamu adalah penulis skrip, sutradara visual & ilustrator vektor SVG untuk video animasi storytelling 3D V34.0.
+  const prompt = `Kamu adalah penulis skrip, sutradara visual & ilustrator vektor SVG untuk video animasi storytelling 3D V33.0.
 Buatkan data lengkap dalam format JSON MURNI (tanpa teks pembuka/penutup) untuk video berikut:
 - Judul: "${JUDUL}"
 - Bahasa Video: ${BAHASA} (kode BCP-47: ${ttsInfo.langCode})
 - Ukuran: ${UKURAN} (${dim.width}x${dim.height})
 
-ATURAN KETAT V34.0 (OTOMATIS SINKRON NASKAH VO <-> ILUSTRASI SVG B-ROLL):
-1. Gaya bahasa wajib seperti bercerita santai (*storytelling* yang enak didengar, mengalir alami, tidak kaku) dalam bahasa ${BAHASA}.
-2. Buat ${jumlahKalimat} di dalam array "lines". Berikan tanda koma/titik yang jelas antar kalimat agar jeda intonasi suara terdeteksi presisi.
+ATURAN KETAT V33.0:
+1. Gaya bahasa wajib bercerita santai (*storytelling*) dalam bahasa ${BAHASA}.
+2. Buat ${jumlahKalimat} di dalam array "lines".
    Format tiap elemen: ["kunci_adegan", "mood", "Kalimat VO dengan *kata* ditekankan.", "fx_opsional", META_VISUAL]
-   - Kunci adegan WAJIB menggunakan urutan ini:
-     * "title" (1 baris pembuka langsung ke topik utama yang santai & bikin penasaran) -> META_VISUAL: null
-     * "b1" (1-2 baris visual B-Roll full layar pertama) -> META_VISUAL wajib objek berisi ilustrasi SVG yang MENGGAMBARKAN PERSIS kalimat VO di baris "b1" ini!
-     * "a" (1-2 baris cerita utama dari karakter) -> META_VISUAL: null
-     * "b2" (1-2 baris visual B-Roll kotak kecil di atas karakter) -> META_VISUAL wajib objek berisi ilustrasi SVG yang MENGGAMBARKAN PERSIS kalimat VO di baris "b2" ini (dan berbeda dari b1)!
-     * "b3" (1-2 baris visual B-Roll full layar kedua) -> META_VISUAL wajib objek berisi ilustrasi SVG yang MENGGAMBARKAN PERSIS kalimat VO di baris "b3" ini (dan berbeda dari b1 & b2)!
-     * "cta" (2 baris ajakan di TENGAH video: baris 1 "Mau bikin video kayak gini juga?" dan baris 2 "Langsung aja cek *link di bio*.") -> META_VISUAL: null
-     * "c" (1-2 baris sudut pandang / refleksi karakter) -> META_VISUAL: null
-     * "b4" (1-2 baris visual B-Roll full layar ketiga) -> META_VISUAL wajib objek berisi ilustrasi SVG yang MENGGAMBARKAN PERSIS kalimat VO di baris "b4" ini (dan berbeda dari b1, b2, & b3)!
-     * "end" (1 baris penutup berkesan TANPA CTA) -> META_VISUAL: null
+   - Kunci adegan: "title", "b1", "a", "b2", "b3", "cta", "c", "b4", "end".
    - Format META_VISUAL pada "b1", "b2", "b3", "b4":
      {
        "kicker": "KATEGORI 1-2 KATA",
@@ -151,16 +144,9 @@ ATURAN KETAT V34.0 (OTOMATIS SINKRON NASKAH VO <-> ILUSTRASI SVG B-ROLL):
        "svg": "<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>",
        "svg2": "<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"
      }
-   - ATURAN WAJIB UNTUK FIELD "svg" & "svg2" (DAN "coverSvg1", "coverSvg2"):
-     * Wajib valid SVG 100% self-contained dengan viewBox='0 0 200 200', tanpa tag <image>, tanpa link eksternal, tanpa teks panjang (maksimal 1-3 karakter angka/simbol jika perlu seperti '1/5' atau '30').
-     * Gambar objek nyata yang sedang dibicarakan kalimat VO secara harfiah.
-     * Gunakan warna cerah kontras (#f59e0b, #0284c7, #10b981, #ef4444, #8b5cf6, #facc15, #ffffff) dengan garis tepi gelap tegas (stroke='#0f172a' stroke-width='4' stroke-linecap='round' stroke-linejoin='round') dan efek bayangan/highlight.
-3. "tx":
-   - "kicker": kategori singkat 1-2 kata.
-   - "t1": 1-2 kata judul besar baris atas di sampul.
-   - "t2": 1-2 kata judul besar baris bawah di sampul.
-4. "coverSvg1" & "coverSvg2": 2 ilustrasi SVG viewBox='0 0 200 200' untuk stiker di sampul awal.
-5. "src": 2 sumber riset nyata dan kredibel terkait topik judul.
+3. "tx": kicker, t1, t2, watch, ctaA, ctaB, ctaSub, ctaBio, src.
+4. "coverSvg1" & "coverSvg2": SVG stiker sampul.
+5. "src": 2 sumber riset nyata.
 
 KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
 {
@@ -171,7 +157,7 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
   "height": ${dim.height},
   "desc": "Deskripsi singkat 2 kalimat + ajakan diskusi di komentar.",
   "tags": "#faktaunik #edukasi #storytelling",
-  "src": ["Nama Lembaga / Jurnal 1", "Nama Institusi / Studi 2"],
+  "src": ["Sumber 1", "Sumber 2"],
   "coverSvg1": "<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>",
   "coverSvg2": "<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>",
   "tx": {
@@ -208,13 +194,9 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
         .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
         .map(m => m.name.replace('models/', ''))
         .filter(n => /flash|pro/i.test(n) && !/embedding|vision|aqa|tts|image|2\.5/i.test(n));
-      if (valid.length > 0) {
-        models = [...new Set([...models, ...valid])];
-      }
+      if (valid.length > 0) models = [...new Set([...models, ...valid])];
     }
-  } catch (e) { /* fallback ke default */ }
-
-  let lastApiError = "";
+  } catch (e) {}
 
   for (let putaran = 1; putaran <= 3; putaran++) {
     for (const model of models) {
@@ -236,22 +218,15 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
           const hasil = JSON.parse(raw);
           return rapikanNaskah(hasil, dim, ttsInfo);
         }
-        lastApiError = `${model}: ${JSON.stringify(json.error || json)}`;
-        console.log(`Gagal (${model}) ->`, lastApiError);
-      } catch (err) {
-        lastApiError = `${model} error: ${err.message}`;
-        console.log(`Error (${model}) ->`, err.message);
-      }
+      } catch (err) {}
     }
     await tunggu(5000);
   }
-  throw new Error('Gagal menghasilkan naskah dari Gemini API. Detail: ' + lastApiError);
+  throw new Error('Gagal menghasilkan naskah dari Gemini API.');
 }
 
 function parseElevenLabsAlignment(fullText, lineRanges, alignment) {
-  if (!alignment || !Array.isArray(alignment.characters) || !Array.isArray(alignment.character_start_times_seconds)) {
-    return null;
-  }
+  if (!alignment || !Array.isArray(alignment.characters) || !Array.isArray(alignment.character_start_times_seconds)) return null;
   const chars = alignment.characters;
   const starts = alignment.character_start_times_seconds;
   const ends = alignment.character_end_times_seconds || starts;
@@ -277,9 +252,7 @@ function parseElevenLabsAlignment(fullText, lineRanges, alignment) {
     for (let w = 0; w < words.length; w++) {
       const wClean = words[w];
       let wPos = joinedAlign.indexOf(wClean, wCursor);
-      if (wPos === -1 || wPos > endCharIdx + 2) {
-        wPos = Math.min(endCharIdx, wCursor);
-      }
+      if (wPos === -1 || wPos > endCharIdx + 2) wPos = Math.min(endCharIdx, wCursor);
       const wEndPos = Math.min(endCharIdx, wPos + Math.max(0, wClean.length - 1));
       const ws = starts[wPos] ?? ss;
       const we = ends[wEndPos] ?? se;
@@ -308,75 +281,46 @@ async function buatAudioElevenLabs(lines, outPath) {
     fullText += clean;
     const endChar = fullText.length;
     lineRanges.push({ cleanText: clean, words, startChar, endChar });
-    if (i < lines.length - 1) {
-      fullText += '\n';
-    }
+    if (i < lines.length - 1) fullText += '\n';
   }
 
   const modelsToTry = ['eleven_multilingual_v2', 'eleven_flash_v2_5'];
   for (const modelId of modelsToTry) {
     try {
-      console.log(`Mencoba ElevenLabs TTS (${modelId}) + exact word timestamps...`);
       const url = `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/with-timestamps?output_format=mp3_44100_128`;
       const res = await fetch(url, {
         method: 'POST',
-        headers: {
-          'xi-api-key': ELEVENLABS_API_KEY,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(60000),
         body: JSON.stringify({
           text: fullText,
           model_id: modelId,
-          voice_settings: {
-            stability: 0.48,
-            similarity_boost: 0.78,
-            style: 0.35,
-            use_speaker_boost: true
-          }
+          voice_settings: { stability: 0.48, similarity_boost: 0.78, style: 0.35, use_speaker_boost: true }
         })
       });
-
-      if (!res.ok) {
-        const errTxt = await res.text();
-        console.log(`ElevenLabs (${modelId}) gagal HTTP ${res.status}: ${errTxt}`);
-        continue;
-      }
-
+      if (!res.ok) continue;
       const json = await res.json();
-      if (!json.audio_base64) {
-        console.log(`ElevenLabs (${modelId}) tidak mengembalikan audio_base64.`);
-        continue;
-      }
+      if (!json.audio_base64) continue;
 
-      const audioBuffer = Buffer.from(json.audio_base64, 'base64');
-      fs.writeFileSync(outPath, audioBuffer);
+      fs.writeFileSync(outPath, Buffer.from(json.audio_base64, 'base64'));
       const alignment = json.normalized_alignment || json.alignment;
-      const lineTimings = parseElevenLabsAlignment(fullText, lineRanges, alignment);
-      console.log(`Sukses ElevenLabs TTS (${modelId})! Exact timings: ${lineTimings ? lineTimings.length + ' baris' : 'fallback RMS'}`);
-      return lineTimings;
-    } catch (err) {
-      console.log(`ElevenLabs (${modelId}) error: ${err.message}`);
-    }
+      return parseElevenLabsAlignment(fullText, lineRanges, alignment);
+    } catch (err) {}
   }
   return null;
 }
 
 async function buatAudioTTS(lines, outPath, ttsInfo) {
   const elTimings = await buatAudioElevenLabs(lines, outPath);
-  if (elTimings && fs.existsSync(outPath) && fs.statSync(outPath).size > 1000) {
-    return elTimings;
-  }
+  if (elTimings && fs.existsSync(outPath) && fs.statSync(outPath).size > 1000) return elTimings;
 
-  console.log('Beralih ke TTS gratis (Edge-TTS / gTTS)...');
   const teksBersih = lines.map(l => l[2].replace(/\*/g, '').trim()).join(' ... ');
   fs.writeFileSync('naskah_vo.txt', teksBersih, 'utf8');
   try {
     execSync(`edge-tts --voice "${ttsInfo.edgeVoice}" --rate="+4%" --file naskah_vo.txt --write-media "${outPath}"`, { stdio: 'inherit' });
     if (fs.existsSync(outPath) && fs.statSync(outPath).size > 1000) return null;
-  } catch (e) {
-    console.log('Edge-TTS gagal, beralih ke Google TTS...');
-  }
+  } catch (e) {}
+  
   const pyCmd = `python3 -c "from gtts import gTTS; text=open('naskah_vo.txt').read(); gTTS(text=text, lang='${ttsInfo.gttsLang}').save('${outPath}')"`;
   execSync(pyCmd, { stdio: 'inherit' });
   return null;
@@ -460,163 +404,112 @@ function mulaiServerLokal(dir) {
   return new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port })));
 }
 
-async function kirimKeTelegram(videoPath, data) {
+async function kirimVideoTelegram(videoPath, data) {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
-  const caption = `🎬 *${data.title}*\n\n${data.desc}\n\n${data.tags}`;
-  const form = new FormData();
-  form.append('chat_id', TELEGRAM_CHAT_ID);
-  form.append('caption', caption.slice(0, 1000));
-  form.append('parse_mode', 'Markdown');
-  form.append('video', new Blob([fs.readFileSync(videoPath)], { type: 'video/mp4' }), 'video_cerita.mp4');
-  await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVideo`, { method: 'POST', body: form });
+  console.log('Mengirim hasil video ke Telegram...');
+  const caption = `🎬 *VIDEO 3D V33.0 SELESAI DIRENDER!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
+  
+  try {
+    const form = new FormData();
+    form.append('chat_id', TELEGRAM_CHAT_ID);
+    form.append('caption', caption.slice(0, 1024));
+    form.append('parse_mode', 'Markdown');
+    form.append('video', new Blob([fs.readFileSync(videoPath)], { type: 'video/mp4' }), 'video_cerita.mp4');
+
+    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVideo`, { method: 'POST', body: form });
+    const json = await res.json();
+    if (!json.ok) console.error('Gagal kirim video Telegram:', json);
+    else console.log('Sukses kirim video ke Telegram!');
+  } catch (e) {
+    console.error('Error kirim video Telegram:', e.message);
+  }
 }
 
 async function uploadKeYouTube(videoPath, data) {
-  if (!YT_CLIENT_ID || !YT_CLIENT_SECRET || !YT_REFRESH_TOKEN) return;
-  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: YT_CLIENT_ID, client_secret: YT_CLIENT_SECRET,
-      refresh_token: YT_REFRESH_TOKEN, grant_type: 'refresh_token'
-    })
-  });
-  const tokenData = await tokenRes.json();
-  if (!tokenData.access_token) return;
-
-  const metadata = {
-    snippet: { title: data.title.slice(0, 100), description: `${data.desc}\n\n${data.tags}`, categoryId: '27' },
-    status: { privacyStatus: 'public', selfDeclaredMadeForKids: false }
-  };
-  const fileSize = fs.statSync(videoPath).size;
-  const initRes = await fetch('https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${tokenData.access_token}`,
-      'Content-Type': 'application/json',
-      'X-Upload-Content-Length': fileSize,
-      'X-Upload-Content-Type': 'video/mp4'
-    },
-    body: JSON.stringify(metadata)
-  });
-  const uploadUrl = initRes.headers.get('location');
-  if (!uploadUrl) return;
-  await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Length': fileSize, 'Content-Type': 'video/mp4' },
-    body: fs.readFileSync(videoPath)
-  });
-}
-
-async function tungguContainerMeta(baseUrl, containerId, accessToken, label) {
-  for (let i = 1; i <= 30; i++) {
-    await tunggu(4000);
-    const stRes = await fetch(`${baseUrl}/${containerId}?fields=status_code,status&access_token=${encodeURIComponent(accessToken)}`);
-    const stJson = await stRes.json();
-    const code = stJson.status_code || stJson.status;
-    if (code === 'FINISHED' || code === 'PUBLISHED') return true;
-    if (code === 'ERROR' || code === 'EXPIRED') return false;
+  if (!YT_CLIENT_ID || !YT_CLIENT_SECRET || !YT_REFRESH_TOKEN) {
+    console.log('Lewati YouTube (Secret YT belum lengkap).');
+    return;
   }
-  return false;
-}
-
-async function uploadKeInstagram(videoPath, data) {
-  if (!IG_USER_ID || !IG_ACCESS_TOKEN || !PUBLIC_VIDEO_URL) return;
+  console.log('Memulai upload otomatis ke YouTube...');
   try {
-    const caption = `${data.title}\n\n${data.desc}\n\n${data.tags}`.slice(0, 2200);
-    const createRes = await fetch(`https://graph.facebook.com/v21.0/${IG_USER_ID}/media`, {
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ media_type: 'REELS', video_url: PUBLIC_VIDEO_URL, caption, share_to_feed: true, access_token: IG_ACCESS_TOKEN })
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: YT_CLIENT_ID,
+        client_secret: YT_CLIENT_SECRET,
+        refresh_token: YT_REFRESH_TOKEN,
+        grant_type: 'refresh_token'
+      })
     });
-    const createJson = await createRes.json();
-    if (!createJson.id) return;
-    const siap = await tungguContainerMeta('https://graph.facebook.com/v21.0', createJson.id, IG_ACCESS_TOKEN, 'Instagram');
-    if (!siap) return;
-    await fetch(`https://graph.facebook.com/v21.0/${IG_USER_ID}/media_publish`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ creation_id: createJson.id, access_token: IG_ACCESS_TOKEN })
-    });
-  } catch (err) {}
-}
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) {
+      console.error('Gagal mendapatkan access_token YouTube:', tokenData);
+      return;
+    }
 
-async function uploadKeThreads(videoPath, data) {
-  if (!THREADS_USER_ID || !THREADS_ACCESS_TOKEN || !PUBLIC_VIDEO_URL) return;
-  try {
-    const text = `${data.title}\n\n${data.desc}\n\n${data.tags}`.slice(0, 500);
-    const createRes = await fetch(`https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ media_type: 'VIDEO', video_url: PUBLIC_VIDEO_URL, text, access_token: THREADS_ACCESS_TOKEN })
-    });
-    const createJson = await createRes.json();
-    if (!createJson.id) return;
-    const siap = await tungguContainerMeta('https://graph.threads.net/v1.0', createJson.id, THREADS_ACCESS_TOKEN, 'Threads');
-    if (!siap) return;
-    await fetch(`https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads_publish`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ creation_id: createJson.id, access_token: THREADS_ACCESS_TOKEN })
-    });
-  } catch (err) {}
-}
+    const metadata = {
+      snippet: {
+        title: data.title.slice(0, 100),
+        description: `${data.desc}\n\n${data.tags}`,
+        tags: data.tags.replace(/#/g, '').split(/\s+/).filter(Boolean),
+        categoryId: '27'
+      },
+      status: { privacyStatus: 'public', selfDeclaredMadeForKids: false }
+    };
 
-async function uploadKeFacebook(videoPath, data) {
-  if (!FB_PAGE_ID || !FB_PAGE_ACCESS_TOKEN) return;
-  try {
-    const description = `${data.title}\n\n${data.desc}\n\n${data.tags}`.slice(0, 2200);
     const fileSize = fs.statSync(videoPath).size;
-    const startRes = await fetch(`https://graph.facebook.com/v21.0/${FB_PAGE_ID}/video_reels`, {
+    const initRes = await fetch('https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ upload_phase: 'start', access_token: FB_PAGE_ACCESS_TOKEN })
+      headers: {
+        'Authorization': `Bearer ${tokenData.access_token}`,
+        'Content-Type': 'application/json',
+        'X-Upload-Content-Length': fileSize,
+        'X-Upload-Content-Type': 'video/mp4'
+      },
+      body: JSON.stringify(metadata)
     });
-    const startJson = await startRes.json();
-    if (!startJson.video_id || !startJson.upload_url) return;
 
-    await fetch(startJson.upload_url, {
-      method: 'POST',
-      headers: { 'Authorization': `OAuth ${FB_PAGE_ACCESS_TOKEN}`, 'offset': '0', 'file_size': String(fileSize), 'Content-Type': 'application/octet-stream' },
+    const uploadUrl = initRes.headers.get('location');
+    if (!uploadUrl) {
+      console.error('Gagal membuat sesi upload YouTube');
+      return;
+    }
+
+    const upRes = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Length': fileSize, 'Content-Type': 'video/mp4' },
       body: fs.readFileSync(videoPath)
     });
-    await fetch(`https://graph.facebook.com/v21.0/${FB_PAGE_ID}/video_reels`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ upload_phase: 'finish', video_id: startJson.video_id, video_state: 'PUBLISHED', description, access_token: FB_PAGE_ACCESS_TOKEN })
-    });
-  } catch (err) {}
-}
-
-async function uploadViaWebhook(videoPath, data) {
-  if (!SOCIAL_WEBHOOK_URL) return;
-  try {
-    const form = new FormData();
-    form.append('title', data.title);
-    form.append('description', data.desc);
-    form.append('tags', data.tags);
-    form.append('caption', `${data.title}\n\n${data.desc}\n\n${data.tags}`);
-    form.append('platforms', 'instagram,threads,facebook');
-    form.append('video', new Blob([fs.readFileSync(videoPath)], { type: 'video/mp4' }), 'video_cerita.mp4');
-    await fetch(SOCIAL_WEBHOOK_URL, { method: 'POST', body: form });
-  } catch (err) {}
+    const upData = await upRes.json();
+    if (upData.id) {
+      console.log(`Sukses upload ke YouTube! Link: https://youtu.be/${upData.id}`);
+      await kirimPesanTelegram(`✅ *BERHASIL UPLOAD KE YOUTUBE!*\n\nhttps://youtu.be/${upData.id}`);
+    } else {
+      console.error('Gagal upload YouTube:', upData);
+    }
+  } catch (err) {
+    console.error('Error saat upload YouTube:', err.message);
+  }
 }
 
 (async () => {
   try {
     const dim = getDimensi(UKURAN);
     const ttsInfo = getBahasaConfig(BAHASA);
-    console.log(`=== MEMULAI PRODUKSI VIDEO V34.0 (${UKURAN} | ${BAHASA}) ===`);
+    console.log(`=== MEMULAI PRODUKSI VIDEO V33.0 (${UKURAN} | ${BAHASA}) ===`);
     console.log(`Judul: ${JUDUL}`);
+
+    await kirimPesanTelegram(`🏗️ *Pabrik Video 3D V33.0 mulai bekerja!*\n\n📌 *Judul:* ${JUDUL}\n📐 *Ukuran:* ${UKURAN} (${dim.width}x${dim.height})\n🌐 *Bahasa:* ${BAHASA}`);
 
     console.log('1. Menyusun naskah & ilustrasi B-Roll SVG otomatis dari Gemini...');
     const videoData = await buatNaskahJSON(dim, ttsInfo);
 
     console.log('2. Membuat suara Voice Over...');
     const exactTimings = await buatAudioTTS(videoData.lines, 'vo.mp3', ttsInfo);
-    if (exactTimings) {
-      videoData.lineTimings = exactTimings;
-    }
+    if (exactTimings) videoData.lineTimings = exactTimings;
+
+    await kirimPesanTelegram(`✅ *Naskah & suara VO selesai.*\nSekarang merender video 3D HD + Watermark @raii.punyacerita...`);
 
     console.log('3. Merakit index.html dari template.html...');
     let tpl = fs.readFileSync('template.html', 'utf8');
@@ -665,17 +558,14 @@ async function uploadViaWebhook(videoPath, data) {
       { stdio: 'inherit' }
     );
 
-    console.log('6. Mengirim hasil ke Telegram & Upload Multi-Platform...');
-    await kirimKeTelegram('output_final.mp4', videoData);
+    console.log('6. Mengirim hasil video ke Telegram & Upload ke YouTube...');
+    await kirimVideoTelegram('output_final.mp4', videoData);
     await uploadKeYouTube('output_final.mp4', videoData);
-    await uploadKeFacebook('output_final.mp4', videoData);
-    await uploadKeInstagram('output_final.mp4', videoData);
-    await uploadKeThreads('output_final.mp4', videoData);
-    await uploadViaWebhook('output_final.mp4', videoData);
 
     console.log('=== SEMUA PROSES SELESAI 100%! ===');
   } catch (err) {
     console.error('TERJADI ERROR:', err);
+    await kirimPesanTelegram(`❌ *GAGAL RENDER VIDEO!*\n\nError: \`${err.message}\``);
     process.exit(1);
   }
 })();
