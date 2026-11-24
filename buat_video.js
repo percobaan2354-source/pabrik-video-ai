@@ -1,3 +1,4 @@
+/* ===== SCRIPT UTAMA: buat_video.js (Versi Auto-Pipeline & Render Lengkap) ===== */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -14,7 +15,6 @@ const JUDUL = process.env.JUDUL || 'Fakta Unik yang Jarang Diketahui';
 const BAHASA = process.env.BAHASA || 'Indonesia';
 const UKURAN = process.env.UKURAN || '9:16';
 
-// Kredensial Upload Sosial Media (Semua bersifat opsional: jika diisi otomatis upload, jika kosong otomatis dilewati)
 const YT_CLIENT_ID = process.env.YT_CLIENT_ID || '';
 const YT_CLIENT_SECRET = process.env.YT_CLIENT_SECRET || '';
 const YT_REFRESH_TOKEN = process.env.YT_REFRESH_TOKEN || '';
@@ -28,9 +28,7 @@ const THREADS_ACCESS_TOKEN = process.env.THREADS_ACCESS_TOKEN || '';
 const FB_PAGE_ID = process.env.FB_PAGE_ID || '';
 const FB_PAGE_ACCESS_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN || '';
 
-// Opsional: Base URL publik tempat output_final.mp4 bisa diakses server Meta (IG/Threads), misal dari GitHub Release / Cloudflare R2
 const PUBLIC_VIDEO_URL = process.env.PUBLIC_VIDEO_URL || '';
-// Opsional: Webhook universal (n8n / Make / Zapier / Postiz) yang menerima multipart video + metadata sekaligus
 const SOCIAL_WEBHOOK_URL = process.env.SOCIAL_WEBHOOK_URL || '';
 
 const COVER_HOLD_SEC = 1.35;
@@ -155,15 +153,14 @@ ATURAN KETAT V34.0 (OTOMATIS SINKRON NASKAH VO <-> ILUSTRASI SVG B-ROLL):
      }
    - ATURAN WAJIB UNTUK FIELD "svg" & "svg2" (DAN "coverSvg1", "coverSvg2"):
      * Wajib valid SVG 100% self-contained dengan viewBox='0 0 200 200', tanpa tag <image>, tanpa link eksternal, tanpa teks panjang (maksimal 1-3 karakter angka/simbol jika perlu seperti '1/5' atau '30').
-     * Gambar objek nyata yang sedang dibicarakan kalimat VO secara harfiah (misalnya jika VO bicara kalender 1 tahun jadi 1 bulan -> gambar kalender dengan lembaran robek & jarum jam; jika VO bicara otak merekam memori -> gambar otak warna-warni dengan kilau cahaya & lensa; jika VO bicara anak 5 tahun seperlima hidup -> gambar pie chart 5 potongan dengan 1 potongan menyala kuning + siluet anak).
-     * Gunakan warna cerah kontras (#f59e0b, #0284c7, #10b981, #ef4444, #8b5cf6, #facc15, #ffffff) dengan garis tepi gelap tegas (stroke='#0f172a' stroke-width='4' stroke-linecap='round' stroke-linejoin='round') dan efek bayangan/highlight agar terlihat seperti ilustrasi vektor 3D modern yang bersih!
-     * "svg2" (khususnya dipakai di b2 kotak kecil sebagai pasangan kanan) harus menggambarkan elemen pendukung kedua dari kalimat VO b2 tersebut.
+     * Gambar objek nyata yang sedang dibicarakan kalimat VO secara harfiah.
+     * Gunakan warna cerah kontras (#f59e0b, #0284c7, #10b981, #ef4444, #8b5cf6, #facc15, #ffffff) dengan garis tepi gelap tegas (stroke='#0f172a' stroke-width='4' stroke-linecap='round' stroke-linejoin='round') dan efek bayangan/highlight.
 3. "tx":
-   - "kicker": kategori singkat 1-2 kata (contoh: "SAINS TUBUH", "FAKTA UNIK", "PSIKOLOGI", "SEJARAH").
-   - "t1": 1-2 kata judul besar baris atas di sampul (maksimal 14 huruf).
-   - "t2": 1-2 kata judul besar baris bawah di sampul (maksimal 14 huruf).
-4. "coverSvg1" & "coverSvg2": 2 ilustrasi SVG viewBox='0 0 200 200' yang menggambarkan topik utama JUDUL untuk 2 stiker di sampul awal.
-5. "src": berikan 2 sumber riset nyata dan kredibel terkait topik judul.
+   - "kicker": kategori singkat 1-2 kata.
+   - "t1": 1-2 kata judul besar baris atas di sampul.
+   - "t2": 1-2 kata judul besar baris bawah di sampul.
+4. "coverSvg1" & "coverSvg2": 2 ilustrasi SVG viewBox='0 0 200 200' untuk stiker di sampul awal.
+5. "src": 2 sumber riset nyata dan kredibel terkait topik judul.
 
 KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
 {
@@ -215,7 +212,7 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
         models = [...new Set([...models, ...valid])];
       }
     }
-  } catch (e) { /* pakai daftar bawaan */ }
+  } catch (e) { /* fallback ke default */ }
 
   let lastApiError = "";
 
@@ -251,7 +248,6 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
   throw new Error('Gagal menghasilkan naskah dari Gemini API. Detail: ' + lastApiError);
 }
 
-/* ===== EKSTRAKSI WAKTU PER BARIS & PER KATA DARI ELEVENLABS ===== */
 function parseElevenLabsAlignment(fullText, lineRanges, alignment) {
   if (!alignment || !Array.isArray(alignment.characters) || !Array.isArray(alignment.character_start_times_seconds)) {
     return null;
@@ -386,7 +382,6 @@ async function buatAudioTTS(lines, outPath, ttsInfo) {
   return null;
 }
 
-/* ===== MIXING AUDIO SERVER: BGM + SFX + VO ===== */
 function mixAudioWithBgmAndSfx(voPath, sceneTimes, totalLenSec, seedNum, outWavPath) {
   const freqs = [261.63, 329.63, 392.00, 493.88, 392.00, 329.63];
   const shift = 1 + ((seedNum % 5) - 2) * 0.03;
@@ -465,59 +460,34 @@ function mulaiServerLokal(dir) {
   return new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port })));
 }
 
-/* ===== UPLOAD KE TELEGRAM ===== */
 async function kirimKeTelegram(videoPath, data) {
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-    console.log('Lewati Telegram (Secret belum lengkap).');
-    return;
-  }
-  console.log('Mengirim video ke Telegram...');
-  const caption = `🎬 *${data.title}*\n\n${data.desc}\n\n${data.tags}\n\n_(Siap upload ke YT Shorts / IG Reels / Threads / FB Reels!)_`;
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+  const caption = `🎬 *${data.title}*\n\n${data.desc}\n\n${data.tags}`;
   const form = new FormData();
   form.append('chat_id', TELEGRAM_CHAT_ID);
   form.append('caption', caption.slice(0, 1000));
   form.append('parse_mode', 'Markdown');
   form.append('video', new Blob([fs.readFileSync(videoPath)], { type: 'video/mp4' }), 'video_cerita.mp4');
-
-  const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVideo`, { method: 'POST', body: form });
-  const json = await res.json();
-  if (!json.ok) console.error('Gagal kirim Telegram:', json);
-  else console.log('Sukses terkirim ke Telegram!');
+  await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVideo`, { method: 'POST', body: form });
 }
 
-/* ===== UPLOAD KE YOUTUBE SHORTS ===== */
 async function uploadKeYouTube(videoPath, data) {
-  if (!YT_CLIENT_ID || !YT_CLIENT_SECRET || !YT_REFRESH_TOKEN) {
-    console.log('Lewati YouTube (Secret YT belum lengkap).');
-    return;
-  }
-  console.log('Memulai upload otomatis ke YouTube...');
+  if (!YT_CLIENT_ID || !YT_CLIENT_SECRET || !YT_REFRESH_TOKEN) return;
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: YT_CLIENT_ID,
-      client_secret: YT_CLIENT_SECRET,
-      refresh_token: YT_REFRESH_TOKEN,
-      grant_type: 'refresh_token'
+      client_id: YT_CLIENT_ID, client_secret: YT_CLIENT_SECRET,
+      refresh_token: YT_REFRESH_TOKEN, grant_type: 'refresh_token'
     })
   });
   const tokenData = await tokenRes.json();
-  if (!tokenData.access_token) {
-    console.error('Gagal mendapatkan access_token YouTube:', tokenData);
-    return;
-  }
+  if (!tokenData.access_token) return;
 
   const metadata = {
-    snippet: {
-      title: data.title.slice(0, 100),
-      description: `${data.desc}\n\n${data.tags}`,
-      tags: data.tags.replace(/#/g, '').split(/\s+/).filter(Boolean),
-      categoryId: '27'
-    },
+    snippet: { title: data.title.slice(0, 100), description: `${data.desc}\n\n${data.tags}`, categoryId: '27' },
     status: { privacyStatus: 'public', selfDeclaredMadeForKids: false }
   };
-
   const fileSize = fs.statSync(videoPath).size;
   const initRes = await fetch('https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status', {
     method: 'POST',
@@ -529,208 +499,97 @@ async function uploadKeYouTube(videoPath, data) {
     },
     body: JSON.stringify(metadata)
   });
-
   const uploadUrl = initRes.headers.get('location');
-  if (!uploadUrl) {
-    console.error('Gagal membuat sesi upload YouTube');
-    return;
-  }
-
-  const upRes = await fetch(uploadUrl, {
+  if (!uploadUrl) return;
+  await fetch(uploadUrl, {
     method: 'PUT',
     headers: { 'Content-Length': fileSize, 'Content-Type': 'video/mp4' },
     body: fs.readFileSync(videoPath)
   });
-  const upData = await upRes.json();
-  if (upData.id) console.log(`Sukses upload ke YouTube! Link: https://youtu.be/${upData.id}`);
-  else console.error('Gagal upload YouTube:', upData);
 }
 
-/* ===== HELPER POLLING STATUS CONTAINER META GRAPH API (IG & THREADS) ===== */
 async function tungguContainerMeta(baseUrl, containerId, accessToken, label) {
   for (let i = 1; i <= 30; i++) {
     await tunggu(4000);
     const stRes = await fetch(`${baseUrl}/${containerId}?fields=status_code,status&access_token=${encodeURIComponent(accessToken)}`);
     const stJson = await stRes.json();
     const code = stJson.status_code || stJson.status;
-    console.log(`[${label}] Cek status container (${i}/30): ${code || JSON.stringify(stJson)}`);
     if (code === 'FINISHED' || code === 'PUBLISHED') return true;
-    if (code === 'ERROR' || code === 'EXPIRED') {
-      console.error(`[${label}] Container gagal diproses:`, stJson);
-      return false;
-    }
+    if (code === 'ERROR' || code === 'EXPIRED') return false;
   }
-  console.error(`[${label}] Timeout menunggu container selesai diproses.`);
   return false;
 }
 
-/* ===== UPLOAD KE INSTAGRAM REELS (META GRAPH API) ===== */
 async function uploadKeInstagram(videoPath, data) {
-  if (!IG_USER_ID || !IG_ACCESS_TOKEN) {
-    console.log('Lewati Instagram (Secret IG_USER_ID / IG_ACCESS_TOKEN belum diisi).');
-    return;
-  }
-  if (!PUBLIC_VIDEO_URL) {
-    console.log('Lewati Instagram (PUBLIC_VIDEO_URL belum diisi — Meta Graph API membutuhkan URL video publik untuk IG Reels).');
-    return;
-  }
-  console.log('Memulai upload otomatis ke Instagram Reels...');
+  if (!IG_USER_ID || !IG_ACCESS_TOKEN || !PUBLIC_VIDEO_URL) return;
   try {
     const caption = `${data.title}\n\n${data.desc}\n\n${data.tags}`.slice(0, 2200);
     const createRes = await fetch(`https://graph.facebook.com/v21.0/${IG_USER_ID}/media`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        media_type: 'REELS',
-        video_url: PUBLIC_VIDEO_URL,
-        caption,
-        share_to_feed: true,
-        access_token: IG_ACCESS_TOKEN
-      })
+      body: JSON.stringify({ media_type: 'REELS', video_url: PUBLIC_VIDEO_URL, caption, share_to_feed: true, access_token: IG_ACCESS_TOKEN })
     });
     const createJson = await createRes.json();
-    if (!createJson.id) {
-      console.error('Gagal membuat media container Instagram:', createJson);
-      return;
-    }
-
+    if (!createJson.id) return;
     const siap = await tungguContainerMeta('https://graph.facebook.com/v21.0', createJson.id, IG_ACCESS_TOKEN, 'Instagram');
     if (!siap) return;
-
-    const pubRes = await fetch(`https://graph.facebook.com/v21.0/${IG_USER_ID}/media_publish`, {
+    await fetch(`https://graph.facebook.com/v21.0/${IG_USER_ID}/media_publish`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        creation_id: createJson.id,
-        access_token: IG_ACCESS_TOKEN
-      })
+      body: JSON.stringify({ creation_id: createJson.id, access_token: IG_ACCESS_TOKEN })
     });
-    const pubJson = await pubRes.json();
-    if (pubJson.id) console.log(`Sukses upload ke Instagram Reels! Media ID: ${pubJson.id}`);
-    else console.error('Gagal publish Instagram Reels:', pubJson);
-  } catch (err) {
-    console.error('Error upload Instagram:', err.message);
-  }
+  } catch (err) {}
 }
 
-/* ===== UPLOAD KE THREADS (THREADS GRAPH API) ===== */
 async function uploadKeThreads(videoPath, data) {
-  if (!THREADS_USER_ID || !THREADS_ACCESS_TOKEN) {
-    console.log('Lewati Threads (Secret THREADS_USER_ID / THREADS_ACCESS_TOKEN belum diisi).');
-    return;
-  }
-  if (!PUBLIC_VIDEO_URL) {
-    console.log('Lewati Threads (PUBLIC_VIDEO_URL belum diisi — Threads API membutuhkan URL video publik).');
-    return;
-  }
-  console.log('Memulai upload otomatis ke Threads...');
+  if (!THREADS_USER_ID || !THREADS_ACCESS_TOKEN || !PUBLIC_VIDEO_URL) return;
   try {
     const text = `${data.title}\n\n${data.desc}\n\n${data.tags}`.slice(0, 500);
     const createRes = await fetch(`https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        media_type: 'VIDEO',
-        video_url: PUBLIC_VIDEO_URL,
-        text,
-        access_token: THREADS_ACCESS_TOKEN
-      })
+      body: JSON.stringify({ media_type: 'VIDEO', video_url: PUBLIC_VIDEO_URL, text, access_token: THREADS_ACCESS_TOKEN })
     });
     const createJson = await createRes.json();
-    if (!createJson.id) {
-      console.error('Gagal membuat container Threads:', createJson);
-      return;
-    }
-
+    if (!createJson.id) return;
     const siap = await tungguContainerMeta('https://graph.threads.net/v1.0', createJson.id, THREADS_ACCESS_TOKEN, 'Threads');
     if (!siap) return;
-
-    const pubRes = await fetch(`https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads_publish`, {
+    await fetch(`https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads_publish`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        creation_id: createJson.id,
-        access_token: THREADS_ACCESS_TOKEN
-      })
+      body: JSON.stringify({ creation_id: createJson.id, access_token: THREADS_ACCESS_TOKEN })
     });
-    const pubJson = await pubRes.json();
-    if (pubJson.id) console.log(`Sukses upload ke Threads! Post ID: ${pubJson.id}`);
-    else console.error('Gagal publish Threads:', pubJson);
-  } catch (err) {
-    console.error('Error upload Threads:', err.message);
-  }
+  } catch (err) {}
 }
 
-/* ===== UPLOAD KE FACEBOOK REELS (FACEBOOK GRAPH API - LANGSUNG UPLOAD FILE BINER SEPERTI YT) ===== */
 async function uploadKeFacebook(videoPath, data) {
-  if (!FB_PAGE_ID || !FB_PAGE_ACCESS_TOKEN) {
-    console.log('Lewati Facebook Reels (Secret FB_PAGE_ID / FB_PAGE_ACCESS_TOKEN belum diisi).');
-    return;
-  }
-  console.log('Memulai upload otomatis ke Facebook Reels...');
+  if (!FB_PAGE_ID || !FB_PAGE_ACCESS_TOKEN) return;
   try {
     const description = `${data.title}\n\n${data.desc}\n\n${data.tags}`.slice(0, 2200);
     const fileSize = fs.statSync(videoPath).size;
-
-    // Tahap 1: Inisialisasi sesi upload Reels
     const startRes = await fetch(`https://graph.facebook.com/v21.0/${FB_PAGE_ID}/video_reels`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        upload_phase: 'start',
-        access_token: FB_PAGE_ACCESS_TOKEN
-      })
+      body: JSON.stringify({ upload_phase: 'start', access_token: FB_PAGE_ACCESS_TOKEN })
     });
     const startJson = await startRes.json();
-    if (!startJson.video_id || !startJson.upload_url) {
-      console.error('Gagal inisialisasi sesi Facebook Reels:', startJson);
-      return;
-    }
+    if (!startJson.video_id || !startJson.upload_url) return;
 
-    // Tahap 2: Upload biner file MP4 langsung ke rupload.facebook.com
-    const upRes = await fetch(startJson.upload_url, {
+    await fetch(startJson.upload_url, {
       method: 'POST',
-      headers: {
-        'Authorization': `OAuth ${FB_PAGE_ACCESS_TOKEN}`,
-        'offset': '0',
-        'file_size': String(fileSize),
-        'Content-Type': 'application/octet-stream'
-      },
+      headers: { 'Authorization': `OAuth ${FB_PAGE_ACCESS_TOKEN}`, 'offset': '0', 'file_size': String(fileSize), 'Content-Type': 'application/octet-stream' },
       body: fs.readFileSync(videoPath)
     });
-    const upJson = await upRes.json();
-    if (!upJson.success) {
-      console.error('Gagal mengunggah biner video ke Facebook:', upJson);
-      return;
-    }
-
-    // Tahap 3: Publish Facebook Reels
-    const finRes = await fetch(`https://graph.facebook.com/v21.0/${FB_PAGE_ID}/video_reels`, {
+    await fetch(`https://graph.facebook.com/v21.0/${FB_PAGE_ID}/video_reels`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        upload_phase: 'finish',
-        video_id: startJson.video_id,
-        video_state: 'PUBLISHED',
-        description,
-        access_token: FB_PAGE_ACCESS_TOKEN
-      })
+      body: JSON.stringify({ upload_phase: 'finish', video_id: startJson.video_id, video_state: 'PUBLISHED', description, access_token: FB_PAGE_ACCESS_TOKEN })
     });
-    const finJson = await finRes.json();
-    if (finJson.success || finJson.post_id) {
-      console.log(`Sukses upload ke Facebook Reels! Video ID: ${startJson.video_id}`);
-    } else {
-      console.error('Gagal publish Facebook Reels:', finJson);
-    }
-  } catch (err) {
-    console.error('Error upload Facebook:', err.message);
-  }
+  } catch (err) {}
 }
 
-/* ===== JALUR WEBHOOK UNIVERSAL (JIKA PAKAI MAKE / N8N / ZAPIER / POSTIZ UNTUK IG+THREADS+FB SEKALIGUS) ===== */
 async function uploadViaWebhook(videoPath, data) {
   if (!SOCIAL_WEBHOOK_URL) return;
-  console.log('Mengirim video & metadata ke SOCIAL_WEBHOOK_URL...');
   try {
     const form = new FormData();
     form.append('title', data.title);
@@ -739,16 +598,10 @@ async function uploadViaWebhook(videoPath, data) {
     form.append('caption', `${data.title}\n\n${data.desc}\n\n${data.tags}`);
     form.append('platforms', 'instagram,threads,facebook');
     form.append('video', new Blob([fs.readFileSync(videoPath)], { type: 'video/mp4' }), 'video_cerita.mp4');
-
-    const res = await fetch(SOCIAL_WEBHOOK_URL, { method: 'POST', body: form });
-    const txt = await res.text();
-    console.log(`Respon SOCIAL_WEBHOOK_URL (HTTP ${res.status}):`, txt.slice(0, 300));
-  } catch (err) {
-    console.error('Error SOCIAL_WEBHOOK_URL:', err.message);
-  }
+    await fetch(SOCIAL_WEBHOOK_URL, { method: 'POST', body: form });
+  } catch (err) {}
 }
 
-/* ===== MAIN PIPELINE ===== */
 (async () => {
   try {
     const dim = getDimensi(UKURAN);
@@ -759,7 +612,7 @@ async function uploadViaWebhook(videoPath, data) {
     console.log('1. Menyusun naskah & ilustrasi B-Roll SVG otomatis dari Gemini...');
     const videoData = await buatNaskahJSON(dim, ttsInfo);
 
-    console.log('2. Membuat suara Voice Over (ElevenLabs + Exact Timestamps / Fallback Gratis)...');
+    console.log('2. Membuat suara Voice Over...');
     const exactTimings = await buatAudioTTS(videoData.lines, 'vo.mp3', ttsInfo);
     if (exactTimings) {
       videoData.lineTimings = exactTimings;
@@ -801,7 +654,7 @@ async function uploadViaWebhook(videoPath, data) {
     await browser.close();
     server.close();
 
-    console.log('5. Menggabungkan BGM + SFX + VO & merender MP4 final (FFmpeg)...');
+    console.log('5. Menggabungkan BGM + SFX + VO & merender MP4 final...');
     const seedNum = Array.from(videoData.title).reduce((a, c) => a + c.charCodeAt(0), 0);
     mixAudioWithBgmAndSfx('vo.mp3', sceneTimes, totalLenSec, seedNum, 'mixed_audio.wav');
 
@@ -812,7 +665,7 @@ async function uploadViaWebhook(videoPath, data) {
       { stdio: 'inherit' }
     );
 
-    console.log('6. Mengirim hasil ke Telegram & Upload Multi-Platform (YT, IG, Threads, FB)...');
+    console.log('6. Mengirim hasil ke Telegram & Upload Multi-Platform...');
     await kirimKeTelegram('output_final.mp4', videoData);
     await uploadKeYouTube('output_final.mp4', videoData);
     await uploadKeFacebook('output_final.mp4', videoData);
