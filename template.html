@@ -81,13 +81,10 @@ const CH = DATA.height || 1280;
 const SX = CW / 720;
 const SY = CH / 1280;
 
-/* Jeda sampul penuh di awal video sebelum VO & subtitle dimulai */
 let COVER_HOLD = Number(DATA.coverHold) || 1.35;
 
-/* State global */
 let now=0,A=0,tm=0,playing=false,li=0,spoken=-1,lay=-1,pScene=null,trT=-9,trDir=1,exporting=false,rec=null,chunks=[],voBuf=null,voSrc=null,voStartCtxT=0,voStartOffset=0,voWallT0=0,cap=[],last=0,DT=.016,mNext=0;
 
-/* Normalisasi kode adegan & mood */
 {
  const VALID_SC=['title','b1','a','b2','b3','cta','c','b4','end'];
  const VALID_MOOD=['n','d','e','s'];
@@ -109,20 +106,20 @@ const hash = s => {let h=2166136261;for(const c of s){h^=c.charCodeAt(0);h=Math.
 const SEED = hash(TITLE+'|'+VARIAN+'|'+TX.t1+'|'+TX.t2);
 const rnd = (()=>{let a=SEED;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}})();
 
-/* ===== DATABASE 12 GENRE (PALET TERANG CERAH & BERVARIASI V33.0) ===== */
+/* ===== DATABASE 12 GENRE (PALET TERANG CERAH & BERVARIASI) ===== */
 const GENRE_DB={
- sejarah:{pal:{a:'#d97706',t:'#0284c7',p:'#ea580c',g:'#059669',b1:'#fef3c7',b2:'#fde68a',sky:'#fffbeb'},icons:['wall_clock','book','shield','trophy','star'],bgm:[220.00,261.63,293.66,329.63,392.00,329.63]},
- horor:{pal:{a:'#0284c7',t:'#4f46e5',p:'#e11d48',g:'#0d9488',b1:'#e0e7ff',b2:'#c7d2fe',sky:'#eef2ff'},icons:['moon','eye','flame','wall_clock','shield'],bgm:[146.83,155.56,174.61,155.56,138.59,146.83]},
- kriminal:{pal:{a:'#d97706',t:'#2563eb',p:'#dc2626',g:'#0891b2',b1:'#e2e8f0',b2:'#cbd5e1',sky:'#f8fafc'},icons:['eye','doc','bolt','shield','wall_clock'],bgm:[164.81,196.00,220.00,246.94,220.00,196.00]},
- konspirasi:{pal:{a:'#0284c7',t:'#059669',p:'#e11d48',g:'#7c3aed',b1:'#e0f2fe',b2:'#bae6fd',sky:'#f0f9ff'},icons:['eye','chip','shield','bolt','wall_clock'],bgm:[130.81,155.56,196.00,233.08,196.00,155.56]},
- bisnis:{pal:{a:'#ca8a04',t:'#0284c7',p:'#ea580c',g:'#059669',b1:'#fef9c3',b2:'#dbeafe',sky:'#fffbeb'},icons:['coin','trophy','bolt','check','shield'],bgm:[261.63,329.63,392.00,523.25,392.00,329.63]},
- drama:{pal:{a:'#db2777',t:'#2563eb',p:'#e11d48',g:'#d97706',b1:'#fce7f3',b2:'#dbeafe',sky:'#fff1f2'},icons:['heart','book','wall_clock','star','leaf'],bgm:[220.00,261.63,329.63,349.23,329.63,261.63]},
- psikologi:{pal:{a:'#0284c7',t:'#0d9488',p:'#f59e0b',g:'#10b981',b1:'#ccfbf1',b2:'#e0f2fe',sky:'#f0fdfa'},icons:['brain','bed','moon','heart','wall_clock'],bgm:[246.94,293.66,369.99,440.00,369.99,293.66]},
- mitologi:{pal:{a:'#b45309',t:'#059669',p:'#7e22ce',g:'#0d9488',b1:'#d1fae5',b2:'#fef3c7',sky:'#ecfdf5'},icons:['flame','moon','star','shield','bolt'],bgm:[196.00,233.08,293.66,349.23,392.00,329.66]},
- sains:{pal:{a:'#0284c7',t:'#7c3aed',p:'#0891b2',g:'#4f46e5',b1:'#e0f2fe',b2:'#ede9fe',sky:'#f0f9ff'},icons:['sun','moon','chip','bolt','star'],bgm:[261.63,311.13,392.00,466.16,523.25,392.00]},
- bencana:{pal:{a:'#ea580c',t:'#475569',p:'#dc2626',g:'#d97706',b1:'#ffedd5',b2:'#e2e8f0',sky:'#fff7ed'},icons:['flame','bolt','wave','shield','wall_clock'],bgm:[146.83,174.61,196.00,220.00,174.61,146.83]},
- biografi:{pal:{a:'#d97706',t:'#ea580c',p:'#db2777',g:'#059669',b1:'#fef3c7',b2:'#fed7aa',sky:'#fffbeb'},icons:['book','lamp','trophy','wall_clock','star'],bgm:[261.63,293.66,329.63,392.00,440.00,392.00]},
- fakta:{pal:{a:'#f59e0b',t:'#0284c7',p:'#ec4899',g:'#10b981',b1:'#e0f2fe',b2:'#fef3c7',sky:'#f8fafc'},icons:['eye','wall_clock','brain','star','bolt'],bgm:[261.63,329.63,392.00,493.88,392.00,329.63]}
+ sejarah:{pal:{a:'#d97706',t:'#0284c7',p:'#ea580c',g:'#059669',b1:'#fef3c7',b2:'#fde68a',sky:'#fffbeb'},bgm:[220.00,261.63,293.66,329.63,392.00,329.63]},
+ horor:{pal:{a:'#0284c7',t:'#4f46e5',p:'#e11d48',g:'#0d9488',b1:'#e0e7ff',b2:'#c7d2fe',sky:'#eef2ff'},bgm:[146.83,155.56,174.61,155.56,138.59,146.83]},
+ kriminal:{pal:{a:'#d97706',t:'#2563eb',p:'#dc2626',g:'#0891b2',b1:'#e2e8f0',b2:'#cbd5e1',sky:'#f8fafc'},bgm:[164.81,196.00,220.00,246.94,220.00,196.00]},
+ konspirasi:{pal:{a:'#0284c7',t:'#059669',p:'#e11d48',g:'#7c3aed',b1:'#e0f2fe',b2:'#bae6fd',sky:'#f0f9ff'},bgm:[130.81,155.56,196.00,233.08,196.00,155.56]},
+ bisnis:{pal:{a:'#ca8a04',t:'#0284c7',p:'#ea580c',g:'#059669',b1:'#fef9c3',b2:'#dbeafe',sky:'#fffbeb'},bgm:[261.63,329.63,392.00,523.25,392.00,329.63]},
+ drama:{pal:{a:'#db2777',t:'#2563eb',p:'#e11d48',g:'#d97706',b1:'#fce7f3',b2:'#dbeafe',sky:'#fff1f2'},bgm:[220.00,261.63,329.63,349.23,329.63,261.63]},
+ psikologi:{pal:{a:'#0284c7',t:'#0d9488',p:'#f59e0b',g:'#10b981',b1:'#ccfbf1',b2:'#e0f2fe',sky:'#f0fdfa'},bgm:[246.94,293.66,369.99,440.00,369.99,293.66]},
+ mitologi:{pal:{a:'#b45309',t:'#059669',p:'#7e22ce',g:'#0d9488',b1:'#d1fae5',b2:'#fef3c7',sky:'#ecfdf5'},bgm:[196.00,233.08,293.66,349.23,392.00,329.66]},
+ sains:{pal:{a:'#0284c7',t:'#7c3aed',p:'#0891b2',g:'#4f46e5',b1:'#e0f2fe',b2:'#ede9fe',sky:'#f0f9ff'},bgm:[261.63,311.13,392.00,466.16,523.25,392.00]},
+ bencana:{pal:{a:'#ea580c',t:'#475569',p:'#dc2626',g:'#d97706',b1:'#ffedd5',b2:'#e2e8f0',sky:'#fff7ed'},bgm:[146.83,174.61,196.00,220.00,174.61,146.83]},
+ biografi:{pal:{a:'#d97706',t:'#ea580c',p:'#db2777',g:'#059669',b1:'#fef3c7',b2:'#fed7aa',sky:'#fffbeb'},bgm:[261.63,293.66,329.63,392.00,440.00,392.00]},
+ fakta:{pal:{a:'#f59e0b',t:'#0284c7',p:'#ec4899',g:'#10b981',b1:'#e0f2fe',b2:'#fef3c7',sky:'#f8fafc'},bgm:[261.63,329.63,392.00,493.88,392.00,329.63]}
 };
 
 function detectGenre12(){
@@ -133,7 +130,7 @@ function detectGenre12(){
  if(/konspirasi|rahasia dunia|bunker|brankas|illuminati|elit|agen|satelit|radar|tersembunyi|terlarang|eksperimen|area 51|kode rahasia/.test(q))return'konspirasi';
  if(/bisnis|sukses|kaya|miliarder|saham|investasi|uang|ekonomi|perusahaan|ceo|startup|modal|cuan|bank|emas|kekayaan/.test(q))return'bisnis';
  if(/keluarga|hubungan|cinta|putus|rindu|orang tua|ibu|ayah|anak|pernikahan|sedih|menangis|hati|kesepian|drama|rumah tangga/.test(q))return'drama';
- if(/psikologi|otak|pikiran|tidur|kebiasaan|mental|stres|overthinking|fokus|motivasi|pengembangan diri|mindset|emosi|sadar|bifasik|insomnia|ngantuk|merem|bersin/.test(q))return'psikologi';
+ if(/psikologi|otak|pikiran|tidur|kebiasaan|mental|stres|overthinking|fokus|motivasi|pengembangan diri|mindset|emosi|sadar|bifasik|insomnia|ngantuk|merem|bersin|waktu|tahun|bulan|memori|ingatan/.test(q))return'psikologi';
  if(/mitologi|legenda|dewa|naga|sihir|pedang|ramalan|makhluk|raksasa|peri|keramat|dongeng|cerita rakyat|jimat|kutukan kuno/.test(q))return'mitologi';
  if(/sains|antariksa|luar angkasa|planet|matahari|bulan|bintang|galaksi|ai|robot|masa depan|kuantum|dna|teknologi|orbit|mars|nasa/.test(q))return'sains';
  if(/bencana|gempa|tsunami|gunung meletus|lava|badai|topan|banjir|kebakaran|bertahan hidup|survival|salju ekstrem|tenggelam|karam/.test(q))return'bencana';
@@ -141,7 +138,11 @@ function detectGenre12(){
  return'fakta';
 }
 
-/* ===== SMART VISUAL DETECTOR V33.0 (LANGSUNG BACA NASKAH VO TIAP ADEGAN B-ROLL) ===== */
+const ACTIVE_GENRE=detectGenre12();
+const G_SPEC=GENRE_DB[ACTIVE_GENRE]||GENRE_DB.fakta;
+const P=G_SPEC.pal;
+
+/* ===== SISTEM B-ROLL OTOMATIS DARI NASKAH VO (SVG GENERATOR + FALLBACK CERDAS) ===== */
 const STOP_WORDS=new Set([
  'yang','dan','di','ke','dari','ini','itu','untuk','pada','dengan','adalah','sebagai','dalam','oleh','akan','juga','atau','karena','jika','bila','saat','ketika','sebelum','sesudah','setelah','lalu','kemudian','mereka','kami','kita','kamu','dia','ia','orang','manusia','para','semua','setiap','banyak','beberapa','satu','dua','tiga','empat','lima','enam','tujuh','delapan','sembilan','sepuluh','sekitar','hampir','sangat','lebih','paling','bisa','dapat','harus','mau','ingin','pernah','sering','selalu','belum','sudah','telah','sedang','masih','lagi','saja','cuma','hanya','bukan','tidak','nggak','gak','tak','ada','punya','jadi','menjadi','buat','membuat','disebut','bernama','secara','hal','cara','bagian','tahap','kali','sampai','hingga','antara','selama','tengah','awal','akhir','mungkin','ternyata','padahal','namun','tapi','tetapi','kalau','misalnya','contoh','kayak','seperti','gini','begitu','sih','nih','deh','dong','ya','kan','sekali','waktu','dulu','zaman','era','hari','bikin','malah','makin','banget','aja','lo','gue','lu','bayangkan','coba','lihat','enggak','sebuah','layaknya','masuk','mode','justru','kunci','tercepat','segera','sekadar','bahkan','biar','ngira','alasan','aslinya','jauh','serius','urusan','khusus','darurat','kalo','sengaja','tetap','menyangka','sering','kita','abaikan','berkat','detail','kecil','ribuan'
 ]);
@@ -153,100 +154,78 @@ function extractMeaningfulWords(sentence){
  return meaningful.length?meaningful:raw.filter(w=>w.length>=3);
 }
 
-const ACTIVE_GENRE=detectGenre12();
-const G_SPEC=GENRE_DB[ACTIVE_GENRE]||GENRE_DB.fakta;
-const P=G_SPEC.pal;
-
-/* Katalog Visual 3D Lengkap — Dipilih langsung berdasarkan Naskah VO yang sedang diucapkan */
-const VISUAL_CATALOG=[
- {id:'floating_hat',re:/topi melayang|topi terbang|topi pesulap|topi/,ic1:'floating_hat',ic2:'wind_swirl',kicker:'VISUAL NASKAH',title:'TOPI MELAYANG',sub:'Ilustrasi Adegan VO'},
- {id:'ink_pen',re:/tinta|macet|mengering|menulis|ujung pena|bolpoin/,ic1:'ink_bottle',ic2:'pen_nib',kicker:'MITOS UMUM',title:'TINTA & PENA',sub:'Anggapan Soal Tinta Kering'},
- {id:'pen_cap',re:/pulpen|tutup pulpen|lubang kecil|ventilasi/,ic1:'pen_cap',ic2:'air_flow',kicker:'DESAIN 3D',title:'TUTUP PULPEN',sub:'Lubang Ventilasi Udara'},
- {id:'child_safety',re:/anak|balita|menggigit|tertutup|keselamatan|keamanan|melindungi/,ic1:'child_shield',ic2:'heart',kicker:'PERLINDUNGAN',title:'KEAMANAN ANAK',sub:'Desain Aman Jika Tertelan'},
- {id:'airway_lungs',re:/jalur napas|pernapasan|paru|udara|oksigen|tertelan|tersedak|bernapas|mengalir|korban/,ic1:'lungs',ic2:'air_flow',kicker:'FUNGSI PENYELAMAT',title:'JALUR NAPAS',sub:'Aliran Udara Tetap Terbuka'},
- {id:'lifesaver',re:/nyawa|terselamatkan|menyelamatkan|hidup|darurat|pertolongan|medis|dokter/,ic1:'lifebuoy',ic2:'heart',kicker:'DAMPAK NYATA',title:'PENYELAMAT NYAWA',sub:'Detail Kecil Berarti Besar'},
- {id:'factory_iso',re:/perusahaan|bic|pabrik|industri|standar|iso|produksi|merek|sembilan puluhan/,ic1:'factory',ic2:'trophy',kicker:'STANDAR GLOBAL',title:'REGULASI INDUSTRI',sub:'Sertifikasi Keselamatan'},
- {id:'wall_clock',re:/jam dinding|jam weker|jarum jam|berdetak|waktu|detik|menit|jam/,ic1:'wall_clock',ic2:'moon',kicker:'VISUAL WAKTU',title:'WAKTU & RITME',sub:'Detak Waktu Berjalan'},
- {id:'lion_predator',re:/singa|harimau|predator|dikejar|hewan|binatang|liar/,ic1:'lion',ic2:'bolt',kicker:'ANCAMAN ALAM',title:'INSTING BERTAHAN',sub:'Respon Waspada Aktif'},
- {id:'heart_pulse',re:/jantung|berdegup|denyut|darah|tekanan|adrenalin|kortisol/,ic1:'heart',ic2:'bolt',kicker:'REAKSI TUBUH',title:'DETAK & HORMON',sub:'Sirkulasi & Kewaspadaan'},
- {id:'bathroom_water',re:/kamar mandi|gayung|bak air|mandi|sabun|air dingin|shower|toilet|wc|saluran|drainase|selokan|genangan/,ic1:'dipper',ic2:'wave',kicker:'SISTEM AIR',title:'ALIRAN & DRAINASE',sub:'Sirkulasi Air Terkendali'},
- {id:'light_dark',re:/lilin|lampu|listrik|penerangan|terang|gelap|malam|cahaya/,ic1:'lamp',ic2:'moon',kicker:'SUASANA',title:'CAHAYA & GELAP',sub:'Perubahan Suasana'},
- {id:'history_book',re:/sejarawan|catatan|buku|dokumen|arsip|tulisan|naskah|riset|penelitian|sejarah|kuno/,ic1:'book',ic2:'doc',kicker:'ARSIP RISET',title:'CATATAN SEJARAH',sub:'Bukti & Dokumentasi'},
- {id:'brain_reflex',re:/otak|pikiran|mental|fokus|psikologi|sadar|tubuh|saraf|tidur|mimpi|bersin|merem|mata/,ic1:'brain',ic2:'eye',kicker:'SISTEM TUBUH',title:'REFLEKS & OTAK',sub:'Mekanisme Alami Tubuh'},
- {id:'money_wealth',re:/uang|kaya|bisnis|saham|emas|sukses|cuan|modal|harga|ekonomi/,ic1:'coin',ic2:'trophy',kicker:'NILAI EKONOMI',title:'STRATEGI FINANSIAL',sub:'Pertumbuhan & Nilai'},
- {id:'space_science',re:/planet|luar angkasa|matahari|bumi|bintang|sains|teknologi|robot|ai|satelit|roket/,ic1:'planet',ic2:'chip',kicker:'EKSPLORASI SAINS',title:'FENOMENA SAINS',sub:'Teknologi & Semesta'},
- {id:'nature_disaster',re:/gunung|lava|gempa|tsunami|badai|api|bencana|banjir|air|laut|samudra|angin|karat|korosi/,ic1:'shield',ic2:'wave',kicker:'KETAHANAN MATERIAL',title:'PERLINDUNGAN',sub:'Desain Tahan Kondisi Ekstrem'}
-];
-
-/* Deteksi Visual Cerdas Berbasis Naskah VO + Hint AI dari masing-masing kalimat B-Roll */
-function detectVisualFromVoScript(voSentence, aiHintObj, excludeIds=new Set()){
- const voClean=(voSentence||'').replace(/\*/g,'').trim();
- const hintObj=(aiHintObj&&typeof aiHintObj==='object')?aiHintObj:{};
- const hintText=typeof aiHintObj==='string'?aiHintObj:(hintObj.obj||'');
- const q=(hintText+' '+voClean).toLowerCase();
-
- let matched=null;
- for(const item of VISUAL_CATALOG){
-  if(item.re.test(q) && !excludeIds.has(item.id)){
-   matched=item;
-   break;
-  }
- }
-
- if(!matched){
-  for(const item of VISUAL_CATALOG){
-   if(item.re.test(q)){
-    matched=item;
-    break;
-   }
-  }
- }
-
- const words=extractMeaningfulWords(voClean);
- const autoTitle=(words.slice(0,2).join(' ')||TX.t1).toUpperCase();
- const autoSub=voClean.length>36?(voClean.slice(0,34).trim()+'…'):voClean;
-
- if(matched){
-  return{
-   id:matched.id,
-   ic1:matched.ic1,
-   ic2:matched.ic2,
-   kicker:(hintObj.kicker||matched.kicker).toUpperCase(),
-   title:(hintObj.title||matched.title).toUpperCase(),
-   sub:hintObj.sub||matched.sub,
-   voQuote:voClean
-  };
- }
-
- const fallbackIcons=['pen_cap','shield','brain','coin','planet','lamp','book','heart'];
- const avail=fallbackIcons.filter(ic=>!excludeIds.has(ic));
- const ic1=avail[0]||fallbackIcons[excludeIds.size%fallbackIcons.length];
- const ic2=avail[1]||fallbackIcons[(excludeIds.size+1)%fallbackIcons.length];
- return{
-  id:ic1,
-  ic1,
-  ic2,
-  kicker:(hintObj.kicker||'VISUAL NASKAH').toUpperCase(),
-  title:(hintObj.title||autoTitle).toUpperCase(),
-  sub:hintObj.sub||autoSub||'Ilustrasi Adegan VO',
-  voQuote:voClean
- };
+function sanitizeSvgString(rawSvg){
+ if(!rawSvg||typeof rawSvg!=='string')return'';
+ let s=rawSvg.trim();
+ const start=s.indexOf('<svg');
+ const end=s.lastIndexOf('</svg>');
+ if(start===-1||end===-1)return'';
+ s=s.slice(start,end+6);
+ s=s.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<image[\s\S]*?>/gi,'');
+ if(!/xmlns=/i.test(s))s=s.replace('<svg','<svg xmlns="http://www.w3.org/2000/svg"');
+ if(!/viewBox=/i.test(s))s=s.replace('<svg','<svg viewBox="0 0 200 200"');
+ return s;
 }
 
-const TITLE_OBJ=detectVisualFromVoScript(TITLE+' '+TX.t1+' '+TX.t2,null);
+function rasterizeSvgToImage(svgStr){
+ return new Promise(resolve=>{
+  const clean=sanitizeSvgString(svgStr);
+  if(!clean)return resolve(null);
+  try{
+   const blob=new Blob([clean],{type:'image/svg+xml;charset=utf-8'});
+   const url=URL.createObjectURL(blob);
+   const img=new Image();
+   const timer=setTimeout(()=>{URL.revokeObjectURL(url);resolve(null)},3500);
+   img.onload=()=>{
+    clearTimeout(timer);
+    const oc=document.createElement('canvas');oc.width=420;oc.height=420;
+    const og=oc.getContext('2d');
+    og.drawImage(img,0,0,420,420);
+    URL.revokeObjectURL(url);
+    resolve(oc);
+   };
+   img.onerror=()=>{clearTimeout(timer);URL.revokeObjectURL(url);resolve(null)};
+   img.src=url;
+  }catch(_){resolve(null)}
+ });
+}
 
-/* Pemetaan Visual B-Roll Per Adegan (b1, b2, b3, b4) — Memakai x[2] agar langsung terbaca! */
 const SCENE_BROLL_MAP={};
+const COVER_IMGS={img1:null,img2:null};
+
 {
- const usedIds=new Set();
  ['b1','b2','b3','b4'].forEach(sc=>{
   const scLines=L.filter(x=>x[0]===sc);
-  const voText=scLines.map(x=>String(x[2]||'').replace(/\*/g,'')).join(' ');
-  const aiHint=scLines.map(x=>x[4]).find(Boolean)||'';
-  const vis=detectVisualFromVoScript(voText,aiHint,usedIds);
-  usedIds.add(vis.id);
-  SCENE_BROLL_MAP[sc]=vis;
+  const voText=scLines.map(x=>String(x[2]||'').replace(/\*/g,'')).join(' ').trim();
+  const aiMeta=(scLines.map(x=>x[4]).find(m=>m&&typeof m==='object'))||{};
+  const words=extractMeaningfulWords(voText);
+  const autoTitle=(words.slice(0,2).join(' ')||TX.t1).toUpperCase();
+  const autoSub=voText.length>38?(voText.slice(0,36).trim()+'…'):voText;
+
+  SCENE_BROLL_MAP[sc]={
+   kicker:String(aiMeta.kicker||'FAKTA VO').toUpperCase(),
+   title:String(aiMeta.title||autoTitle).toUpperCase(),
+   sub:String(aiMeta.sub||autoSub||'Ilustrasi Sesuai Naskah'),
+   svg:aiMeta.svg||'',
+   svg2:aiMeta.svg2||'',
+   img1:null,
+   img2:null,
+   voQuote:voText
+  };
  });
+}
+
+async function preloadAllDynamicSvgs(){
+ const tasks=[];
+ ['b1','b2','b3','b4'].forEach(sc=>{
+  const item=SCENE_BROLL_MAP[sc];
+  if(!item)return;
+  if(item.svg)tasks.push(rasterizeSvgToImage(item.svg).then(im=>{item.img1=im}));
+  if(item.svg2)tasks.push(rasterizeSvgToImage(item.svg2).then(im=>{item.img2=im}));
+ });
+ if(DATA.coverSvg1)tasks.push(rasterizeSvgToImage(DATA.coverSvg1).then(im=>{COVER_IMGS.img1=im}));
+ if(DATA.coverSvg2)tasks.push(rasterizeSvgToImage(DATA.coverSvg2).then(im=>{COVER_IMGS.img2=im}));
+ await Promise.all(tasks);
 }
 
 /* 10 PALET BACKGROUND TERANG BERBEDA-BEDA PER VIDEO */
@@ -319,7 +298,6 @@ L.forEach(l=>{
  tot+=l.wt;
 });
 
-/* ===== SINKRONISASI PRESISI PER BARIS & PER KATA DARI ELEVENLABS TIMESTAMPS ===== */
 function applyExactElevenLabsTimings(){
  if(!LINE_TIMINGS || LINE_TIMINGS.length !== NL) return false;
  for(let idx=0; idx<NL; idx++){
@@ -346,7 +324,6 @@ function applyExactElevenLabsTimings(){
  return true;
 }
 
-/* Fallback deteksi gelombang audio jika LINE_TIMINGS tidak tersedia */
 function alignLinesToVoAudio(audioBuffer){
  if(!audioBuffer||!NL)return;
  const data=audioBuffer.getChannelData(0);
@@ -452,7 +429,7 @@ function retime(){Object.keys(S0).forEach(k=>delete S0[k]);
 }
 retime();
 
-/* ===== BAGIAN 2: ENGINE HD (INTERNAL 720x1280 SCALED TO CWxCH) ===== */
+/* ===== BAGIAN 2: ENGINE HD ===== */
 const $=id=>document.getElementById(id),cv=$('cv'),X=cv.getContext('2d'),W=720,H=1280;cv.width=CW;cv.height=CH;X.imageSmoothingEnabled=true;X.imageSmoothingQuality='high';
 const cl=(x,a=0,b=1)=>Math.min(b,Math.max(a,x)),eo=t=>1-Math.pow(1-t,3),bk=t=>{const c=1.70158;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2)},S=Math.sin;
 const frame=$('frame'),poster=$('poster'),toast=$('toast');
@@ -460,7 +437,6 @@ const lineAt=t=>{let i=0;for(let j=0;j<NL;j++)if(L[j].t0<=t)i=j;return i};
 const ov=document.createElement('canvas');ov.width=W;ov.height=H;
 {const g=ov.getContext('2d');const q=g.createRadialGradient(W/2,H/2,520,W/2,H/2,1050);q.addColorStop(0,'#0000');q.addColorStop(1,'#0001');g.fillStyle=q;g.fillRect(0,0,W,H)}
 
-/* ---------- helper warna kebal NaN ---------- */
 const RGB_CACHE={};
 function rgb(c){
  if(!c||typeof c!=='string')return[255,255,255];
@@ -490,7 +466,6 @@ function txt(s,x,y,sz,col,al2='center',w=800,st=0,ff=SANS){X.font=`${w} ${sz}px 
 const fz=(t,mw,sz,ff=SANS)=>{X.font=`800 ${sz}px ${ff}`;const w=X.measureText(t).width;return w>0?Math.min(sz,sz*mw/w):sz};
 const tg=(y,f,c1,c2)=>{const g=X.createLinearGradient(0,y-f*.5,0,y+f*.5);g.addColorStop(0,c1);g.addColorStop(1,c2);return g};
 
-/* Partikel Bokeh Hidup */
 const DUST=Array.from({length:30},(_,i)=>({x:(i*137+SEED)%720,y:(i*193+SEED)%1280,z:0.45+(i%4)*0.22,sp:24+(i%4)*9,ph:i*0.85}));
 function drawLivingDust(col,alpha=0.58){
  X.save();
@@ -505,7 +480,6 @@ function drawLivingDust(col,alpha=0.58){
  X.restore();
 }
 
-/* ===== BACKGROUND TERANG HIDUP BERDIMENSI & BERVARIASI PER ADEGAN & PER VIDEO ===== */
 function drawBrightVariedBg(mode,accent){
  const pan=Math.sin(A*0.42)*20;
  const waveShift=Math.sin(A*0.82)*16;
@@ -603,7 +577,6 @@ function drawBrightVariedBg(mode,accent){
  drawLivingDust('#ffffff',0.60);
 }
 
-/* ===== WATERMARK EKSKLUSIF @raii.punyacerita ===== */
 function drawWatermark(){
  X.save();
  X.globalAlpha=0.72;
@@ -619,7 +592,7 @@ function drawWatermark(){
  X.restore();
 }
 
-/* ===== BAGIAN 2B: KARAKTER SETENGAH BADAN POSE SANTAI & NATURAL ===== */
+/* ===== KARAKTER SETENGAH BADAN POSE SANTAI & NATURAL ===== */
 let cim=null,cimStroke=null,an=null,anBuf=null;
 const CS={li:-1,pid:0,pt:-9,dir:1,mv:0,ev:0,tilt:0,sway:0,bounce:0,spin:0,speaking:false,energy:0};
 const POSES={s:[0,0,1,2],n:[0,1,0,2,0],e:[5,1,2,5],d:[3,0,2,3]};
@@ -741,7 +714,7 @@ function initCharFromUrl(url){
 }
 function initCharSafe(url){return Promise.race([initCharFromUrl(url).catch(()=>false),new Promise(r=>setTimeout(()=>r(false),8000))])}
 
-/* ===== BENTUK STIKER BERVARIASI MENYESUAIKAN JUDUL VIDEO ===== */
+/* ===== BENTUK STIKER & RENDERER VISUAL B-ROLL OTOMATIS DARI NASKAH VO ===== */
 function drawStickerBadge(shapeId,r,fillCol,borderCol){
  X.save();
  X.beginPath();
@@ -781,6 +754,36 @@ function drawStickerBadge(shapeId,r,fillCol,borderCol){
  X.restore();
 }
 
+function drawDynamicVisual(img,x,y,r,col,fallbackLabel){
+ X.save();
+ X.translate(x,y);
+
+ X.save();
+ const shG=X.createRadialGradient(0,r*0.95,r*0.1,0,r*0.95,r*0.78);
+ shG.addColorStop(0,'rgba(15,23,42,0.22)');
+ shG.addColorStop(1,'rgba(15,23,42,0)');
+ X.fillStyle=shG;
+ X.beginPath();
+ X.ellipse(0,r*0.95,r*0.78,r*0.20,0,0,Math.PI*2);
+ X.fill();
+ X.restore();
+
+ if(img){
+  const sz=r*2.15;
+  X.drawImage(img,-sz/2,-sz/2,sz,sz);
+ }else{
+  const cTop=shade(col,50),cDark=shade(col,-55);
+  const g3d=X.createLinearGradient(-r,-r,r,r);
+  g3d.addColorStop(0,cTop);g3d.addColorStop(0.5,col);g3d.addColorStop(1,cDark);
+  X.fillStyle=g3d;
+  rr(-r*0.92,-r*0.62,r*1.84,r*1.24,24);X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=3.5;X.stroke();
+  const lbl=(fallbackLabel||'VO').slice(0,12).toUpperCase();
+  txt(lbl,0,2,fz(lbl,r*1.55,r*0.42,SERIF),'#ffffff','center',900,3,SERIF);
+ }
+ X.restore();
+}
+
 function drawCoverProps(){
  const popIn=bk(cl(A/0.30));
  const p1x=114,p1y=495+Math.sin(A*2.2)*9;
@@ -795,7 +798,7 @@ function drawCoverProps(){
  X.shadowColor='rgba(15,23,42,0.22)';X.shadowBlur=16;X.shadowOffsetY=6;
  drawStickerBadge(s1,42,'#0f172a',P.a);
  X.shadowColor='transparent';
- draw3DObject(TITLE_OBJ.ic1,0,0,34,P.a);
+ drawDynamicVisual(COVER_IMGS.img1,0,0,34,P.a,TX.t1);
  X.restore();
 
  X.save();
@@ -805,264 +808,17 @@ function drawCoverProps(){
  X.shadowColor='rgba(15,23,42,0.22)';X.shadowBlur=16;X.shadowOffsetY=6;
  drawStickerBadge(s2,42,'#0f172a',P.t);
  X.shadowColor='transparent';
- draw3DObject(TITLE_OBJ.ic2,0,0,34,P.t);
- X.restore();
-}
-
-/* ===== RENDERER OBJEK 3D ISOMETRIC & CLAY 3D BERDIMENSI SESUAI NASKAH VO ===== */
-function draw3DObject(type,x,y,r,col){
- X.save();
- X.translate(x,y);
- X.lineCap='round';X.lineJoin='round';
-
- X.save();
- const shG=X.createRadialGradient(0,r*0.95,r*0.1,0,r*0.95,r*0.78);
- shG.addColorStop(0,'rgba(15,23,42,0.24)');
- shG.addColorStop(1,'rgba(15,23,42,0)');
- X.fillStyle=shG;
- X.beginPath();
- X.ellipse(0,r*0.95,r*0.78,r*0.20,0,0,Math.PI*2);
- X.fill();
- X.restore();
-
- const cTop=shade(col,55);
- const cMid=col;
- const cDark=shade(col,-60);
-
- if(type==='floating_hat'){
-  const levY=Math.sin(A*3.2)*10;
-  X.save();
-  X.translate(0,levY-6);
-  X.rotate(Math.sin(A*2.1)*0.08);
-  const hatG=X.createLinearGradient(-r*0.5,-r*0.7,r*0.5,r*0.4);
-  hatG.addColorStop(0,'#334155');hatG.addColorStop(0.45,'#1e293b');hatG.addColorStop(1,'#020617');
-  X.fillStyle=hatG;
-  X.beginPath();
-  X.moveTo(-r*0.42,-r*0.58);X.lineTo(r*0.42,-r*0.58);
-  X.lineTo(r*0.50,r*0.24);X.lineTo(-r*0.50,r*0.24);X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.fillStyle=col;rr(-r*0.48,r*0.02,r*0.96,r*0.18,4);X.fill();X.stroke();
-  X.fillStyle='#1e293b';
-  X.beginPath();X.ellipse(0,r*0.26,r*0.86,r*0.22,0,0,Math.PI*2);X.fill();X.stroke();
-  X.strokeStyle='#0284c7';X.lineWidth=3.5;
-  [-0.5,0,0.5].forEach(wx=>{
-   X.beginPath();X.moveTo(wx*r,r*0.58);X.lineTo(wx*r,r*0.82);X.stroke();
-  });
-  X.restore();
-
- }else if(type==='ink_bottle'||type==='pen_nib'){
-  const botG=X.createLinearGradient(-r*0.5,-r*0.2,r*0.5,r*0.7);
-  botG.addColorStop(0,'#bae6fd');botG.addColorStop(0.5,'#38bdf8');botG.addColorStop(1,'#0369a1');
-  X.fillStyle=botG;
-  rr(-r*0.48,-r*0.24,r*0.96,r*0.94,18);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.fillStyle='#1e1b4b';
-  rr(-r*0.38,r*0.05,r*0.76,r*0.56,12);X.fill();
-  X.fillStyle=cTop;rr(-r*0.32,-r*0.56,r*0.64,r*0.32,8);X.fill();X.stroke();
-  X.fillStyle='#ffffff';
-  X.beginPath();X.moveTo(0,-r*0.88);X.lineTo(r*0.20,-r*0.42);X.lineTo(-r*0.20,-r*0.42);X.closePath();X.fill();X.stroke();
-
- }else if(type==='pen_cap'){
-  X.save();
-  X.rotate(-0.20 + Math.sin(A*2.2)*0.05);
-  const bodyG=X.createLinearGradient(-r*0.38,0,r*0.38,0);
-  bodyG.addColorStop(0,cDark);
-  bodyG.addColorStop(0.28,cTop);
-  bodyG.addColorStop(0.45,'#ffffff');
-  bodyG.addColorStop(0.75,cMid);
-  bodyG.addColorStop(1,cDark);
-  X.fillStyle=bodyG;
-  X.beginPath();
-  X.moveTo(-r*0.32,-r*0.62);
-  X.lineTo(r*0.32,-r*0.62);
-  X.lineTo(r*0.40,r*0.72);
-  X.quadraticCurveTo(0,r*0.86,-r*0.40,r*0.72);
-  X.closePath();
-  X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-
-  X.fillStyle=cTop;
-  X.beginPath();X.ellipse(0,-r*0.62,r*0.32,r*0.13,0,0,Math.PI*2);X.fill();X.stroke();
-  X.fillStyle='#0f172a';
-  X.beginPath();X.ellipse(0,-r*0.62,r*0.16,r*0.07,0,0,Math.PI*2);X.fill();
-
-  const clipG=X.createLinearGradient(r*0.32,-r*0.4,r*0.58,r*0.4);
-  clipG.addColorStop(0,'#ffffff');clipG.addColorStop(0.5,'#cbd5e1');clipG.addColorStop(1,'#64748b');
-  X.fillStyle=clipG;
-  rr(r*0.32,-r*0.46,r*0.18,r*0.92,8);X.fill();X.stroke();
-
-  const flowY=((A*45)%26);
-  X.strokeStyle='#0284c7';X.lineWidth=4;
-  X.beginPath();X.moveTo(0,-r*0.98+flowY*0.3);X.lineTo(0,-r*0.70);X.stroke();
-  X.beginPath();X.moveTo(-r*0.10,-r*0.78);X.lineTo(0,-r*0.68);X.lineTo(r*0.10,-r*0.78);X.stroke();
-  X.restore();
-
- }else if(type==='lungs'||type==='air_flow'){
-  const breath=1+Math.sin(A*3.2)*0.05;
-  X.scale(breath,breath);
-  const trG=X.createLinearGradient(-r*0.14,0,r*0.14,0);
-  trG.addColorStop(0,'#94a3b8');trG.addColorStop(0.45,'#ffffff');trG.addColorStop(1,'#64748b');
-  X.fillStyle=trG;rr(-r*0.12,-r*0.82,r*0.24,r*0.65,8);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-
-  [-1,1].forEach(side=>{
-   const lg=X.createRadialGradient(side*r*0.36,-r*0.16,r*0.06,side*r*0.42,r*0.08,r*0.58);
-   lg.addColorStop(0,'#fecdd3');lg.addColorStop(0.45,'#fb7185');lg.addColorStop(0.8,'#e11d48');lg.addColorStop(1,'#881337');
-   X.fillStyle=lg;
-   X.beginPath();
-   X.moveTo(side*r*0.10,-r*0.32);
-   X.bezierCurveTo(side*r*0.72,-r*0.42,side*r*0.88,r*0.28,side*r*0.68,r*0.62);
-   X.quadraticCurveTo(side*r*0.24,r*0.72,side*r*0.10,r*0.46);
-   X.closePath();X.fill();X.stroke();
-  });
-  X.strokeStyle='#0284c7';X.lineWidth=4.5;
-  X.beginPath();X.moveTo(0,-r*0.92);X.lineTo(0,r*0.12);X.stroke();
-
- }else if(type==='lifebuoy'){
-  X.fillStyle='#ef4444';X.beginPath();X.arc(0,0,r*0.86,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.5;X.stroke();
-  X.fillStyle='#ffffff';
-  [0,1,2,3].forEach(k=>{
-   const a=k*Math.PI/2-0.28;
-   X.beginPath();X.moveTo(0,0);X.arc(0,0,r*0.85,a,a+0.56);X.closePath();X.fill();
-  });
-  X.fillStyle='#f8fafc';X.beginPath();X.arc(0,0,r*0.40,0,Math.PI*2);X.fill();X.stroke();
-
- }else if(type==='dipper'||type==='wave'){
-  const wG=X.createLinearGradient(-r*0.8,-r*0.3,r*0.8,r*0.6);
-  wG.addColorStop(0,'#7dd3fc');wG.addColorStop(0.5,'#0284c7');wG.addColorStop(1,'#0369a1');
-  X.fillStyle=wG;
-  rr(-r*0.82,-r*0.25,r*1.64,r*0.85,20);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.strokeStyle='#ffffff';X.lineWidth=5;
-  X.beginPath();X.moveTo(-r*0.52,r*0.12);X.quadraticCurveTo(-r*0.25,-r*0.08,0,r*0.12);X.quadraticCurveTo(r*0.25,r*0.32,r*0.52,r*0.12);X.stroke();
-
- }else if(type==='factory'){
-  const fFront=X.createLinearGradient(-r*0.8,-r*0.2,0,r*0.7);
-  fFront.addColorStop(0,cTop);fFront.addColorStop(1,cMid);
-  X.fillStyle=fFront;
-  X.beginPath();X.moveTo(-r*0.82,-r*0.15);X.lineTo(r*0.10,-r*0.15);X.lineTo(r*0.10,r*0.72);X.lineTo(-r*0.82,r*0.72);X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.fillStyle=cDark;
-  X.beginPath();X.moveTo(r*0.10,-r*0.15);X.lineTo(r*0.82,-r*0.35);X.lineTo(r*0.82,r*0.52);X.lineTo(r*0.10,r*0.72);X.closePath();X.fill();X.stroke();
-  X.fillStyle='#f8fafc';
-  X.beginPath();X.moveTo(-r*0.82,-r*0.15);X.lineTo(-r*0.52,-r*0.45);X.lineTo(-r*0.22,-r*0.15);X.lineTo(r*0.08,-r*0.45);X.lineTo(r*0.10,-r*0.15);X.closePath();X.fill();X.stroke();
-  X.fillStyle='#bae6fd';
-  [-0.64,-0.32].forEach(wx=>{
-   rr(wx*r,r*0.05,r*0.22,r*0.24,4);X.fill();X.stroke();
-  });
-
- }else if(type==='wall_clock'||type==='clock'){
-  const bezelG=X.createLinearGradient(-r,-r,r,r);
-  bezelG.addColorStop(0,cTop);bezelG.addColorStop(0.5,cMid);bezelG.addColorStop(1,cDark);
-  X.fillStyle=bezelG;X.beginPath();X.arc(r*0.06,r*0.06,r*1.04,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-
-  X.fillStyle=cTop;X.beginPath();X.arc(0,0,r*1.02,0,Math.PI*2);X.fill();X.stroke();
-  const dialG=X.createRadialGradient(-r*0.2,-r*0.2,r*0.1,0,0,r*0.85);
-  dialG.addColorStop(0,'#ffffff');dialG.addColorStop(1,'#e2e8f0');
-  X.fillStyle=dialG;X.beginPath();X.arc(0,0,r*0.84,0,Math.PI*2);X.fill();X.stroke();
-
-  X.fillStyle='#0f172a';
-  [0,1,2,3].forEach(k=>{const a=k*Math.PI/2;X.beginPath();X.arc(Math.sin(a)*r*0.64,-Math.cos(a)*r*0.64,r*0.07,0,Math.PI*2);X.fill()});
-  const secAng=Math.floor(A*4)*(Math.PI/6),minAng=A*0.6;
-  X.strokeStyle='#0f172a';X.lineWidth=5;X.beginPath();X.moveTo(0,0);X.lineTo(Math.sin(minAng)*r*0.45,-Math.cos(minAng)*r*0.45);X.stroke();
-  X.strokeStyle='#ef4444';X.lineWidth=3.5;X.beginPath();X.moveTo(0,0);X.lineTo(Math.sin(secAng)*r*0.62,-Math.cos(secAng)*r*0.62);X.stroke();
-  X.fillStyle='#0f172a';X.beginPath();X.arc(0,0,r*0.10,0,Math.PI*2);X.fill();
-
- }else if(type==='lion'){
-  const maneG=X.createRadialGradient(-r*0.2,-r*0.2,r*0.1,0,0,r*0.95);
-  maneG.addColorStop(0,'#f59e0b');maneG.addColorStop(0.7,'#b45309');maneG.addColorStop(1,'#78350f');
-  X.fillStyle=maneG;X.beginPath();X.arc(0,0,r*0.92,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  const faceG=X.createRadialGradient(-r*0.15,-r*0.1,r*0.08,0,r*0.06,r*0.64);
-  faceG.addColorStop(0,'#fef3c7');faceG.addColorStop(1,'#f59e0b');
-  X.fillStyle=faceG;X.beginPath();X.arc(0,r*0.06,r*0.60,0,Math.PI*2);X.fill();X.stroke();
-  X.fillStyle='#0f172a';X.beginPath();X.arc(-r*0.22,-r*0.05,r*0.08,0,Math.PI*2);X.arc(r*0.22,-r*0.05,r*0.08,0,Math.PI*2);X.fill();
-  X.fillStyle='#dc2626';X.beginPath();X.moveTo(-r*0.14,r*0.12);X.lineTo(r*0.14,r*0.12);X.lineTo(0,r*0.26);X.closePath();X.fill();
-
- }else if(type==='heart'){
-  const hG=X.createRadialGradient(-r*0.25,-r*0.25,r*0.08,0,0,r*0.95);
-  hG.addColorStop(0,'#fda4af');hG.addColorStop(0.45,col);hG.addColorStop(1,cDark);
-  X.fillStyle=hG;
-  X.beginPath();
-  X.moveTo(0,r*0.74);
-  X.bezierCurveTo(-r*0.96,r*0.12,-r*0.96,-r*0.68,-r*0.42,-r*0.68);
-  X.bezierCurveTo(-r*0.14,-r*0.68,0,-r*0.42,0,-r*0.35);
-  X.bezierCurveTo(0,-r*0.42,r*0.14,-r*0.68,r*0.42,-r*0.68);
-  X.bezierCurveTo(r*0.96,-r*0.68,r*0.96,r*0.12,0,r*0.74);
-  X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.fillStyle='rgba(255,255,255,0.65)';
-  X.beginPath();X.ellipse(-r*0.42,-r*0.34,r*0.16,r*0.09,-0.5,0,Math.PI*2);X.fill();
-
- }else if(type==='shield'||type==='child_shield'){
-  const sG=X.createLinearGradient(-r*0.7,-r*0.8,r*0.7,r*0.8);
-  sG.addColorStop(0,cTop);sG.addColorStop(0.5,cMid);sG.addColorStop(1,cDark);
-  X.fillStyle=sG;
-  X.beginPath();X.moveTo(0,-r*0.84);X.lineTo(r*0.72,-r*0.46);X.quadraticCurveTo(r*0.68,r*0.38,0,r*0.88);X.quadraticCurveTo(-r*0.68,r*0.38,-r*0.72,-r*0.46);X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.6;X.stroke();
-  X.strokeStyle='#ffffff';X.lineWidth=6;
-  X.beginPath();X.moveTo(-r*0.26,r*0.02);X.lineTo(-r*0.06,r*0.24);X.lineTo(r*0.30,-r*0.22);X.stroke();
-
- }else if(type==='brain'){
-  const bG=X.createRadialGradient(-r*0.2,-r*0.2,r*0.1,0,0,r*0.9);
-  bG.addColorStop(0,cTop);bG.addColorStop(0.6,cMid);bG.addColorStop(1,cDark);
-  X.fillStyle=bG;X.beginPath();X.arc(-r*0.24,-r*0.1,r*0.48,0,Math.PI*2);X.arc(r*0.24,-r*0.1,r*0.48,0,Math.PI*2);X.arc(0,r*0.24,r*0.44,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-
- }else if(type==='coin'){
-  X.fillStyle='#b45309';X.beginPath();X.arc(r*0.08,r*0.08,r*0.84,0,Math.PI*2);X.fill();
-  const cG=X.createLinearGradient(-r,-r,r,r);
-  cG.addColorStop(0,'#fef08a');cG.addColorStop(0.5,'#f59e0b');cG.addColorStop(1,'#d97706');
-  X.fillStyle=cG;X.beginPath();X.arc(0,0,r*0.84,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.6;X.stroke();
-  txt('$',0,2,r*0.95,'#0f172a','center',900);
-
- }else if(type==='planet'){
-  const pG=X.createRadialGradient(-r*0.25,-r*0.25,r*0.1,0,0,r*0.75);
-  pG.addColorStop(0,'#bae6fd');pG.addColorStop(0.5,'#0284c7');pG.addColorStop(1,'#1e3a8a');
-  X.fillStyle=pG;X.beginPath();X.arc(0,0,r*0.66,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.strokeStyle='#f59e0b';X.lineWidth=8;
-  X.beginPath();X.ellipse(0,0,r*0.98,r*0.24,-0.32,0,Math.PI*2);X.stroke();
-
- }else{
-  const g3d=X.createRadialGradient(-r*0.28,-r*0.28,r*0.08,0,0,r*0.92);
-  g3d.addColorStop(0,'#ffffff');g3d.addColorStop(0.28,cTop);g3d.addColorStop(0.65,cMid);g3d.addColorStop(1,cDark);
-  X.fillStyle=g3d;
-  X.beginPath();X.arc(0,0,r*0.84,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.fillStyle='rgba(255,255,255,0.62)';
-  X.beginPath();X.ellipse(-r*0.32,-r*0.34,r*0.22,r*0.11,-0.6,0,Math.PI*2);X.fill();
-  if(type==='bolt'){
-   X.fillStyle='#ffffff';
-   X.beginPath();X.moveTo(r*0.10,-r*0.52);X.lineTo(-r*0.32,r*0.06);X.lineTo(r*0.04,r*0.06);X.lineTo(-r*0.12,r*0.52);X.lineTo(r*0.32,-r*0.06);X.lineTo(-r*0.04,-r*0.06);X.closePath();X.fill();
-  }else if(type==='eye'){
-   X.fillStyle='#ffffff';X.beginPath();X.ellipse(0,0,r*0.54,r*0.32,0,0,Math.PI*2);X.fill();
-   X.fillStyle='#0f172a';X.beginPath();X.arc(0,0,r*0.18,0,Math.PI*2);X.fill();
-  }else if(type==='book'||type==='doc'){
-   X.fillStyle='#ffffff';rr(-r*0.38,-r*0.44,r*0.76,r*0.88,8);X.fill();
-   X.strokeStyle=cDark;X.lineWidth=4;X.beginPath();X.moveTo(-r*0.2,-r*0.18);X.lineTo(r*0.2,-r*0.18);X.moveTo(-r*0.2,r*0.04);X.lineTo(r*0.2,r*0.04);X.moveTo(-r*0.2,r*0.24);X.lineTo(r*0.08,r*0.24);X.stroke();
-  }else{
-   X.fillStyle='#ffffff';X.beginPath();
-   for(let i=0;i<10;i++){
-    const rad=i%2===0?r*0.48:r*0.22,ang=i*Math.PI/5-Math.PI/2;
-    i===0?X.moveTo(Math.cos(ang)*rad,Math.sin(ang)*rad):X.lineTo(Math.cos(ang)*rad,Math.sin(ang)*rad);
-   }
-   X.closePath();X.fill();
-  }
- }
+ drawDynamicVisual(COVER_IMGS.img2,0,0,34,P.t,TX.t2);
  X.restore();
 }
 
 function getSceneBrollVisual(){
  const cur=L[li];
  const sc=cur?cur[0]:'b1';
- return SCENE_BROLL_MAP[sc]||detectVisualFromVoScript(cur?cur.t:TITLE,cur?cur[4]:'');
+ return SCENE_BROLL_MAP[sc]||{kicker:'FAKTA VO',title:TX.t1,sub:cur?cur.t:TITLE,img1:null,img2:null};
 }
 
-/* ===== MOTION GRAPHIC B-ROLL FULL LAYAR (1 OBJEK 3D UTAMA SESUAI NASKAH VO) ===== */
+/* ===== MOTION GRAPHIC B-ROLL FULL LAYAR (OTOMATIS SESUAI NASKAH VO) ===== */
 function fullBroll(k,t,o){
  const e=eo(cl(t/.35));
  const camZoom=1.0+Math.min(0.06,t*0.012);
@@ -1086,23 +842,23 @@ function fullBroll(k,t,o){
  X.strokeStyle=P.a;X.lineWidth=4.5;rr(60,232,600,400,32);X.stroke();
  X.restore();
 
- const cx=360,cy=414;
+ const cx=360,cy=410;
  X.save();
  X.fillStyle=al(P.t,0.16);
- X.beginPath();X.ellipse(cx,cy+110,166,36,0,0,Math.PI*2);X.fill();
+ X.beginPath();X.ellipse(cx,cy+112,166,36,0,0,Math.PI*2);X.fill();
  X.strokeStyle=al(P.t,0.42);X.lineWidth=3;X.stroke();
  X.restore();
 
  X.save();
  X.translate(cx,cy+float3D);
- draw3DObject(det.ic1,0,0,114,P.a);
+ drawDynamicVisual(det.img1,0,0,122,P.a,det.title);
  X.restore();
 
  txt(det.sub,cx,586,fz(det.sub,540,22),'#0f172a','center',900);
  X.restore();
 }
 
-/* ===== MOTION GRAPHIC B-ROLL KOTAK KECIL 3D (2 ELEMEN 3D KONTRAS SESUAI NASKAH VO) ===== */
+/* ===== MOTION GRAPHIC B-ROLL KOTAK KECIL (OTOMATIS SESUAI NASKAH VO) ===== */
 function smallBroll(k,t,o){
  const e=eo(cl(t/.35));
  const det=getSceneBrollVisual();
@@ -1121,12 +877,12 @@ function smallBroll(k,t,o){
 
  X.save();
  X.translate(-205,4+Math.sin(A*3)*4);
- draw3DObject(det.ic1,0,0,54,P.a);
+ drawDynamicVisual(det.img1,0,0,58,P.a,det.title);
  X.restore();
 
  X.save();
  X.translate(205,4+Math.cos(A*3)*4);
- draw3DObject(det.ic2,0,0,50,P.t);
+ drawDynamicVisual(det.img2||det.img1,0,0,54,P.t,det.kicker);
  X.restore();
 
  X.fillStyle=al(P.t,0.15);rr(-118,-68,236,30,15);X.fill();
@@ -1226,7 +982,7 @@ const SCN={
  }
 };
 
-/* ===== BAGIAN 3: SUBTITLE AFTER EFFECTS PAS & PRESISI PER 1 KATA ===== */
+/* ===== SUBTITLE AFTER EFFECTS PAS & PRESISI PER 1 KATA ===== */
 function activeWordIdx(l){
  if(!l||!l.w||!l.w.length)return-1;
  if(tm<l.ss)return-1;
@@ -1411,7 +1167,7 @@ function drawSubs(){
  }
 }
 
-/* ===== ANIMASI MASUK & ANIMASI KELUAR + TRANSISI SOSMED ===== */
+/* ===== ANIMASI MASUK & KELUAR + TRANSISI SOSMED ===== */
 function getSceneBounds(sc){
  const lines=L.filter(x=>x[0]===sc);
  if(!lines.length)return{start:0,end:LEN};
@@ -1493,7 +1249,7 @@ function drawTransition(){
  X.restore();
 }
 
-/* ---------- MESIN AUDIO PREVIEW BROWSER (SFX WHOOSH NOISE REALISTIS) ---------- */
+/* ---------- MESIN AUDIO PREVIEW BROWSER ---------- */
 let ac=null,dest=null,gainM=null,gainBgm=null,gainVo=null,gainSfx=null,noiseBuf=null;
 function initAudio(){
  if(ac){if(ac.state==='suspended')ac.resume().catch(()=>{});return}
@@ -1810,8 +1566,11 @@ window.__renderFrameAt = function(tSec){
 };
 
 async function initAutoAssetsAndRender(){
- await FONTS_READY;
- await initCharSafe('karakter.png');
+ await Promise.all([
+  FONTS_READY,
+  initCharSafe('karakter.png'),
+  preloadAllDynamicSvgs()
+ ]);
  try{
   const resp = await fetch('vo.mp3');
   if(resp.ok){
