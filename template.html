@@ -142,7 +142,7 @@ const ACTIVE_GENRE=detectGenre12();
 const G_SPEC=GENRE_DB[ACTIVE_GENRE]||GENRE_DB.fakta;
 const P=G_SPEC.pal;
 
-/* ===== SISTEM B-ROLL OTOMATIS DARI NASKAH VO (SVG GENERATOR + FALLBACK CERDAS) ===== */
+/* ===== SISTEM B-ROLL OTOMATIS DARI NASKAH VO ===== */
 const STOP_WORDS=new Set([
  'yang','dan','di','ke','dari','ini','itu','untuk','pada','dengan','adalah','sebagai','dalam','oleh','akan','juga','atau','karena','jika','bila','saat','ketika','sebelum','sesudah','setelah','lalu','kemudian','mereka','kami','kita','kamu','dia','ia','orang','manusia','para','semua','setiap','banyak','beberapa','satu','dua','tiga','empat','lima','enam','tujuh','delapan','sembilan','sepuluh','sekitar','hampir','sangat','lebih','paling','bisa','dapat','harus','mau','ingin','pernah','sering','selalu','belum','sudah','telah','sedang','masih','lagi','saja','cuma','hanya','bukan','tidak','nggak','gak','tak','ada','punya','jadi','menjadi','buat','membuat','disebut','bernama','secara','hal','cara','bagian','tahap','kali','sampai','hingga','antara','selama','tengah','awal','akhir','mungkin','ternyata','padahal','namun','tapi','tetapi','kalau','misalnya','contoh','kayak','seperti','gini','begitu','sih','nih','deh','dong','ya','kan','sekali','waktu','dulu','zaman','era','hari','bikin','malah','makin','banget','aja','lo','gue','lu','bayangkan','coba','lihat','enggak','sebuah','layaknya','masuk','mode','justru','kunci','tercepat','segera','sekadar','bahkan','biar','ngira','alasan','aslinya','jauh','serius','urusan','khusus','darurat','kalo','sengaja','tetap','menyangka','sering','kita','abaikan','berkat','detail','kecil','ribuan'
 ]);
@@ -228,7 +228,6 @@ async function preloadAllDynamicSvgs(){
  await Promise.all(tasks);
 }
 
-/* 10 PALET BACKGROUND TERANG BERBEDA-BEDA PER VIDEO */
 const BG_LIGHT_SCHEMES=[
  {top:'#fffbeb',mid:'#fef3c7',bot:'#fde68a',sunX:180},
  {top:'#f0f9ff',mid:'#e0f2fe',bot:'#bae6fd',sunX:540},
@@ -254,7 +253,6 @@ const SUBY=1025;
 
 let LEN=40;
 
-/* ---------- bahasa & segmentasi kata ---------- */
 const ALL=L.map(l=>l[2]).join(' ')+' '+Object.values(TX).join(' ');
 const RTL=/[\u0590-\u08ff]/.test(ALL);
 const CJK=/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\u0e00-\u0e7f]/.test(ALL);
@@ -429,7 +427,7 @@ function retime(){Object.keys(S0).forEach(k=>delete S0[k]);
 }
 retime();
 
-/* ===== BAGIAN 2: ENGINE HD ===== */
+/* ===== ENGINE HD & RENDER CANVAS ===== */
 const $=id=>document.getElementById(id),cv=$('cv'),X=cv.getContext('2d'),W=720,H=1280;cv.width=CW;cv.height=CH;X.imageSmoothingEnabled=true;X.imageSmoothingQuality='high';
 const cl=(x,a=0,b=1)=>Math.min(b,Math.max(a,x)),eo=t=>1-Math.pow(1-t,3),bk=t=>{const c=1.70158;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2)},S=Math.sin;
 const frame=$('frame'),poster=$('poster'),toast=$('toast');
@@ -592,7 +590,7 @@ function drawWatermark(){
  X.restore();
 }
 
-/* ===== KARAKTER SETENGAH BADAN POSE SANTAI & NATURAL ===== */
+/* ===== KARAKTER & POSE ===== */
 let cim=null,cimStroke=null,an=null,anBuf=null;
 const CS={li:-1,pid:0,pt:-9,dir:1,mv:0,ev:0,tilt:0,sway:0,bounce:0,spin:0,speaking:false,energy:0};
 const POSES={s:[0,0,1,2],n:[0,1,0,2,0],e:[5,1,2,5],d:[3,0,2,3]};
@@ -714,7 +712,7 @@ function initCharFromUrl(url){
 }
 function initCharSafe(url){return Promise.race([initCharFromUrl(url).catch(()=>false),new Promise(r=>setTimeout(()=>r(false),8000))])}
 
-/* ===== BENTUK STIKER & RENDERER VISUAL B-ROLL OTOMATIS DARI NASKAH VO ===== */
+/* ===== STIKER & B-ROLL RENDERER ===== */
 function drawStickerBadge(shapeId,r,fillCol,borderCol){
  X.save();
  X.beginPath();
@@ -818,7 +816,6 @@ function getSceneBrollVisual(){
  return SCENE_BROLL_MAP[sc]||{kicker:'FAKTA VO',title:TX.t1,sub:cur?cur.t:TITLE,img1:null,img2:null};
 }
 
-/* ===== MOTION GRAPHIC B-ROLL FULL LAYAR (OTOMATIS SESUAI NASKAH VO) ===== */
 function fullBroll(k,t,o){
  const e=eo(cl(t/.35));
  const camZoom=1.0+Math.min(0.06,t*0.012);
@@ -858,7 +855,6 @@ function fullBroll(k,t,o){
  X.restore();
 }
 
-/* ===== MOTION GRAPHIC B-ROLL KOTAK KECIL (OTOMATIS SESUAI NASKAH VO) ===== */
 function smallBroll(k,t,o){
  const e=eo(cl(t/.35));
  const det=getSceneBrollVisual();
@@ -892,7 +888,7 @@ function smallBroll(k,t,o){
  X.restore();
 }
 
-/* ===== ADEGAN VIDEO ===== */
+/* ===== SCENE DEFINITIONS ===== */
 const SCN={
  cover(t){
   drawBrightVariedBg('cover',P.a);
@@ -923,27 +919,11 @@ const SCN={
   drawCoverProps();
   char({oy:30,sc:0.96});
  },
- title(t){
-  drawBrightVariedBg('studio',P.a);
-  char({ox:115});
- },
- b1(t){
-  drawBrightVariedBg('broll_full',P.t);
-  fullBroll(0,t,{slot:0});
- },
- a(t){
-  drawBrightVariedBg('studio',P.g);
-  char({ox:115});
- },
- b2(t){
-  drawBrightVariedBg('studio',P.p);
-  smallBroll(1,t,{slot:1});
-  char({oy:36,sc:0.95});
- },
- b3(t){
-  drawBrightVariedBg('broll_full',P.t);
-  fullBroll(2,t,{slot:2});
- },
+ title(t){drawBrightVariedBg('studio',P.a);char({ox:115});},
+ b1(t){drawBrightVariedBg('broll_full',P.t);fullBroll(0,t,{slot:0});},
+ a(t){drawBrightVariedBg('studio',P.g);char({ox:115});},
+ b2(t){drawBrightVariedBg('studio',P.p);smallBroll(1,t,{slot:1});char({oy:36,sc:0.95});},
+ b3(t){drawBrightVariedBg('broll_full',P.t);fullBroll(2,t,{slot:2});},
  cta(t){
   drawBrightVariedBg('studio',P.a);
   const e=eo(cl(t/.40));
@@ -962,14 +942,8 @@ const SCN={
   X.restore();X.restore();
   char({oy:36,sc:0.96});
  },
- c(t){
-  drawBrightVariedBg('studio',P.g);
-  char({ox:115});
- },
- b4(t){
-  drawBrightVariedBg('broll_full',P.p);
-  fullBroll(4,t,{slot:3});
- },
+ c(t){drawBrightVariedBg('studio',P.g);char({ox:115});},
+ b4(t){drawBrightVariedBg('broll_full',P.p);fullBroll(4,t,{slot:3});},
  end(t){
   drawBrightVariedBg('studio',P.t);
   char({ox:115});
@@ -982,7 +956,7 @@ const SCN={
  }
 };
 
-/* ===== SUBTITLE AFTER EFFECTS PAS & PRESISI PER 1 KATA ===== */
+/* ===== SUBTITLE RENDERING ===== */
 function activeWordIdx(l){
  if(!l||!l.w||!l.w.length)return-1;
  if(tm<l.ss)return-1;
@@ -1167,7 +1141,7 @@ function drawSubs(){
  }
 }
 
-/* ===== ANIMASI MASUK & KELUAR + TRANSISI SOSMED ===== */
+/* ===== TRANSISI & ANIMASI ===== */
 function getSceneBounds(sc){
  const lines=L.filter(x=>x[0]===sc);
  if(!lines.length)return{start:0,end:LEN};
@@ -1249,7 +1223,7 @@ function drawTransition(){
  X.restore();
 }
 
-/* ---------- MESIN AUDIO PREVIEW BROWSER ---------- */
+/* ===== AUDIO & PREVIEW ENGINE ===== */
 let ac=null,dest=null,gainM=null,gainBgm=null,gainVo=null,gainSfx=null,noiseBuf=null;
 function initAudio(){
  if(ac){if(ac.state==='suspended')ac.resume().catch(()=>{});return}
@@ -1297,18 +1271,6 @@ function sfxTransition(variant=0){
 
  src.connect(flt);flt.connect(g);g.connect(gainSfx);
  src.start(t);src.stop(t+0.30);
-
- if(v===2){
-  const osc=ac.createOscillator(),go=ac.createGain();
-  osc.type='sine';
-  osc.frequency.setValueAtTime(1046.5,t+0.03);
-  osc.frequency.exponentialRampToValueAtTime(1567.98,t+0.18);
-  go.gain.setValueAtTime(0.001,t+0.03);
-  go.gain.linearRampToValueAtTime(0.24,t+0.06);
-  go.gain.exponentialRampToValueAtTime(0.001,t+0.25);
-  osc.connect(go);go.connect(gainSfx);
-  osc.start(t+0.03);osc.stop(t+0.26);
- }
 }
 
 function sfx(k){
@@ -1370,7 +1332,7 @@ function startVoFrom(offset){
  }
 }
 
-/* ---------- render utama ---------- */
+/* ===== MAIN RENDER LOOP ===== */
 let prevInCover=true;
 function render(ts){
  if(!last)last=ts;
@@ -1445,7 +1407,7 @@ function render(ts){
  requestAnimationFrame(render);
 }
 
-/* ---------- kontrol & interaksi ---------- */
+/* ===== KONTROL & EVENT INTERAKSI ===== */
 function show(msg,ms=3200){toast.textContent=msg;toast.classList.add('on');clearTimeout(show._t);show._t=setTimeout(()=>toast.classList.remove('on'),ms)}
 function updatePlayIcon(){$('pi').innerHTML=playing?'<rect x="6" y="5" width="4" height="14" fill="#0b141a"/><rect x="14" y="5" width="4" height="14" fill="#0b141a"/>':'<path d="M6 4l14 8-14 8z" fill="#0b141a"/>';poster.classList.toggle('hide',playing)}
 function togglePlay(){
@@ -1495,7 +1457,7 @@ $('exp').onclick=async()=>{
 };
 function finishExport(){exporting=false;if(rec&&rec.state!=='inactive')rec.stop()}
 
-/* ===== AUTO-LOAD ASET & MODE RENDER FRAME PRESISI UNTUK SERVER GITHUB ===== */
+/* ===== AUTO-LOAD & GITHUB SERVER READY ===== */
 window.__ASSETS_READY = false;
 window.__VIDEO_LEN = 40;
 window.__SERVER_MODE = new URLSearchParams(window.location.search).get('autorender') === '1';
