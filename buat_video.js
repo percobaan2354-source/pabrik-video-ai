@@ -807,6 +807,7 @@ async function uploadViaWebhook(videoPath, data) {
 
     execSync(
       `ffmpeg -y -framerate ${fps} -i frames/f_%05d.jpg -i mixed_audio.wav ` +
+      `-vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" ` +
       `-c:v libx264 -preset fast -crf 20 -pix_fmt yuv420p -c:a aac -b:a 192k -shortest output_final.mp4`,
       { stdio: 'inherit' }
     );
