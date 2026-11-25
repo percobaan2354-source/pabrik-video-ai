@@ -464,25 +464,40 @@ function txt(s,x,y,sz,col,al2='center',w=800,st=0,ff=SANS){X.font=`${w} ${sz}px 
 const fz=(t,mw,sz,ff=SANS)=>{X.font=`800 ${sz}px ${ff}`;const w=X.measureText(t).width;return w>0?Math.min(sz,sz*mw/w):sz};
 const tg=(y,f,c1,c2)=>{const g=X.createLinearGradient(0,y-f*.5,0,y+f*.5);g.addColorStop(0,c1);g.addColorStop(1,c2);return g};
 
-const DUST=Array.from({length:30},(_,i)=>({x:(i*137+SEED)%720,y:(i*193+SEED)%1280,z:0.45+(i%4)*0.22,sp:24+(i%4)*9,ph:i*0.85}));
+/* ===== UPGRADE 3: DEBU CAHAYA & BOKEH LIGHTING DINAMIS ===== */
+const DUST=Array.from({length:36},(_,i)=>({x:(i*137+SEED)%720,y:(i*193+SEED)%1280,z:0.45+(i%4)*0.22,sp:24+(i%4)*9,ph:i*0.85,bokeh:i%7===0}));
 function drawLivingDust(col,alpha=0.58){
  X.save();
  DUST.forEach((d,idx)=>{
   const py=((d.y-A*d.sp*d.z)%H+H)%H;
   const px=d.x+Math.sin(A*1.05+d.ph)*24*d.z;
   const pulse=0.45+0.55*Math.sin(A*2.4+d.ph);
-  X.fillStyle=idx%2===0?'#ffffff':col;
-  X.globalAlpha=alpha*d.z*pulse;
-  X.beginPath();X.arc(px,py,3.0+d.z*3.4,0,Math.PI*2);X.fill();
+  if(d.bokeh){
+   // Bokeh cahaya latar lembut yang melayang perlahan
+   const bRad=24+d.z*26;
+   const bg=X.createRadialGradient(px,py,2,px,py,bRad);
+   bg.addColorStop(0,al(col,0.22*pulse));
+   bg.addColorStop(1,al(col,0));
+   X.fillStyle=bg;
+   X.beginPath();X.arc(px,py,bRad,0,Math.PI*2);X.fill();
+  }else{
+   X.fillStyle=idx%2===0?'#ffffff':col;
+   X.globalAlpha=alpha*d.z*pulse;
+   X.beginPath();X.arc(px,py,3.0+d.z*3.4,0,Math.PI*2);X.fill();
+  }
  });
  X.restore();
 }
 
 function drawBrightVariedBg(mode,accent){
- const pan=Math.sin(A*0.42)*20;
+ const pan=Math.sin(A*0.42)*24;
  const waveShift=Math.sin(A*0.82)*16;
  const schemeIdx=(SEED+li+(mode==='broll_full'?2:mode==='cover'?0:1))%BG_LIGHT_SCHEMES.length;
  const sch=BG_LIGHT_SCHEMES[schemeIdx];
+
+ // Mood tint dinamis sesuai emosi kalimat saat ini
+ const curMood=(L[li]&&L[li][1])||'n';
+ const moodBoost=curMood==='e'?0.28:(curMood==='d'?0.24:0.18);
 
  X.save();
  const sky=X.createLinearGradient(0,0,0,H);
@@ -492,19 +507,20 @@ function drawBrightVariedBg(mode,accent){
  X.fillStyle=sky;
  X.fillRect(0,0,W,H);
 
- const sunX=sch.sunX+pan;
- const sunRadius=540+Math.sin(A*1.2)*30;
+ const sunX=sch.sunX+pan*1.4;
+ const sunRadius=560+Math.sin(A*1.2)*38;
  const sunGlow=X.createRadialGradient(sunX,175,20,sunX,210,sunRadius);
- sunGlow.addColorStop(0,'rgba(255,255,255,0.95)');
- sunGlow.addColorStop(0.45,al(accent,0.22));
+ sunGlow.addColorStop(0,'rgba(255,255,255,0.96)');
+ sunGlow.addColorStop(0.45,al(accent,moodBoost));
  sunGlow.addColorStop(1,'rgba(255,255,255,0)');
  X.fillStyle=sunGlow;
  X.fillRect(0,0,W,H);
 
+ // Sorotan lampu studio bergerak lembut (Dynamic Studio Beam)
  X.save();
- X.globalAlpha=0.25+0.07*Math.sin(A*1.3);
+ X.globalAlpha=0.26+0.08*Math.sin(A*1.35);
  X.fillStyle='#ffffff';
- X.beginPath();X.moveTo(sunX-40,0);X.lineTo(sunX+90,0);X.lineTo(sunX+340+pan,900);X.lineTo(sunX-260+pan,900);X.closePath();X.fill();
+ X.beginPath();X.moveTo(sunX-45,0);X.lineTo(sunX+95,0);X.lineTo(sunX+360+pan,900);X.lineTo(sunX-280+pan,900);X.closePath();X.fill();
  X.restore();
 
  X.save();
@@ -572,7 +588,7 @@ function drawBrightVariedBg(mode,accent){
  X.beginPath();X.moveTo(0,885);X.lineTo(W,885);X.stroke();
 
  X.restore();
- drawLivingDust('#ffffff',0.60);
+ drawLivingDust(accent,0.62);
 }
 
 function drawWatermark(){
@@ -590,9 +606,9 @@ function drawWatermark(){
  X.restore();
 }
 
-/* ===== KARAKTER & POSE ===== */
+/* ===== UPGRADE 1: KARAKTER & POSE LEBIH HIDUP (BREATHING, ANGGUKAN, SQUASH & STRETCH) ===== */
 let cim=null,cimStroke=null,an=null,anBuf=null;
-const CS={li:-1,pid:0,pt:-9,dir:1,mv:0,ev:0,tilt:0,sway:0,bounce:0,spin:0,speaking:false,energy:0};
+const CS={li:-1,pid:0,pt:-9,dir:1,mv:0,ev:0,tilt:0,sway:0,bounce:0,nod:0,breath:0,spin:0,speaking:false,energy:0};
 const POSES={s:[0,0,1,2],n:[0,1,0,2,0],e:[5,1,2,5],d:[3,0,2,3]};
 
 function vol(){const l=L[li];
@@ -626,10 +642,15 @@ function charTick(){
  const e0=(aw>=0&&cap[aw]&&cap[aw].em)?1:0;
  CS.ev+=((playing?e0:0)-CS.ev)*(1-Math.pow(.02,DT));
 
- const amp={e:1.25,d:1.10,s:.70}[l[1]]||0.95;
- const targetTilt=playing?((S(A*2.1)*.028+S(A*3.6)*.012)*amp*(CS.speaking?1:.35)):S(A*.7)*.010;
- const targetSway=playing?((S(A*1.6)*7+S(A*3.0)*3.0)*amp*(CS.speaking?1:.4)):S(A*.65)*2.0;
- const targetBounce=playing?(CS.mv*12*amp+CS.ev*6):0;
+ // Efek bernapas alami + anggukan penekanan saat kata penting diucapkan
+ CS.breath=S(A*2.4)*0.014;
+ const targetNod=playing?(CS.ev*10+CS.mv*4):0;
+ CS.nod+=(targetNod-CS.nod)*(1-Math.pow(.008,DT));
+
+ const amp={e:1.30,d:1.15,s:.75}[l[1]]||1.0;
+ const targetTilt=playing?((S(A*2.1)*.032+S(A*3.6)*.015)*amp*(CS.speaking?1:.38)):S(A*.7)*.012;
+ const targetSway=playing?((S(A*1.6)*8.5+S(A*3.0)*3.5)*amp*(CS.speaking?1:.42)):S(A*.65)*2.2;
+ const targetBounce=playing?(CS.mv*14*amp+CS.ev*8):0;
 
  const mvLerp=1-Math.pow(.005,DT);
  CS.tilt+=(targetTilt-CS.tilt)*mvLerp;
@@ -640,10 +661,10 @@ function charTick(){
 function poseXf(id,u,d){
  const e=eo(cl(u/.55)),b=bk(cl(u/.65));
  switch(id){
-  case 1:return{x:322+12*(1-e),y:1295,s:1.04,r:-.035};
-  case 2:return{x:398-12*(1-e),y:1295,s:1.04,r:.035};
-  case 3:return{x:360+d*16,y:1318,s:1.10+.03*b,r:d*.03};
-  case 5:return{x:360+d*20,y:1292,s:1.03+.03*b,r:d*.035};
+  case 1:return{x:322+12*(1-e),y:1295,s:1.04,r:-.038};
+  case 2:return{x:398-12*(1-e),y:1295,s:1.04,r:.038};
+  case 3:return{x:360+d*18,y:1318,s:1.10+.035*b,r:d*.035};
+  case 5:return{x:360+d*22,y:1292,s:1.03+.035*b,r:d*.04};
   default:return{x:360,y:1295,s:1.02,r:0};
  }
 }
@@ -663,19 +684,35 @@ function char(o={}){
  char._s+=(ts-char._s)*pLerp;
  char._r+=(tr-char._r)*pLerp;
 
+ // Pantulan lembut (pop-in) tiap kali karakter ganti adegan/pose
+ const popPulse=Math.sin(cl(u/0.35)*Math.PI)*0.025;
+
  const x=char._x+CS.sway;
- const y=char._y-CS.bounce+S(A*2.0)*3.5;
- const s=char._s*(1+CS.mv*0.022);
- const r=char._r+CS.tilt;
+ const y=char._y-CS.bounce+CS.nod+S(A*2.0)*3.5;
+ const sx=char._s*(1+CS.mv*0.024-CS.breath*0.5+popPulse);
+ const sy=char._s*(1+CS.mv*0.028+CS.breath+popPulse);
+ const r=char._r+CS.tilt+(CS.ev*0.025*CS.dir);
 
  let DW=550,DH=DW*cim.height/cim.width;
  if(DH>720){DH=720;DW=DH*cim.width/cim.height}
+
+ // Halo cahaya lembut di belakang karakter saat berbicara
+ if(CS.speaking||CS.ev>0.2){
+  X.save();
+  const hRad=260+CS.mv*45;
+  const hg=X.createRadialGradient(x,y-DH*0.5,20,x,y-DH*0.5,hRad);
+  hg.addColorStop(0,al(P.a,0.22+CS.mv*0.14));
+  hg.addColorStop(1,al(P.a,0));
+  X.fillStyle=hg;
+  X.beginPath();X.arc(x,y-DH*0.5,hRad,0,Math.PI*2);X.fill();
+  X.restore();
+ }
 
  X.save();
  X.globalAlpha*=(o.a==null?1:o.a);
  X.translate(x,y);
  X.rotate(r);
- X.scale(s,s);
+ X.scale(sx,sy);
 
  const q=DW/cim.width;
  if(cimStroke){
@@ -712,7 +749,7 @@ function initCharFromUrl(url){
 }
 function initCharSafe(url){return Promise.race([initCharFromUrl(url).catch(()=>false),new Promise(r=>setTimeout(()=>r(false),8000))])}
 
-/* ===== STIKER & B-ROLL RENDERER ===== */
+/* ===== UPGRADE 2: STIKER & B-ROLL DENGAN POP-UP BOUNCE + GLOSSY SWEEP ===== */
 function drawStickerBadge(shapeId,r,fillCol,borderCol){
  X.save();
  X.beginPath();
@@ -818,9 +855,11 @@ function getSceneBrollVisual(){
 
 function fullBroll(k,t,o){
  const e=eo(cl(t/.35));
- const camZoom=1.0+Math.min(0.06,t*0.012);
+ const popCard=bk(cl(t/.45));
+ const slideUp=(1-e)*42;
+ const camZoom=1.0+Math.min(0.08,t*0.015);
  const det=getSceneBrollVisual();
- const float3D=Math.sin(A*2.6)*8;
+ const float3D=Math.sin(A*2.6)*9;
 
  X.save();
  X.translate(360,440);X.scale(camZoom,camZoom);X.translate(-360,-440);
@@ -830,16 +869,34 @@ function fullBroll(k,t,o){
  txt((o.kicker||det.kicker).toUpperCase(),360,123,16,'#091017','center',900);
  txt(det.title,360,182,fz(det.title,620,44,SERIF),'#0f172a','center',900,0,SERIF);
 
+ // Kartu utama dengan animasi elastic pop-up & slide-up
  X.save();
+ X.translate(360,432+slideUp);
+ X.scale(0.88+0.12*popCard,0.88+0.12*popCard);
+ X.translate(-360,-432);
+
  X.fillStyle='rgba(15,23,42,0.16)';rr(66,242,600,400,32);X.fill();
  const cardG=X.createLinearGradient(60,232,660,632);
  cardG.addColorStop(0,'#ffffff');
  cardG.addColorStop(1,'#f1f5f9');
  X.fillStyle=cardG;rr(60,232,600,400,32);X.fill();
+
+ // Kilau sapuan cahaya melintang di atas kartu B-roll
+ X.save();
+ rr(60,232,600,400,32);X.clip();
+ const shinePos=-180+((t*380)%980);
+ const shGrad=X.createLinearGradient(shinePos-90,232,shinePos+90,632);
+ shGrad.addColorStop(0,'rgba(255,255,255,0)');
+ shGrad.addColorStop(0.5,'rgba(255,255,255,0.65)');
+ shGrad.addColorStop(1,'rgba(255,255,255,0)');
+ X.fillStyle=shGrad;
+ X.fillRect(60,232,600,400);
+ X.restore();
+
  X.strokeStyle=P.a;X.lineWidth=4.5;rr(60,232,600,400,32);X.stroke();
  X.restore();
 
- const cx=360,cy=410;
+ const cx=360,cy=410+slideUp;
  X.save();
  X.fillStyle=al(P.t,0.16);
  X.beginPath();X.ellipse(cx,cy+112,166,36,0,0,Math.PI*2);X.fill();
@@ -848,27 +905,43 @@ function fullBroll(k,t,o){
 
  X.save();
  X.translate(cx,cy+float3D);
+ const iconPop=bk(cl((t-0.06)/.45));
+ X.scale(0.82+0.18*iconPop,0.82+0.18*iconPop);
  drawDynamicVisual(det.img1,0,0,122,P.a,det.title);
  X.restore();
 
- txt(det.sub,cx,586,fz(det.sub,540,22),'#0f172a','center',900);
+ txt(det.sub,cx,586+slideUp,fz(det.sub,540,22),'#0f172a','center',900);
  X.restore();
 }
 
 function smallBroll(k,t,o){
  const e=eo(cl(t/.35));
+ const popCard=bk(cl(t/.45));
  const det=getSceneBrollVisual();
  const floatY=Math.sin(A*2.4)*5;
 
  X.save();
- X.translate(360,295+floatY);
- X.scale(0.90+0.10*e,0.90+0.10*e);
+ X.translate(360,295+floatY+(1-e)*26);
+ X.scale(0.86+0.14*popCard,0.86+0.14*popCard);
  X.globalAlpha*=e;
 
  X.fillStyle='rgba(15,23,42,0.18)';rr(-290,-97,590,210,28);X.fill();
  const bgG=X.createLinearGradient(-295,-105,295,105);
  bgG.addColorStop(0,'#ffffff');bgG.addColorStop(1,'#f1f5f9');
  X.fillStyle=bgG;rr(-295,-105,590,210,28);X.fill();
+
+ // Kilau glossy sweep pada kartu B-Roll kecil
+ X.save();
+ rr(-295,-105,590,210,28);X.clip();
+ const shinePos=-360+((t*420)%860);
+ const shGrad=X.createLinearGradient(shinePos-80,-105,shinePos+80,105);
+ shGrad.addColorStop(0,'rgba(255,255,255,0)');
+ shGrad.addColorStop(0.5,'rgba(255,255,255,0.6)');
+ shGrad.addColorStop(1,'rgba(255,255,255,0)');
+ X.fillStyle=shGrad;
+ X.fillRect(-295,-105,590,210);
+ X.restore();
+
  X.strokeStyle=P.a;X.lineWidth=4.5;rr(-295,-105,590,210,28);X.stroke();
 
  X.save();
@@ -1461,6 +1534,18 @@ function finishExport(){exporting=false;if(rec&&rec.state!=='inactive')rec.stop(
 window.__ASSETS_READY = false;
 window.__VIDEO_LEN = 40;
 window.__SERVER_MODE = new URLSearchParams(window.location.search).get('autorender') === '1';
+
+// Sembunyikan seluruh UI kontrol secara instan saat dirender oleh server Playwright
+if (window.__SERVER_MODE) {
+  document.documentElement.style.overflow = 'hidden';
+  const styleHide = document.createElement('style');
+  styleHide.textContent = `
+    .poster, .bar, .tl, .toast { display: none !important; opacity: 0 !important; visibility: hidden !important; }
+    body, .app, .frame { width: ${CW}px !important; height: ${CH}px !important; max-width: none !important; padding: 0 !important; margin: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+    canvas#cv { width: ${CW}px !important; height: ${CH}px !important; }
+  `;
+  document.head.appendChild(styleHide);
+}
 
 const FONTS_READY=Promise.race([
  Promise.all([
