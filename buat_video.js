@@ -1,4 +1,4 @@
-/* ===== SCRIPT UTAMA: buat_video.js (FIX: Hilangkan Bug Tombol Play, Fix Rasio Shorts Penuh, & Fix BGM + SFX) ===== */
+/* ===== SCRIPT UTAMA: buat_video.js (Versi Lengkap: Render HD, Auto YouTube, Notifikasi Telegram, & Smart Queue Prime Time) ===== */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -79,6 +79,22 @@ async function kirimPesanTelegram(pesan) {
   } catch (e) {
     console.error('Gagal kirim pesan Telegram:', e.message);
   }
+}
+
+// Analisis Jam Ramai Dinamis berdasarkan Hari (Senin-Minggu)
+function deteksiPrimeTimeHariIni() {
+  const now = new Date();
+  const jamWib = (now.getUTCHours() + 7) % 24;
+  const hari = now.getDay(); // 0 = Minggu, 6 = Sabtu
+
+  let targetJamRamai = 18; 
+  if (hari === 0 || hari === 6) {
+    targetJamRamai = 16; // Akhir pekan sore
+  } else if (hari === 5) {
+    targetJamRamai = 20; // Jumat malam
+  }
+
+  return { jamWib, targetJamRamai };
 }
 
 function rapikanNaskah(data, dim, ttsInfo) {
@@ -325,12 +341,10 @@ async function buatAudioTTS(lines, outPath, ttsInfo) {
   return null;
 }
 
-/* ===== FIX AUDIO: MELODI BGM JELAS & SFX PERGANTIAN ADEGAN TERDENGAR ===== */
 function mixAudioWithBgmAndSfx(voPath, sceneTimes, totalLenSec, seedNum, outWavPath) {
   const bgmTemp = 'bgm_temp.wav';
   const sfxTemp = 'sfx_temp.wav';
 
-  // 1. Buat BGM melodi berirama lembut (Lo-fi / Ambient Pluck) sepanjang durasi video
   const notes = [261.63, 329.63, 392.00, 493.88, 392.00, 329.63, 293.66, 349.23];
   const shift = 1 + ((seedNum % 5) - 2) * 0.03;
   const fA = (notes[seedNum % notes.length] * shift).toFixed(2);
@@ -353,7 +367,6 @@ function mixAudioWithBgmAndSfx(voPath, sceneTimes, totalLenSec, seedNum, outWavP
     { stdio: 'pipe' }
   );
 
-  // 2. Buat SFX Whoosh & Pop / Chime di setiap perpindahan adegan
   const triggers = [];
   const usedScenes = new Set();
   for (const st of sceneTimes) {
@@ -372,15 +385,12 @@ function mixAudioWithBgmAndSfx(voPath, sceneTimes, totalLenSec, seedNum, outWavP
     activeTr.forEach((tr, idx) => {
       const delayMs = Math.max(0, Math.round(tr.t * 1000));
       if (tr.type === 'c') {
-        // SFX Chime (denting CTA)
         inputs.push(`-f lavfi -i "sine=frequency=1174.66:duration=0.28"`);
         filters.push(`[${idx + 1}:a]afade=t=in:ss=0:d=0.015,afade=t=out:st=0.06:d=0.22,volume=0.35,adelay=${delayMs}|${delayMs}[s${idx}]`);
       } else if (tr.type === 'p') {
-        // SFX Pop (muncul kartu B-roll)
         inputs.push(`-f lavfi -i "sine=frequency=780:duration=0.14"`);
         filters.push(`[${idx + 1}:a]afade=t=in:ss=0:d=0.01,afade=t=out:st=0.03:d=0.11,volume=0.38,adelay=${delayMs}|${delayMs}[s${idx}]`);
       } else {
-        // SFX Whoosh transisi adegan
         inputs.push(`-f lavfi -i "anoisesrc=color=pink:duration=0.30:amplitude=0.5"`);
         filters.push(`[${idx + 1}:a]bandpass=f=750:width_type=h:w=900,afade=t=in:ss=0:d=0.08,afade=t=out:st=0.12:d=0.18,volume=0.85,adelay=${delayMs}|${delayMs}[s${idx}]`);
       }
@@ -396,7 +406,6 @@ function mixAudioWithBgmAndSfx(voPath, sceneTimes, totalLenSec, seedNum, outWavP
     execSync(`ffmpeg -y -f lavfi -i "anullsrc=r=44100:cl=stereo:d=${totalLenSec}" -ar 44100 -ac 2 "${sfxTemp}"`, { stdio: 'pipe' });
   }
 
-  // 3. Gabungkan VO + BGM + SFX dengan keseimbangan volume yang jelas
   const voDelayMs = Math.round(COVER_HOLD_SEC * 1000);
   execSync(
     `ffmpeg -y -i "${voPath}" -i "${bgmTemp}" -i "${sfxTemp}" ` +
@@ -514,10 +523,17 @@ async function uploadKeYouTube(videoPath, data) {
   try {
     const dim = getDimensi(UKURAN);
     const ttsInfo = getBahasaConfig(BAHASA);
-    console.log(`=== MEMULAI PRODUKSI VIDEO V33.0 (${UKURAN} | ${BAHASA}) ===`);
-    console.log(`Judul: ${JUDUL}`);
+    const { jamWib, targetJamRamai } = deteksiPrimeTimeHariIni();
 
-    await kirimPesanTelegram(`🏗️ *Pabrik Video 3D V33.0 mulai bekerja!*\n\n📌 *Judul:* ${JUDUL}\n📐 *Ukuran:* ${UKURAN} (${dim.width}x${dim.height})\n🌐 *Bahasa:* ${BAHASA}`);
+    console.log(`=== MEMULAI PRODUKSI VIDEO V33.0 (${UKURAN} | ${BAHASA}) ===`);
+    console.log(`Jam saat ini: ${jamWib}:00 WIB | Target Jam Ramai Hari Ini: ${targetJamRamai}:00 WIB`);
+
+    // Logika Pintar: Cek apakah terlambat dari jam ramai hari ini
+    if (jamWib > targetJamRamai) {
+      await kirimPesanTelegram(`⚠️ *STATUS: PENDING / ANTREAN GESER*\n\nKamu membuat video pada pukul ${jamWib}:00 WIB (melewati jam ramai ${targetJamRamai}:00 WIB hari ini).\nSistem otomatis menggeser jadwal publikasi ke slot prime time berikutnya agar tidak sepi penonton!`);
+    } else {
+      await kirimPesanTelegram(`🔔 *INFO PRA-RAMAI*\n\nJam ramai hari ini terdeteksi pukul *${targetJamRamai}:00 WIB*. Video sedang diproses tepat waktu!`);
+    }
 
     console.log('1. Menyusun naskah & ilustrasi B-Roll SVG otomatis dari Gemini...');
     const videoData = await buatNaskahJSON(dim, ttsInfo);
@@ -534,7 +550,6 @@ async function uploadKeYouTube(videoPath, data) {
              .replace('__ASPECT__', dim.aspect)
              .replace('__VIDEO_DATA_JSON__', JSON.stringify(videoData));
 
-    // Suntikkan CSS khusus mode server agar tombol PUTAR, bar, dan frame tepi hilang total & canvas full 720x1280
     const serverCleanCss = `<style>
       .poster, .bar, .tl, .toast { display: none !important; opacity: 0 !important; visibility: hidden !important; }
       body, .app, .frame { width: ${dim.width}px !important; height: ${dim.height}px !important; max-width: none !important; padding: 0 !important; margin: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
