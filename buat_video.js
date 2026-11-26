@@ -87,7 +87,7 @@ function deteksiPrimeTimeHariIni() {
   const jamWib = (now.getUTCHours() + 7) % 24;
   const hari = now.getDay(); // 0 = Minggu, 6 = Sabtu
 
-  let targetJamRamai = 18; 
+  let targetJamRamai = 18;
   if (hari === 0 || hari === 6) {
     targetJamRamai = 16; // Akhir pekan sore
   } else if (hari === 5) {
@@ -140,27 +140,27 @@ async function buatNaskahJSON(dim, ttsInfo) {
     ? '9-10 kalimat storytelling santai & mengalir (maksimal 10-12 kata per kalimat agar total durasi baca 38-50 detik)'
     : '12-15 kalimat padat dan informatif (untuk video landscape 16:9)';
 
-  const prompt = `Kamu adalah penulis skrip, sutradara visual & ilustrator vektor SVG untuk video animasi storytelling 3D V33.0.
+  const prompt = `Kamu adalah penulis skrip, sutradara visual & ilustrator vektor SVG untuk video animasi storytelling 3D V43.0.
 Buatkan data lengkap dalam format JSON MURNI (tanpa teks pembuka/penutup) untuk video berikut:
 - Judul: "${JUDUL}"
 - Bahasa Video: ${BAHASA} (kode BCP-47: ${ttsInfo.langCode})
 - Ukuran: ${UKURAN} (${dim.width}x${dim.height})
 
-ATURAN KETAT V33.0:
+ATURAN KETAT V43.0:
 1. Gaya bahasa wajib bercerita santai (*storytelling*) dalam bahasa ${BAHASA}.
 2. Buat ${jumlahKalimat} di dalam array "lines".
    Format tiap elemen: ["kunci_adegan", "mood", "Kalimat VO dengan *kata* ditekankan.", "fx_opsional", META_VISUAL]
    - Kunci adegan: "title", "b1", "a", "b2", "b3", "cta", "c", "b4", "end".
-   - Format META_VISUAL pada "b1", "b2", "b3", "b4":
+   - Format META_VISUAL pada "b1", "b2", "b3", "b4" WAJIB 100% menggambarkan apa yang diucapkan pada kalimat VO di baris itu sendiri:
      {
-       "kicker": "KATEGORI 1-2 KATA",
+       "kicker": "KATEGORI 1-2 KATA SESUAI VO",
        "title": "JUDUL 2 KATA SESUAI VO",
        "sub": "Keterangan singkat 3-5 kata sesuai VO",
        "svg": "<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>",
        "svg2": "<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"
      }
 3. "tx": kicker, t1, t2, watch, ctaA, ctaB, ctaSub, ctaBio, src.
-4. "coverSvg1" & "coverSvg2": SVG stiker sampul.
+4. "coverSvg1" & "coverSvg2": SVG stiker sampul sesuai judul "${JUDUL}".
 5. "src": 2 sumber riset nyata.
 
 KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
@@ -335,22 +335,47 @@ async function buatAudioTTS(lines, outPath, ttsInfo) {
     execSync(`edge-tts --voice "${ttsInfo.edgeVoice}" --rate="+4%" --file naskah_vo.txt --write-media "${outPath}"`, { stdio: 'inherit' });
     if (fs.existsSync(outPath) && fs.statSync(outPath).size > 1000) return null;
   } catch (e) {}
-  
+
   const pyCmd = `python3 -c "from gtts import gTTS; text=open('naskah_vo.txt').read(); gTTS(text=text, lang='${ttsInfo.gttsLang}').save('${outPath}')"`;
   execSync(pyCmd, { stdio: 'inherit' });
   return null;
 }
 
-function mixAudioWithBgmAndSfx(voPath, sceneTimes, totalLenSec, seedNum, outWavPath) {
+function pilihBgmSkalaDariJudul(judul, seedNum) {
+  const q = (judul || '').toLowerCase();
+  const genreScales = [
+    { re: /kamar mandi|mandi|keramik|gema|reverb|akustik|nyanyi|air|laut/, notes: [293.66, 349.23, 440.00, 523.25], tempo: 1.35, lp: 1350 },
+    { re: /horor|hantu|mistis|angker|kuburan|kutukan|misteri|gelap|malam/, notes: [146.83, 155.56, 174.61, 220.00], tempo: 0.75, lp: 680 },
+    { re: /sejarah|kuno|kerajaan|romawi|mesir|abad|dinasti|piramida/, notes: [220.00, 261.63, 293.66, 392.00], tempo: 0.95, lp: 920 },
+    { re: /sains|antariksa|planet|teknologi|robot|ai\b|kuantum|listrik|lampu/, notes: [261.63, 311.13, 392.00, 466.16], tempo: 1.50, lp: 1500 },
+    { re: /psikologi|otak|tidur|pikiran|mental|stres|mimpi|kebiasaan/, notes: [246.94, 293.66, 369.99, 440.00], tempo: 0.90, lp: 850 },
+    { re: /bisnis|sukses|kaya|miliarder|saham|uang|ekonomi|emas/, notes: [261.63, 329.63, 392.00, 523.25], tempo: 1.40, lp: 1250 },
+    { re: /perang|bencana|gempa|tsunami|api|bahaya|bertahan/, notes: [164.81, 196.00, 220.00, 246.94], tempo: 1.25, lp: 800 }
+  ];
+  for (const g of genreScales) {
+    if (g.re.test(q)) return g;
+  }
+  const fallbackPool = [
+    { notes: [261.63, 329.63, 392.00, 493.88], tempo: 1.15, lp: 950 },
+    { notes: [293.66, 369.99, 440.00, 554.37], tempo: 1.25, lp: 1100 },
+    { notes: [196.00, 246.94, 293.66, 369.99], tempo: 1.00, lp: 880 },
+    { notes: [220.00, 277.18, 329.63, 415.30], tempo: 1.30, lp: 1050 }
+  ];
+  return fallbackPool[seedNum % fallbackPool.length];
+}
+
+function mixAudioWithBgmAndSfx(voPath, sceneTimes, totalLenSec, seedNum, outWavPath, judulVideo = '') {
   const bgmTemp = 'bgm_temp.wav';
   const sfxTemp = 'sfx_temp.wav';
 
-  const notes = [261.63, 329.63, 392.00, 493.88, 392.00, 329.63, 293.66, 349.23];
-  const shift = 1 + ((seedNum % 5) - 2) * 0.03;
-  const fA = (notes[seedNum % notes.length] * shift).toFixed(2);
-  const fB = (notes[(seedNum + 2) % notes.length] * shift).toFixed(2);
-  const fC = (notes[(seedNum + 4) % notes.length] * shift).toFixed(2);
-  const fBass = (notes[seedNum % notes.length] * 0.5 * shift).toFixed(2);
+  const bgmSpec = pilihBgmSkalaDariJudul(judulVideo, seedNum);
+  const notes = bgmSpec.notes;
+  const shift = 1 + ((seedNum % 5) - 2) * 0.025;
+  const fA = (notes[0] * shift).toFixed(2);
+  const fB = (notes[1] * shift).toFixed(2);
+  const fC = (notes[2] * shift).toFixed(2);
+  const fBass = (notes[0] * 0.5 * shift).toFixed(2);
+  const rate = bgmSpec.tempo.toFixed(2);
 
   execSync(
     `ffmpeg -y -f lavfi -i "sine=frequency=${fA}:duration=${totalLenSec}" ` +
@@ -358,11 +383,11 @@ function mixAudioWithBgmAndSfx(voPath, sceneTimes, totalLenSec, seedNum, outWavP
     `-f lavfi -i "sine=frequency=${fC}:duration=${totalLenSec}" ` +
     `-f lavfi -i "sine=frequency=${fBass}:duration=${totalLenSec}" ` +
     `-filter_complex "` +
-    `[0:a]aeval='val(0)*max(0,sin(2*PI*1.2*t))':c=same,volume=0.075[a0];` +
-    `[1:a]aeval='val(0)*max(0,sin(2*PI*1.2*t+2.1))':c=same,volume=0.065[a1];` +
-    `[2:a]aeval='val(0)*max(0,sin(2*PI*1.2*t+4.2))':c=same,volume=0.065[a2];` +
+    `[0:a]aeval='val(0)*max(0,sin(2*PI*${rate}*t))':c=same,volume=0.075[a0];` +
+    `[1:a]aeval='val(0)*max(0,sin(2*PI*${rate}*t+2.1))':c=same,volume=0.065[a1];` +
+    `[2:a]aeval='val(0)*max(0,sin(2*PI*${rate}*t+4.2))':c=same,volume=0.065[a2];` +
     `[3:a]volume=0.085[a3];` +
-    `[a0][a1][a2][a3]amix=inputs=4:normalize=0,lowpass=f=900,aecho=0.8:0.7:180:0.35[out]" ` +
+    `[a0][a1][a2][a3]amix=inputs=4:normalize=0,lowpass=f=${bgmSpec.lp},aecho=0.8:0.7:180:0.35[out]" ` +
     `-map "[out]" -ar 44100 -ac 2 "${bgmTemp}"`,
     { stdio: 'pipe' }
   );
@@ -416,7 +441,7 @@ function mixAudioWithBgmAndSfx(voPath, sceneTimes, totalLenSec, seedNum, outWavP
 }
 
 function mulaiServerLokal(dir) {
-  const mime = { '.html': 'text/html', '.js': 'application/javascript', '.png': 'image/png', '.mp3': 'audio/mpeg', '.json': 'application/json' };
+  const mime = { '.html': 'text/html', '.js': 'application/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.json': 'application/json' };
   const server = http.createServer((req, res) => {
     const cleanUrl = decodeURIComponent((req.url || '/').split('?')[0]);
     const filePath = path.join(dir, cleanUrl === '/' ? 'index.html' : cleanUrl);
@@ -430,11 +455,19 @@ function mulaiServerLokal(dir) {
   return new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port })));
 }
 
+function cariFileKarakter() {
+  const kandidat = ['karakter.png', 'character.png', 'char.png', 'avatar.png', 'karakter.webp', 'character.webp'];
+  for (const f of kandidat) {
+    if (fs.existsSync(f)) return f;
+  }
+  return '';
+}
+
 async function kirimVideoTelegram(videoPath, data) {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
   console.log('Mengirim hasil video ke Telegram...');
-  const caption = `🎬 *VIDEO 3D V33.0 SELESAI DIRENDER!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
-  
+  const caption = `🎬 *VIDEO 3D V43.0 SELESAI DIRENDER!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
+
   try {
     const form = new FormData();
     form.append('chat_id', TELEGRAM_CHAT_ID);
@@ -525,7 +558,7 @@ async function uploadKeYouTube(videoPath, data) {
     const ttsInfo = getBahasaConfig(BAHASA);
     const { jamWib, targetJamRamai } = deteksiPrimeTimeHariIni();
 
-    console.log(`=== MEMULAI PRODUKSI VIDEO V33.0 (${UKURAN} | ${BAHASA}) ===`);
+    console.log(`=== MEMULAI PRODUKSI VIDEO V43.0 (${UKURAN} | ${BAHASA}) ===`);
     console.log(`Jam saat ini: ${jamWib}:00 WIB | Target Jam Ramai Hari Ini: ${targetJamRamai}:00 WIB`);
 
     // Logika Pintar: Cek apakah terlambat dari jam ramai hari ini
@@ -542,6 +575,11 @@ async function uploadKeYouTube(videoPath, data) {
     const exactTimings = await buatAudioTTS(videoData.lines, 'vo.mp3', ttsInfo);
     if (exactTimings) videoData.lineTimings = exactTimings;
 
+    /* Inject path aset audio & karakter lokal agar template.html langsung sinkron durasi + bibir */
+    videoData.audioUrl = 'vo.mp3';
+    const charFile = cariFileKarakter();
+    if (charFile) videoData.charUrl = charFile;
+
     await kirimPesanTelegram(`✅ *Naskah & suara VO selesai.*\nSekarang merender video 3D HD + Watermark @raii.punyacerita...`);
 
     console.log('3. Merakit index.html dari template.html (Mode Full Canvas Tanpa Tombol Play)...');
@@ -556,6 +594,64 @@ async function uploadKeYouTube(videoPath, data) {
       canvas#cv { width: ${dim.width}px !important; height: ${dim.height}px !important; }
     </style></head>`;
     tpl = tpl.replace('</head>', serverCleanCss);
+
+    /* Bridge otomatis agar semua nama fungsi/flag render (V33 maupun V43) selalu dikenali */
+    const renderBridgeScript = `<script>
+      window.__ASSETS_READY = false;
+      window.__VIDEO_LEN = typeof LEN !== 'undefined' ? LEN : 40;
+      window.__SCENE_TIMES = [];
+      window.__renderFrameAt = function(tSec) {
+        if (typeof playing !== 'undefined') playing = false;
+        if (typeof LEN !== 'undefined') window.__VIDEO_LEN = LEN;
+        const t = Math.min(Math.max(0, Number(tSec) || 0), window.__VIDEO_LEN);
+        if (typeof tm !== 'undefined') tm = t;
+        if (typeof A !== 'undefined') A = t;
+        if (typeof DT !== 'undefined') DT = 1 / 30;
+        if (typeof lineAt === 'function' && typeof COVER_HOLD !== 'undefined') {
+          li = t < COVER_HOLD ? 0 : lineAt(t);
+        }
+        const curSc = (typeof COVER_HOLD !== 'undefined' && t < COVER_HOLD) ? 'cover' : (L[li] ? L[li][0] : 'a');
+        if (typeof pScene !== 'undefined' && pScene !== curSc) {
+          trT = t;
+          trDir = (li % 2 === 0) ? 1 : -1;
+          pScene = curSc;
+        }
+        if (typeof now !== 'undefined') now = t;
+        if (typeof charTick === 'function') charTick();
+        X.save();
+        X.clearRect(0, 0, W, H);
+        if (typeof FX_CAMERA !== 'undefined' && FX_CAMERA) {
+          if (typeof CAM_V2 !== 'undefined' && CAM_V2 && typeof applyCinematicCamera2 === 'function') applyCinematicCamera2();
+          else if (typeof applyCinematicCamera === 'function') applyCinematicCamera();
+        }
+        if (typeof applySceneEnterExit === 'function') applySceneEnterExit(t);
+        const fn = (typeof SCN !== 'undefined' && SCN[curSc]) ? SCN[curSc] : (typeof SCN !== 'undefined' ? SCN.a : null);
+        if (fn) fn((typeof COVER_HOLD !== 'undefined' && t < COVER_HOLD) ? t : Math.max(0, t - (L[li] ? L[li].rs : 0)));
+        if (typeof FX_PARTICLES !== 'undefined' && FX_PARTICLES && typeof drawAmbientParticles === 'function') drawAmbientParticles();
+        X.restore();
+        if (typeof FX_LEAK !== 'undefined' && FX_LEAK && typeof drawLightLeak === 'function') drawLightLeak();
+        if (typeof drawStorySegments === 'function') drawStorySegments();
+        if (typeof drawSubs === 'function') drawSubs();
+        if (typeof FX_BURST !== 'undefined' && FX_BURST && typeof drawEmphasisBurst === 'function') drawEmphasisBurst();
+        if (typeof drawTransition === 'function') drawTransition();
+        if (typeof drawWatermark === 'function') drawWatermark();
+        if (typeof ov !== 'undefined') X.drawImage(ov, 0, 0, W, H);
+        if (typeof PORT !== 'undefined' && !PORT && typeof composeFrame === 'function') composeFrame();
+      };
+      (function waitReadyPoll(){
+        const iv = setInterval(() => {
+          if (window.__READY__ === true || window.__APP_READY__ === true) {
+            clearInterval(iv);
+            if (typeof LEN !== 'undefined') window.__VIDEO_LEN = LEN;
+            if (typeof L !== 'undefined') {
+              window.__SCENE_TIMES = L.map(x => ({ sc: x[0], t0: x.t0 || 0, fx: x[3] || '' }));
+            }
+            window.__ASSETS_READY = true;
+          }
+        }, 50);
+      })();
+    </script></body>`;
+    tpl = tpl.replace('</body>', renderBridgeScript);
     fs.writeFileSync('index.html', tpl, 'utf8');
 
     console.log('4. Menjalankan browser & merekam frame video HD...');
@@ -568,7 +664,7 @@ async function uploadKeYouTube(videoPath, data) {
       viewport: { width: dim.width, height: dim.height },
       deviceScaleFactor: 1
     });
-    await page.goto(`http://127.0.0.1:${port}/index.html?autorender=1`, { waitUntil: 'networkidle' });
+    await page.goto(`http://127.0.0.1:${port}/index.html?autorender=1`, { waitUntil: 'domcontentloaded' });
 
     await page.waitForFunction(() => window.__ASSETS_READY === true, { timeout: 30000 });
     const totalLenSec = await page.evaluate(() => window.__VIDEO_LEN);
@@ -597,7 +693,7 @@ async function uploadKeYouTube(videoPath, data) {
 
     console.log('5. Menggabungkan BGM + SFX + VO & merender MP4 final...');
     const seedNum = Array.from(videoData.title).reduce((a, c) => a + c.charCodeAt(0), 0);
-    mixAudioWithBgmAndSfx('vo.mp3', sceneTimes, totalLenSec, seedNum, 'mixed_audio.wav');
+    mixAudioWithBgmAndSfx('vo.mp3', sceneTimes, totalLenSec, seedNum, 'mixed_audio.wav', videoData.title);
 
     execSync(
       `ffmpeg -y -framerate ${fps} -i frames/f_%05d.jpg -i mixed_audio.wav ` +
