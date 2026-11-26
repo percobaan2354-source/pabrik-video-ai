@@ -1,4 +1,4 @@
-/* ===== SCRIPT UTAMA: buat_video.js (Versi V49.0: 100% Real Pixabay Video + Multi-Query VO Sync + FFmpeg Faststart) ===== */
+/* ===== SCRIPT UTAMA: buat_video.js (Versi V50.0: 100% Real Pixabay Video + Frame Sequence Headless Fix) ===== */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -148,7 +148,7 @@ function rapikanNaskah(data, dim, ttsInfo) {
   return data;
 }
 
-/* ===== PIXABAY VIDEO DOWNLOADER + FFMPEG FASTSTART NORMALIZER ===== */
+/* ===== PIXABAY VIDEO DOWNLOADER + FRAME SEQUENCE EXTRACTOR ===== */
 function curlGetJson(url) {
   try {
     const out = execSync(
@@ -161,7 +161,7 @@ function curlGetJson(url) {
   }
 }
 
-function downloadAndNormalizeVideo(url, rawFile, finalMp4) {
+function downloadAndNormalizeVideo(url, rawFile, finalMp4, idx) {
   try {
     execSync(
       `curl -sL --fail --max-time 30 -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" "${url}" -o "${rawFile}"`,
@@ -169,19 +169,32 @@ function downloadAndNormalizeVideo(url, rawFile, finalMp4) {
     );
     if (!fs.existsSync(rawFile) || fs.statSync(rawFile).size < 10000) {
       if (fs.existsSync(rawFile)) fs.unlinkSync(rawFile);
-      return false;
+      return null;
     }
-    // Konversi ke H.264 ringan 30fps +faststart agar Chromium headless decode instan tanpa stuck
     execSync(
       `ffmpeg -y -i "${rawFile}" -an -vf "scale='min(720,iw)':-2,fps=30" -c:v libx264 -preset ultrafast -crf 24 -pix_fmt yuv420p -movflags +faststart -t 10 "${finalMp4}"`,
       { stdio: 'pipe' }
     );
     try { fs.unlinkSync(rawFile); } catch (_) {}
-    return fs.existsSync(finalMp4) && fs.statSync(finalMp4).size > 8000;
+    if (!fs.existsSync(finalMp4) || fs.statSync(finalMp4).size <= 8000) return null;
+
+    // Ekstrak frame JPEG 15fps agar browser headless menggambar setiap frame dengan 100% tajam tanpa bug GPU <video>
+    const frameDir = `media/clip_${idx}_frames`;
+    fs.mkdirSync(frameDir, { recursive: true });
+    execSync(
+      `ffmpeg -y -i "${finalMp4}" -vf "fps=15" -q:v 4 "${frameDir}/f_%03d.jpg"`,
+      { stdio: 'pipe' }
+    );
+    const frameFiles = fs.readdirSync(frameDir)
+      .filter(f => f.endsWith('.jpg'))
+      .sort()
+      .map(f => `${frameDir}/${f}`);
+
+    return { mp4: finalMp4, frames: frameFiles, fps: 15 };
   } catch (_) {
     try { if (fs.existsSync(rawFile)) fs.unlinkSync(rawFile); } catch (__) {}
     try { if (fs.existsSync(finalMp4)) fs.unlinkSync(finalMp4); } catch (__) {}
-    return false;
+    return null;
   }
 }
 
@@ -273,19 +286,21 @@ async function siapkanMediaPixabayLokal(videoData) {
 
       const rawFile = `media/raw_${i}.mp4`;
       const finalMp4 = `media/clip_${i}.mp4`;
-      if (downloadAndNormalizeVideo(chosen, rawFile, finalMp4)) {
+      const normRes = downloadAndNormalizeVideo(chosen, rawFile, finalMp4, i);
+      if (normRes) {
         usedUrls.add(chosen);
-        meta.videoUrl = finalMp4;
+        meta.videoUrl = normRes.mp4;
+        meta.videoFrames = normRes.frames;
+        meta.videoFps = normRes.fps;
         berhasilVideo++;
         videoOk = true;
-        console.log(`   [Baris ${i + 1}] SUKSES Video Pixabay ("${qTry}") -> ${finalMp4}`);
+        console.log(`   [Baris ${i + 1}] SUKSES Video Pixabay ("${qTry}") -> ${finalMp4} (${normRes.frames.length} frame)`);
         break;
       }
     }
 
     if (videoOk) continue;
 
-    // Jika benar-benar tidak ada video MP4, ambil foto real Pixabay
     for (const qTry of kandidatQuery) {
       const pUrls = cariFotoPixabay(qTry);
       const chosenP = pUrls.find(u => !usedUrls.has(u)) || pUrls[0] || '';
@@ -666,7 +681,7 @@ function cariFileKarakter() {
 async function kirimVideoTelegram(videoPath, data) {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
   console.log('Mengirim hasil video ke Telegram...');
-  const caption = `🎬 *VIDEO V49.0 (100% REAL PIXABAY B-ROLL) SELESAI!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
+  const caption = `🎬 *VIDEO V50.0 (100% REAL PIXABAY B-ROLL) SELESAI!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
 
   try {
     const form = new FormData();
@@ -690,7 +705,7 @@ async function kirimVideoTelegram(videoPath, data) {
     const ttsInfo = getBahasaConfig(BAHASA);
     const { jamWib, targetJamRamai } = deteksiPrimeTimeHariIni();
 
-    console.log(`=== MEMULAI PRODUKSI VIDEO V49.0 (${UKURAN} | ${BAHASA}) ===`);
+    console.log(`=== MEMULAI PRODUKSI VIDEO V50.0 (${UKURAN} | ${BAHASA}) ===`);
     if (jamWib > targetJamRamai) {
       await kirimPesanTelegram(`⚠️ *STATUS: PENDING / ANTREAN GESER*\n\nKamu membuat video pada pukul ${jamWib}:00 WIB (melewati jam ramai ${targetJamRamai}:00 WIB hari ini).\nSistem otomatis menggeser jadwal publikasi ke slot prime time berikutnya!`);
     } else {
@@ -757,7 +772,8 @@ async function kirimVideoTelegram(videoPath, data) {
         if (typeof LINE_BROLL_MAP !== 'undefined' && LINE_BROLL_MAP[li] && typeof COVER_HOLD !== 'undefined' && t >= COVER_HOLD) {
           const item = LINE_BROLL_MAP[li];
           const cur = L[li];
-          if (item && item.videoEl && item.videoReady && cur && item.videoEl.duration && Number.isFinite(item.videoEl.duration)) {
+          const hasSeq = Boolean(item && item.frameImgs && item.frameImgs.length > 0);
+          if (!hasSeq && item && item.videoEl && item.videoReady && cur && item.videoEl.duration && Number.isFinite(item.videoEl.duration)) {
             const relT = Math.max(0, t - cur.t0) % item.videoEl.duration;
             if (Math.abs(item.videoEl.currentTime - relT) > 0.025) {
               await new Promise(resolve => {
@@ -789,16 +805,6 @@ async function kirimVideoTelegram(videoPath, data) {
         const iv = setInterval(async () => {
           if (window.__READY__ === true || window.__APP_READY__ === true) {
             clearInterval(iv);
-            if (typeof LINE_BROLL_MAP !== 'undefined' && typeof attachVideoElementToItem === 'function') {
-              for (const item of Object.values(LINE_BROLL_MAP)) {
-                if (item && !item.videoReady && item.videoUrl) {
-                  await attachVideoElementToItem(item, item.videoUrl);
-                }
-                if (item && !item.videoReady && !item.photoReady && item.photoUrl && typeof attachPhotoToItem === 'function') {
-                  await attachPhotoToItem(item, item.photoUrl);
-                }
-              }
-            }
             if (typeof LEN !== 'undefined') window.__VIDEO_LEN = LEN;
             if (typeof L !== 'undefined') {
               window.__SCENE_TIMES = L.map(x => ({ sc: x[0], t0: x.t0 || 0, fx: x[3] || '' }));
@@ -844,7 +850,7 @@ async function kirimVideoTelegram(videoPath, data) {
       const items = Object.values(window.LINE_BROLL_MAP || {});
       return {
         total: items.length,
-        vidReady: items.filter(x => x && x.videoReady).length,
+        vidReady: items.filter(x => x && (x.videoReady || (x.frameImgs && x.frameImgs.length > 0))).length,
         picReady: items.filter(x => x && x.photoReady).length
       };
     });
