@@ -259,6 +259,7 @@ function detectVisualFromVoScript(voSentence,aiHintObj,sceneIdx=0,scKey='b1'){
   id:'line_'+sceneIdx,
   mode:chosenMode,
   videoQuery:customQuery,
+  noMedia:Boolean(hintObj.noMedia),
   videoUrl:directVideoUrl,
   videoFrames:Array.isArray(hintObj.videoFrames)?hintObj.videoFrames:[],
   videoFps:Number(hintObj.videoFps)||15,
@@ -392,7 +393,7 @@ async function preloadAllRealVideos(){
   let vUrl=item.videoUrl;
   let pUrl=item.photoUrl;
 
-  if(!vUrl&&!pUrl&&PIXABAY_KEY){
+  if(!vUrl&&!pUrl&&PIXABAY_KEY&&!item.noMedia){
    const found=await fetchPixabayMedia(item.videoQuery,idx);
    vUrl=found.videoUrl;
    pUrl=found.photoUrl;
@@ -841,6 +842,8 @@ function drawMediaCoverFit(mediaEl,mw,mh,dx,dy,dw,dh,zoom=1.04,panX=0){
 
 function getActiveLineBroll(){
  const direct=LINE_BROLL_MAP[li];
+ // V51: baris yang memang tidak punya visual pas JANGAN meminjam klip baris lain (tampil kartu teks)
+ if(direct&&direct.noMedia)return direct;
  if(direct&&((direct.frameImgs&&direct.frameImgs.length>0)||direct.videoReady||direct.photoReady))return direct;
  const readyPool=Object.values(LINE_BROLL_MAP).filter(x=>x&&((x.frameImgs&&x.frameImgs.length>0)||x.videoReady||x.photoReady));
  if(readyPool.length>0){
