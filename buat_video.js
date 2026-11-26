@@ -1,4 +1,4 @@
-/* ===== SCRIPT UTAMA: buat_video.js (Versi V48.0: Curl Downloader + Pixabay + Wikipedia HD + Visual Scene) ===== */
+/* ===== SCRIPT UTAMA: buat_video.js (Versi V49.0: 100% Real Pixabay Video + Multi-Query VO Sync + FFmpeg Faststart) ===== */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -76,9 +76,9 @@ function pilihTemaVisualDariJudul(judul) {
     { re: /tidur|bangun|mimpi|alarm|malam|sirkadian|insomnia|otak|saraf|ditatap|mata/, theme: { name: 'night_neuro', bg1: '#0b132b', bg2: '#1c2541', card: '#141e38', accent: '#38bdf8', accent2: '#f59e0b', text: '#f8fafc' } },
     { re: /sains|fisika|kimia|atom|listrik|energi|cahaya|gelombang|teknologi|robot|ai\b|kuantum/, theme: { name: 'cyber_lab', bg1: '#071921', bg2: '#0f2e3d', card: '#0d2633', accent: '#06b6d4', accent2: '#22c55e', text: '#ecfeff' } },
     { re: /sejarah|kuno|kerajaan|romawi|mesir|abad|dinasti|piramida|perang|nusantara|katedral|istana/, theme: { name: 'ancient_gold', bg1: '#1c140d', bg2: '#332214', card: '#291b10', accent: '#f59e0b', accent2: '#ef4444', text: '#fef3c7' } },
-    { re: /alam|hewan|laut|hutan|gunung|bumi|samudra|tumbuhan|ikan|burung|cuaca|mercusuar/, theme: { name: 'emerald_wild', bg1: '#062019', bg2: '#0e3b2e', card: '#0a2e24', accent: '#10b981', accent2: '#eab308', text: '#ecfdf5' } },
+    { re: /alam|hewan|laut|hutan|gunung|bumi|samudra|tumbuhan|ikan|burung|cuaca|mercusuar|layangan/, theme: { name: 'emerald_wild', bg1: '#062019', bg2: '#0e3b2e', card: '#0a2e24', accent: '#10b981', accent2: '#eab308', text: '#ecfdf5' } },
     { re: /horor|misteri|hantu|mistis|angker|rahasia|gelap|hilang|konspirasi/, theme: { name: 'crimson_mystery', bg1: '#180912', bg2: '#2e1022', card: '#240c1a', accent: '#f43f5e', accent2: '#a855f7', text: '#fff1f2' } },
-    { re: /bisnis|uang|kaya|sukses|ekonomi|saham|emas|kerja|miliarder/, theme: { name: 'royal_wealth', bg1: '#0f172a', bg2: '#1e293b', card: '#162033', accent: '#eab308', accent2: '#38bdf8', text: '#f8fafc' } }
+    { re: /bisnis|uang|kaya|sukses|ekonomi|saham|emas|kerja|miliarder|makan|lapar/, theme: { name: 'royal_wealth', bg1: '#0f172a', bg2: '#1e293b', card: '#162033', accent: '#eab308', accent2: '#38bdf8', text: '#f8fafc' } }
   ];
   for (const p of presets) {
     if (p.re.test(q)) return p.theme;
@@ -105,6 +105,7 @@ function rapikanNaskah(data, dim, ttsInfo) {
         meta.mode = (sc === 'title' || sc === 'a' || sc === 'c') ? 'pip_broll' : 'full_broll';
       }
       if (!meta.videoQuery && meta.query) meta.videoQuery = meta.query;
+      if (!meta.fallbackQuery) meta.fallbackQuery = data.topicQuery || 'nature sky clouds';
     } else {
       meta = null;
     }
@@ -147,11 +148,11 @@ function rapikanNaskah(data, dim, ttsInfo) {
   return data;
 }
 
-/* ===== CURL DOWNLOADER ANTI-BLOKIR: PIXABAY + WIKIPEDIA + WIKIMEDIA ===== */
+/* ===== PIXABAY VIDEO DOWNLOADER + FFMPEG FASTSTART NORMALIZER ===== */
 function curlGetJson(url) {
   try {
     const out = execSync(
-      `curl -sL --max-time 15 -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" "${url}"`,
+      `curl -sL --max-time 18 -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" "${url}"`,
       { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }
     );
     return JSON.parse(out);
@@ -160,19 +161,40 @@ function curlGetJson(url) {
   }
 }
 
-function curlDownloadBinary(url, outFile) {
+function downloadAndNormalizeVideo(url, rawFile, finalMp4) {
   try {
     execSync(
-      `curl -sL --fail --max-time 22 -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" "${url}" -o "${outFile}"`,
+      `curl -sL --fail --max-time 30 -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" "${url}" -o "${rawFile}"`,
       { stdio: 'pipe' }
     );
-    if (!fs.existsSync(outFile)) return false;
-    const size = fs.statSync(outFile).size;
-    if (size < 4096) {
-      fs.unlinkSync(outFile);
+    if (!fs.existsSync(rawFile) || fs.statSync(rawFile).size < 10000) {
+      if (fs.existsSync(rawFile)) fs.unlinkSync(rawFile);
       return false;
     }
-    // Pastikan bukan file HTML error
+    // Konversi ke H.264 ringan 30fps +faststart agar Chromium headless decode instan tanpa stuck
+    execSync(
+      `ffmpeg -y -i "${rawFile}" -an -vf "scale='min(720,iw)':-2,fps=30" -c:v libx264 -preset ultrafast -crf 24 -pix_fmt yuv420p -movflags +faststart -t 10 "${finalMp4}"`,
+      { stdio: 'pipe' }
+    );
+    try { fs.unlinkSync(rawFile); } catch (_) {}
+    return fs.existsSync(finalMp4) && fs.statSync(finalMp4).size > 8000;
+  } catch (_) {
+    try { if (fs.existsSync(rawFile)) fs.unlinkSync(rawFile); } catch (__) {}
+    try { if (fs.existsSync(finalMp4)) fs.unlinkSync(finalMp4); } catch (__) {}
+    return false;
+  }
+}
+
+function downloadPhotoFallback(url, outFile) {
+  try {
+    execSync(
+      `curl -sL --fail --max-time 20 -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" "${url}" -o "${outFile}"`,
+      { stdio: 'pipe' }
+    );
+    if (!fs.existsSync(outFile) || fs.statSync(outFile).size < 4096) {
+      if (fs.existsSync(outFile)) fs.unlinkSync(outFile);
+      return false;
+    }
     const head = fs.readFileSync(outFile, { encoding: 'utf8', flag: 'r' }).slice(0, 80).toLowerCase();
     if (head.includes('<!doctype') || head.includes('<html')) {
       fs.unlinkSync(outFile);
@@ -185,46 +207,46 @@ function curlDownloadBinary(url, outFile) {
   }
 }
 
-function cariPixabayCurl(qClean) {
-  if (!PIXABAY_API_KEY) return { videos: [], photos: [] };
-  const vJson = curlGetJson(`https://pixabay.com/api/videos/?key=${encodeURIComponent(PIXABAY_API_KEY)}&q=${encodeURIComponent(qClean)}&safesearch=true&per_page=8`);
-  const videos = ((vJson && vJson.hits) || []).map(h => {
+const PIXABAY_VIDEO_CACHE = {};
+function cariVideoPixabay(query) {
+  if (!PIXABAY_API_KEY) return [];
+  const qClean = (query || '').replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!qClean) return [];
+  const key = qClean.toLowerCase();
+  if (PIXABAY_VIDEO_CACHE[key]) return PIXABAY_VIDEO_CACHE[key];
+
+  const apiUrl = `https://pixabay.com/api/videos/?key=${encodeURIComponent(PIXABAY_API_KEY)}&q=${encodeURIComponent(qClean)}&safesearch=true&per_page=10`;
+  const vJson = curlGetJson(apiUrl);
+  const hits = (vJson && Array.isArray(vJson.hits)) ? vJson.hits : [];
+  const urls = hits.map(h => {
     const v = h.videos || {};
-    return (v.small && v.small.url) || (v.medium && v.medium.url) || (v.tiny && v.tiny.url) || '';
+    return (v.small && v.small.url) || (v.tiny && v.tiny.url) || (v.medium && v.medium.url) || '';
   }).filter(Boolean);
 
-  const pJson = curlGetJson(`https://pixabay.com/api/?key=${encodeURIComponent(PIXABAY_API_KEY)}&q=${encodeURIComponent(qClean)}&image_type=photo&safesearch=true&per_page=8`);
-  const photos = ((pJson && pJson.hits) || []).map(h => h.largeImageURL || h.webformatURL || '').filter(Boolean);
-
-  return { videos, photos };
+  PIXABAY_VIDEO_CACHE[key] = urls;
+  return urls;
 }
 
-function cariWikipediaAndCommonsCurl(qClean) {
-  const urls = [];
-  // 1. Wikipedia English PageImages (sangat akurat untuk konsep sains/psikologi/sejarah)
-  const wikiJson = curlGetJson(`https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(qClean)}&gsrlimit=6&prop=pageimages&piprop=original|thumbnail&pithumbsize=1000&format=json`);
-  const wPages = Object.values((wikiJson && wikiJson.query && wikiJson.query.pages) || {});
-  for (const p of wPages) {
-    const u = (p.original && p.original.source) || (p.thumbnail && p.thumbnail.source) || '';
-    if (u && /\.(jpg|jpeg|png)$/i.test(u)) urls.push(u);
-  }
-
-  // 2. Wikimedia Commons Foto
-  const cmJson = curlGetJson(`https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(qClean)}&gsrnamespace=6&gsrlimit=6&prop=imageinfo&iiprop=url&iiurlwidth=1000&format=json`);
-  const cPages = Object.values((cmJson && cmJson.query && cmJson.query.pages) || {});
-  for (const p of cPages) {
-    const u = p.imageinfo && p.imageinfo[0] && (p.imageinfo[0].thumburl || p.imageinfo[0].url);
-    if (u && /\.(jpg|jpeg|png)$/i.test(u)) urls.push(u);
-  }
-  return urls;
+function cariFotoPixabay(query) {
+  if (!PIXABAY_API_KEY) return [];
+  const qClean = (query || '').replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!qClean) return [];
+  const pJson = curlGetJson(`https://pixabay.com/api/?key=${encodeURIComponent(PIXABAY_API_KEY)}&q=${encodeURIComponent(qClean)}&image_type=photo&safesearch=true&per_page=8`);
+  return ((pJson && pJson.hits) || []).map(h => h.webformatURL || h.largeImageURL || '').filter(Boolean);
 }
 
 async function siapkanMediaPixabayLokal(videoData) {
   fs.mkdirSync('media', { recursive: true });
-  console.log(`Status PIXABAY_API_KEY: ${PIXABAY_API_KEY ? 'TERDETEKSI (' + PIXABAY_API_KEY.slice(0, 6) + '...)' : 'KOSONG (Pakai Wikipedia + Wikimedia + LoremFlickr)'}`);
+  if (!PIXABAY_API_KEY) {
+    console.warn('PERINGATAN: PIXABAY_API_KEY kosong di GitHub Secrets!');
+  } else {
+    console.log(`PIXABAY_API_KEY aktif (${PIXABAY_API_KEY.slice(0, 6)}...). Mengunduh video real sesuai tiap kalimat VO...`);
+  }
 
   const usedUrls = new Set();
-  let berhasil = 0;
+  const topicFallback = (videoData.topicQuery || 'people lifestyle nature').trim();
+  let berhasilVideo = 0;
+  let berhasilFoto = 0;
 
   for (let i = 0; i < videoData.lines.length; i++) {
     const l = videoData.lines[i];
@@ -232,70 +254,54 @@ async function siapkanMediaPixabayLokal(videoData) {
     if (sc === 'cta' || sc === 'end') continue;
 
     const meta = (l[4] && typeof l[4] === 'object') ? l[4] : (l[4] = {});
-    const rawQ = meta.videoQuery || 'human eye staring dark';
-    const qClean = rawQ.replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-    console.log(`   [Baris ${i + 1}] Mencari visual: "${qClean}"...`);
+    const q1 = (meta.videoQuery || '').trim();
+    const q2 = (meta.fallbackQuery || topicFallback).trim();
+    const q3 = q1.split(/\s+/).slice(0, 2).join(' ');
+    const q4 = topicFallback.split(/\s+/).slice(0, 2).join(' ');
+    const kandidatQuery = [...new Set([q1, q3, q2, q4, 'nature landscape'])].filter(Boolean);
 
-    // 1. Pixabay Video & Photo via curl
-    let { videos, photos } = cariPixabayCurl(qClean);
-    if (!videos.length && !photos.length && qClean.includes(' ')) {
-      const retry = cariPixabayCurl(qClean.split(/\s+/).slice(0, 2).join(' '));
-      videos = retry.videos;
-      photos = retry.photos;
-    }
+    console.log(`   [Baris ${i + 1}] VO: "${l[2].replace(/\*/g, '')}"`);
+    console.log(`             Query kandidat: ${kandidatQuery.join(' -> ')}`);
 
-    const chosenVid = videos.find(u => !usedUrls.has(u)) || videos[0] || '';
-    if (chosenVid) {
-      const localMp4 = `media/clip_${i}.mp4`;
-      if (curlDownloadBinary(chosenVid, localMp4)) {
-        usedUrls.add(chosenVid);
-        meta.videoUrl = localMp4;
-        berhasil++;
-        console.log(`   [Baris ${i + 1}] OK Pixabay Video -> ${localMp4}`);
-        continue;
-      }
-    }
+    let videoOk = false;
+    for (const qTry of kandidatQuery) {
+      const urls = cariVideoPixabay(qTry);
+      if (!urls.length) continue;
 
-    const chosenPixPhoto = photos.find(u => !usedUrls.has(u)) || photos[0] || '';
-    if (chosenPixPhoto) {
-      const localJpg = `media/photo_${i}.jpg`;
-      if (curlDownloadBinary(chosenPixPhoto, localJpg)) {
-        usedUrls.add(chosenPixPhoto);
-        meta.photoUrl = localJpg;
-        berhasil++;
-        console.log(`   [Baris ${i + 1}] OK Pixabay Photo -> ${localJpg}`);
-        continue;
-      }
-    }
+      const chosen = urls.find(u => !usedUrls.has(u)) || urls[i % urls.length];
+      if (!chosen) continue;
 
-    // 2. Wikipedia & Wikimedia Commons via curl
-    const wikiUrls = cariWikipediaAndCommonsCurl(qClean);
-    let wikiOk = false;
-    for (const wu of wikiUrls) {
-      if (usedUrls.has(wu)) continue;
-      const localJpg = `media/photo_${i}.jpg`;
-      if (curlDownloadBinary(wu, localJpg)) {
-        usedUrls.add(wu);
-        meta.photoUrl = localJpg;
-        berhasil++;
-        wikiOk = true;
-        console.log(`   [Baris ${i + 1}] OK Wikipedia/Commons Photo -> ${localJpg}`);
+      const rawFile = `media/raw_${i}.mp4`;
+      const finalMp4 = `media/clip_${i}.mp4`;
+      if (downloadAndNormalizeVideo(chosen, rawFile, finalMp4)) {
+        usedUrls.add(chosen);
+        meta.videoUrl = finalMp4;
+        berhasilVideo++;
+        videoOk = true;
+        console.log(`   [Baris ${i + 1}] SUKSES Video Pixabay ("${qTry}") -> ${finalMp4}`);
         break;
       }
     }
-    if (wikiOk) continue;
 
-    // 3. LoremFlickr Stock Photo (bebas API key, berdasarkan tag bahasa Inggris)
-    const tagsCsv = qClean.split(/\s+/).slice(0, 3).join(',');
-    const flickrUrl = `https://loremflickr.com/720/1080/${encodeURIComponent(tagsCsv)}?lock=${100 + i * 13}`;
-    const localFlickrJpg = `media/photo_${i}.jpg`;
-    if (curlDownloadBinary(flickrUrl, localFlickrJpg)) {
-      meta.photoUrl = localFlickrJpg;
-      berhasil++;
-      console.log(`   [Baris ${i + 1}] OK Stock Photo -> ${localFlickrJpg}`);
+    if (videoOk) continue;
+
+    // Jika benar-benar tidak ada video MP4, ambil foto real Pixabay
+    for (const qTry of kandidatQuery) {
+      const pUrls = cariFotoPixabay(qTry);
+      const chosenP = pUrls.find(u => !usedUrls.has(u)) || pUrls[0] || '';
+      if (chosenP) {
+        const localJpg = `media/photo_${i}.jpg`;
+        if (downloadPhotoFallback(chosenP, localJpg)) {
+          usedUrls.add(chosenP);
+          meta.photoUrl = localJpg;
+          berhasilFoto++;
+          console.log(`   [Baris ${i + 1}] SUKSES Foto Pixabay ("${qTry}") -> ${localJpg}`);
+          break;
+        }
+      }
     }
   }
-  console.log(`Total media visual terunduh: ${berhasil} klip.`);
+  console.log(`Ringkasan B-Roll Real: ${berhasilVideo} Video MP4 Pixabay + ${berhasilFoto} Foto Pixabay.`);
 }
 
 async function buatNaskahJSON(dim, ttsInfo) {
@@ -303,36 +309,31 @@ async function buatNaskahJSON(dim, ttsInfo) {
     ? '9-10 kalimat storytelling santai & mengalir (maksimal 9-12 kata per kalimat agar total durasi baca 38-50 detik)'
     : '12-15 kalimat padat dan informatif (untuk video landscape 16:9)';
 
-  const prompt = `Kamu adalah sutradara video dokumenter & short-form storytelling kelas dunia.
+  const prompt = `Kamu adalah sutradara video dokumenter & editor B-Roll Pixabay profesional.
 Buatkan data video lengkap dalam format JSON MURNI (tanpa markdown/teks pembuka) untuk topik:
 - Judul: "${JUDUL}"
 - Bahasa Video: ${BAHASA} (kode BCP-47: ${ttsInfo.langCode})
 - Ukuran: ${UKURAN} (${dim.width}x${dim.height})
 
-PRINSIP UTAMA VISUAL B-ROLL (WAJIB DIPATUHI):
-1. SETIAP kalimat VO yang menjelaskan lokasi, benda, peristiwa, emosi, atau aksi WAJIB dilengkapi "videoQuery" dalam BAHASA INGGRIS (2-3 kata benda/konsep konkret yang sangat mudah dicari fotonya)!
-   - Contoh: Jika VO membahas mata manusia & sklera -> "videoQuery": "human eye closeup"
-   - Contoh: Jika VO membahas bagian otak amigdala -> "videoQuery": "human brain neuroscience"
-2. Variasikan mode visual antara "pip_broll" (B-Roll kecil di atas sementara karakter utama ikut nge-reaction di bawah) dan "full_broll" (B-Roll layar penuh sinematik):
-   - Gunakan "pip_broll" pada adegan "title", "a", dan "c".
-   - Gunakan "full_broll" pada adegan "b1", "b2", "b3", "b4", "b5".
-3. Buat ${jumlahKalimat} di dalam array "lines".
-   Format tiap elemen: ["kunci_adegan", "mood", "Kalimat VO dengan *kata* ditekankan.", "fx_opsional", META_VISUAL]
-   - Kunci adegan: gunakan urutan dinamis seperti "title", "b1", "b2", "a", "b3", "b4", "cta", "cta", "b5", "end".
-   - Struktur META_VISUAL (untuk semua baris kecuali "cta" dan "end"):
-     {
-       "mode": "pip_broll" atau "full_broll",
-       "videoQuery": "2-3 english visual keywords",
-       "kicker": "LABEL KONTEKS 1-2 KATA SESUAI VO",
-       "title": "JUDUL SINGKAT 2-3 KATA SESUAI VO",
-       "sub": "Keterangan ringkas 3-6 kata sesuai kalimat VO",
-       "badge1": "Detail 1",
-       "badge2": "Detail 2"
-     }
+ATURAN KERAS PENCARIAN VIDEO PIXABAY (WAJIB DIPATUHI):
+1. Pixabay Video API HANYA paham kata kunci visual konkret dalam BAHASA INGGRIS (2-3 kata benda/aksi nyata yang bisa direkam kamera)!
+   - DILARANG menggunakan istilah medis/kimia abstrak seperti "ghrelin hormone", "hypothalamus", "dopamine molecule", "amygdala" karena Pixabay tidak punya videonya!
+   - GANTI konsep abstrak menjadi adegan kamera nyata yang persis menggambarkan kalimat VO:
+     * VO: "Orang bermain layangan di lapangan" -> "videoQuery": "flying kite park"
+     * VO: "Kenapa makanan terasa lebih enak saat lapar?" -> "videoQuery": "person eating delicious food"
+     * VO: "Hormon ghrelin melonjak memicu rasa lapar" -> "videoQuery": "hungry person stomach food"
+     * VO: "Indera perasa di lidah jadi lebih peka" -> "videoQuery": "chef tasting food cooking"
+     * VO: "Otak memberikan sinyal kenikmatan" -> "videoQuery": "happy person enjoying meal"
+2. Sertakan "topicQuery": 2 kata bahasa Inggris umum yang mewakili keseluruhan topik judul (misal: "delicious food", "flying kite", "human eye").
+3. Variasikan mode visual antara "pip_broll" (video B-Roll di kotak atas + karakter utama reaction di bawah) pada "title", "a", "c", dan "full_broll" (video B-Roll layar penuh) pada "b1", "b2", "b3", "b4", "b5".
+4. Buat ${jumlahKalimat} di array "lines":
+   Format: ["kunci_adegan", "mood", "Kalimat VO dengan *kata* ditekankan.", "fx_opsional", META_VISUAL]
+   Kunci adegan: "title", "b1", "b2", "a", "b3", "b4", "cta", "cta", "b5", "end".
 
-KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
+KELUARKAN HANYA JSON DENGAN STRUKTUR INI:
 {
   "title": "Judul Menarik Sesuai Bahasa",
+  "topicQuery": "2 english keywords for main topic",
   "varian": "v${Date.now() % 999}",
   "lang": "${ttsInfo.langCode}",
   "width": ${dim.width},
@@ -361,15 +362,15 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
     "src": "Sumber"
   },
   "lines": [
-    ["title", "d", "Kalimat pembuka dengan *kata kunci* sesuai judul.", "", {"mode":"pip_broll","videoQuery":"person looking back street","kicker":"FENOMENA","title":"AWAL KISAH","sub":"Keterangan singkat sesuai kalimat pembuka","badge1":"Insting","badge2":"Sinyal"}],
-    ["b1", "n", "Kalimat kedua menjelaskan konsep utama.", "p", {"mode":"full_broll","videoQuery":"human eye staring","kicker":"SAINS","title":"DETEKSI TATAPAN","sub":"Keterangan sesuai kalimat kedua","badge1":"Fokus","badge2":"Jarak"}],
-    ["b2", "e", "Kalimat ketiga menjelaskan cara kerja mata.", "p", {"mode":"full_broll","videoQuery":"peripheral vision eye","kicker":"VISUAL","title":"SUDUT PANDANG","sub":"Keterangan sesuai kalimat ketiga","badge1":"Gerak","badge2":"Cepat"}],
-    ["a", "n", "Kalimat keempat memperkuat penjelasan dari karakter.", "", {"mode":"pip_broll","videoQuery":"human eye sclera","kicker":"BIOLOGI","title":"STRUKTUR MATA","sub":"Keterangan sesuai kalimat keempat","badge1":"Kontras","badge2":"Arah"}],
-    ["b3", "d", "Kalimat kelima menjelaskan sinyal komunikasi.", "p", {"mode":"full_broll","videoQuery":"people eye contact","kicker":"SOSIAL","title":"ARAH PANDANGAN","sub":"Keterangan sesuai kalimat kelima","badge1":"Sinyal","badge2":"Respon"}],
-    ["b4", "e", "Kalimat keenam menjelaskan reaksi otak.", "p", {"mode":"full_broll","videoQuery":"human brain neuroscience","kicker":"NEUROSAINS","title":"SISTEM OTAK","sub":"Keterangan sesuai kalimat keenam","badge1":"Alarm","badge2":"Refleks"}],
+    ["title", "d", "Kalimat pembuka dengan *kata kunci* sesuai judul.", "", {"mode":"pip_broll","videoQuery":"concrete camera keywords","fallbackQuery":"2 topic words","kicker":"FENOMENA","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
+    ["b1", "n", "Kalimat kedua sesuai topik.", "p", {"mode":"full_broll","videoQuery":"concrete camera keywords","fallbackQuery":"2 topic words","kicker":"FAKTA","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
+    ["b2", "e", "Kalimat ketiga sesuai topik.", "p", {"mode":"full_broll","videoQuery":"concrete camera keywords","fallbackQuery":"2 topic words","kicker":"PROSES","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
+    ["a", "n", "Kalimat keempat dari karakter.", "", {"mode":"pip_broll","videoQuery":"concrete camera keywords","fallbackQuery":"2 topic words","kicker":"DETAIL","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
+    ["b3", "d", "Kalimat kelima sesuai topik.", "p", {"mode":"full_broll","videoQuery":"concrete camera keywords","fallbackQuery":"2 topic words","kicker":"SAINS","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
+    ["b4", "e", "Kalimat keenam sesuai topik.", "p", {"mode":"full_broll","videoQuery":"concrete camera keywords","fallbackQuery":"2 topic words","kicker":"DAMPAK","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
     ["cta", "n", "Mau bikin video kayak gini juga?", "", null],
     ["cta", "e", "Langsung aja cek *link di bio*.", "c", null],
-    ["b5", "d", "Kalimat kesembilan memberi kesimpulan visual utama.", "p", {"mode":"full_broll","videoQuery":"wildlife predator alert","kicker":"EVOLUSI","title":"INSTING BERTAHAN","sub":"Keterangan sesuai kalimat kesembilan","badge1":"Sejarah","badge2":"Alam"}],
+    ["b5", "d", "Kalimat kesembilan kesimpulan visual.", "p", {"mode":"full_broll","videoQuery":"concrete camera keywords","fallbackQuery":"2 topic words","kicker":"KESIMPULAN","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
     ["end", "s", "Kalimat penutup yang meninggalkan *kesan*.", "", null]
   ]
 }`;
@@ -629,8 +630,8 @@ function mulaiServerLokal(dir) {
       const range = req.headers.range;
       if (range && (ext === '.mp4' || ext === '.webm')) {
         const parts = range.replace(/bytes=/, '').split('-');
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+        const start = parseInt(parts[0], 10) || 0;
+        const end = (parts[1] && parts[1].trim() !== '') ? parseInt(parts[1], 10) : stat.size - 1;
         res.writeHead(206, {
           'Content-Range': `bytes ${start}-${end}/${stat.size}`,
           'Accept-Ranges': 'bytes',
@@ -639,7 +640,11 @@ function mulaiServerLokal(dir) {
         });
         fs.createReadStream(filePath, { start, end }).pipe(res);
       } else {
-        res.writeHead(200, { 'Content-Length': stat.size, 'Content-Type': mime[ext] || 'application/octet-stream' });
+        res.writeHead(200, {
+          'Accept-Ranges': 'bytes',
+          'Content-Length': stat.size,
+          'Content-Type': mime[ext] || 'application/octet-stream'
+        });
         fs.createReadStream(filePath).pipe(res);
       }
     } else {
@@ -661,7 +666,7 @@ function cariFileKarakter() {
 async function kirimVideoTelegram(videoPath, data) {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
   console.log('Mengirim hasil video ke Telegram...');
-  const caption = `🎬 *VIDEO V48.0 SELESAI DIRENDER!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
+  const caption = `🎬 *VIDEO V49.0 (100% REAL PIXABAY B-ROLL) SELESAI!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
 
   try {
     const form = new FormData();
@@ -685,17 +690,17 @@ async function kirimVideoTelegram(videoPath, data) {
     const ttsInfo = getBahasaConfig(BAHASA);
     const { jamWib, targetJamRamai } = deteksiPrimeTimeHariIni();
 
-    console.log(`=== MEMULAI PRODUKSI VIDEO V48.0 (${UKURAN} | ${BAHASA}) ===`);
+    console.log(`=== MEMULAI PRODUKSI VIDEO V49.0 (${UKURAN} | ${BAHASA}) ===`);
     if (jamWib > targetJamRamai) {
       await kirimPesanTelegram(`⚠️ *STATUS: PENDING / ANTREAN GESER*\n\nKamu membuat video pada pukul ${jamWib}:00 WIB (melewati jam ramai ${targetJamRamai}:00 WIB hari ini).\nSistem otomatis menggeser jadwal publikasi ke slot prime time berikutnya!`);
     } else {
       await kirimPesanTelegram(`🔔 *INFO PRA-RAMAI*\n\nJam ramai hari ini terdeteksi pukul *${targetJamRamai}:00 WIB*. Video sedang diproses tepat waktu!`);
     }
 
-    console.log('1. Menyusun naskah & kata kunci B-Roll dari Gemini...');
+    console.log('1. Menyusun naskah & kata kunci video nyata sesuai tiap kalimat VO...');
     const videoData = await buatNaskahJSON(dim, ttsInfo);
 
-    console.log('2. Mengunduh klip B-Roll via curl (Pixabay -> Wikipedia -> Commons -> Stock)...');
+    console.log('2. Mengunduh & menormalisasi video asli Pixabay sesuai VO...');
     await siapkanMediaPixabayLokal(videoData);
 
     console.log('3. Membuat suara Voice Over...');
@@ -706,7 +711,7 @@ async function kirimVideoTelegram(videoPath, data) {
     const charFile = cariFileKarakter();
     if (charFile) videoData.charUrl = charFile;
 
-    await kirimPesanTelegram(`✅ *Naskah, klip B-Roll, & suara VO selesai.*\nSekarang merender video HD + karakter reaction...`);
+    await kirimPesanTelegram(`✅ *Naskah, video B-Roll Pixabay, & suara VO selesai.*\nSekarang merender video HD + karakter reaction...`);
 
     console.log('4. Merakit index.html dari template.html...');
     let tpl = fs.readFileSync('template.html', 'utf8');
@@ -759,7 +764,7 @@ async function kirimVideoTelegram(videoPath, data) {
                 let done = false;
                 const fin = () => { if (!done) { done = true; resolve(); } };
                 item.videoEl.addEventListener('seeked', fin, { once: true });
-                setTimeout(fin, 180);
+                setTimeout(fin, 250);
                 try { item.videoEl.currentTime = relT; } catch (_) { fin(); }
               });
             }
@@ -784,9 +789,12 @@ async function kirimVideoTelegram(videoPath, data) {
         const iv = setInterval(async () => {
           if (window.__READY__ === true || window.__APP_READY__ === true) {
             clearInterval(iv);
-            if (typeof LINE_BROLL_MAP !== 'undefined' && typeof attachPhotoToItem === 'function') {
+            if (typeof LINE_BROLL_MAP !== 'undefined' && typeof attachVideoElementToItem === 'function') {
               for (const item of Object.values(LINE_BROLL_MAP)) {
-                if (item && !item.videoReady && !item.photoReady && item.photoUrl) {
+                if (item && !item.videoReady && item.videoUrl) {
+                  await attachVideoElementToItem(item, item.videoUrl);
+                }
+                if (item && !item.videoReady && !item.photoReady && item.photoUrl && typeof attachPhotoToItem === 'function') {
                   await attachPhotoToItem(item, item.photoUrl);
                 }
               }
@@ -807,7 +815,7 @@ async function kirimVideoTelegram(videoPath, data) {
     const { server, port } = await mulaiServerLokal(process.cwd());
     const browser = await chromium.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--autoplay-policy=no-user-gesture-required']
     });
     const page = await browser.newPage({
       viewport: { width: dim.width, height: dim.height },
@@ -822,7 +830,7 @@ async function kirimVideoTelegram(videoPath, data) {
     await page.goto(`http://127.0.0.1:${port}/index.html?autorender=1`, { waitUntil: 'domcontentloaded' });
 
     try {
-      await page.waitForFunction(() => window.__ASSETS_READY === true, { timeout: 60000 });
+      await page.waitForFunction(() => window.__ASSETS_READY === true, { timeout: 90000 });
     } catch (e) {
       try { await browser.close(); } catch (_) {}
       try { server.close(); } catch (_) {}
@@ -831,6 +839,16 @@ async function kirimVideoTelegram(videoPath, data) {
       }
       throw e;
     }
+
+    const mediaStats = await page.evaluate(() => {
+      const items = Object.values(window.LINE_BROLL_MAP || {});
+      return {
+        total: items.length,
+        vidReady: items.filter(x => x && x.videoReady).length,
+        picReady: items.filter(x => x && x.photoReady).length
+      };
+    });
+    console.log(`Status Browser Media: ${mediaStats.vidReady} video aktif, ${mediaStats.picReady} foto aktif dari ${mediaStats.total} adegan.`);
 
     const totalLenSec = await page.evaluate(() => window.__VIDEO_LEN);
     const sceneTimes = await page.evaluate(() => window.__SCENE_TIMES || []);
