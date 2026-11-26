@@ -15,10 +15,6 @@ on:
         description: 'Bahasa Video'
         required: true
         default: 'Indonesia'
-      jadwal_wib:
-        description: 'Jadwal Tayang WIB (Opsional, contoh: 2026-11-19 18:00)'
-        required: false
-        default: ''
 
 jobs:
   render-video:
@@ -55,11 +51,10 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
-          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
-          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
-          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           INPUT_JUDUL: ${{ github.event.inputs.judul }}
           INPUT_UKURAN: ${{ github.event.inputs.ukuran }}
           INPUT_BAHASA: ${{ github.event.inputs.bahasa }}
         run: |
+          node -e 'const fs=require("fs");let h=fs.readFileSync("template.html","utf8");h=h.replace(/__PIXABAY_API_KEY__/g,process.env.PIXABAY_API_KEY||"");fs.writeFileSync("template.html",h);'
           xvfb-run --auto-servernum --server-args="-screen 0 1280x1280x24" node buat_video.js
