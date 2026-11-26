@@ -676,22 +676,26 @@ async function uploadKeYouTube(videoPath, data) {
 
     console.log('3. Merakit index.html dari template.html (Mode Full Canvas Tanpa Tombol Play)...');
     let tpl = fs.readFileSync('template.html', 'utf8');
-    tpl = tpl.replace('__TITLE__', videoData.title.replace(/"/g, '&quot;'))
-             .replace('__ASPECT__', dim.aspect)
-             .replace('__VIDEO_DATA_JSON__', JSON.stringify(videoData));
+    const safeTitle = videoData.title.replace(/"/g, '&quot;');
+    const safeJson = JSON.stringify(videoData).replace(/<\/script>/gi, '<\\/script>');
+
+    tpl = tpl.replace('__TITLE__', () => safeTitle)
+             .replace('__ASPECT__', () => dim.aspect)
+             .replace('__VIDEO_DATA_JSON__', () => safeJson);
 
     const serverCleanCss = `<style>
       .poster, .bar, .tl, .toast { display: none !important; opacity: 0 !important; visibility: hidden !important; }
       body, .app, .frame { width: ${dim.width}px !important; height: ${dim.height}px !important; max-width: none !important; padding: 0 !important; margin: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
       canvas#cv { width: ${dim.width}px !important; height: ${dim.height}px !important; }
     </style></head>`;
-    tpl = tpl.replace('</head>', serverCleanCss);
+    tpl = tpl.replace('</head>', () => serverCleanCss);
 
-    /* Bridge otomatis agar semua nama fungsi/flag render selalu dikenali */
+    /* Bridge otomatis agar setiap baris VO berganti layout B-Roll 1-to-1 & tidak pernah timeout */
     const renderBridgeScript = `<script>
       window.__ASSETS_READY = false;
       window.__VIDEO_LEN = typeof LEN !== 'undefined' ? LEN : 40;
       window.__SCENE_TIMES = [];
+      let __bridgePrevLine = -1;
       window.__renderFrameAt = function(tSec) {
         if (typeof playing !== 'undefined') playing = false;
         if (typeof LEN !== 'undefined') window.__VIDEO_LEN = LEN;
@@ -703,10 +707,11 @@ async function uploadKeYouTube(videoPath, data) {
           li = t < COVER_HOLD ? 0 : lineAt(t);
         }
         const curSc = (typeof COVER_HOLD !== 'undefined' && t < COVER_HOLD) ? 'cover' : (L[li] ? L[li][0] : 'a');
-        if (typeof pScene !== 'undefined' && pScene !== curSc) {
+        if ((typeof pScene !== 'undefined' && pScene !== curSc) || __bridgePrevLine !== li) {
           trT = t;
           trDir = (li % 2 === 0) ? 1 : -1;
           pScene = curSc;
+          __bridgePrevLine = li;
         }
         if (typeof now !== 'undefined') now = t;
         if (typeof charTick === 'function') charTick();
@@ -718,7 +723,8 @@ async function uploadKeYouTube(videoPath, data) {
         }
         if (typeof applySceneEnterExit === 'function') applySceneEnterExit(t);
         const fn = (typeof SCN !== 'undefined' && SCN[curSc]) ? SCN[curSc] : (typeof SCN !== 'undefined' ? SCN.a : null);
-        if (fn) fn((typeof COVER_HOLD !== 'undefined' && t < COVER_HOLD) ? t : Math.max(0, t - (L[li] ? L[li].rs : 0)));
+        const lineStart = (L[li] && typeof L[li].t0 === 'number') ? L[li].t0 : 0;
+        if (fn) fn((typeof COVER_HOLD !== 'undefined' && t < COVER_HOLD) ? t : Math.max(0, t - lineStart));
         if (typeof FX_PARTICLES !== 'undefined' && FX_PARTICLES && typeof drawAmbientParticles === 'function') drawAmbientParticles();
         X.restore();
         if (typeof FX_LEAK !== 'undefined' && FX_LEAK && typeof drawLightLeak === 'function') drawLightLeak();
@@ -743,7 +749,7 @@ async function uploadKeYouTube(videoPath, data) {
         }, 50);
       })();
     </script></body>`;
-    tpl = tpl.replace('</body>', renderBridgeScript);
+    tpl = tpl.replace('</body>', () => renderBridgeScript);
     fs.writeFileSync('index.html', tpl, 'utf8');
 
     console.log('4. Menjalankan browser & merekam frame video HD...');
@@ -756,9 +762,10 @@ async function uploadKeYouTube(videoPath, data) {
       viewport: { width: dim.width, height: dim.height },
       deviceScaleFactor: 1
     });
+    page.on('pageerror', err => console.error('Browser PageError:', err.message));
     await page.goto(`http://127.0.0.1:${port}/index.html?autorender=1`, { waitUntil: 'domcontentloaded' });
 
-    await page.waitForFunction(() => window.__ASSETS_READY === true, { timeout: 30000 });
+    await page.waitForFunction(() => window.__ASSETS_READY === true, { timeout: 45000 });
     const totalLenSec = await page.evaluate(() => window.__VIDEO_LEN);
     const sceneTimes = await page.evaluate(() => window.__SCENE_TIMES || []);
     const fps = 30;
