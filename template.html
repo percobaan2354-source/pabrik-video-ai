@@ -84,7 +84,6 @@ const CW = (DATA.width || 720) * RES_SCALE;
 const CH = (DATA.height || 1280) * RES_SCALE;
 const PORT = Math.abs(CW / CH - 9 / 16) < 0.02;
 
-/* FIX SAMPUL WAJIB MUNCUL: COVER_HOLD dikunci minimal 1.6 detik agar detik 0:00 tidak pernah hitam */
 var COVER_HOLD = Math.max(1.6, Number(DATA.coverHold) || 1.75);
 const SHOW_STORY_SEGMENTS = Boolean(DATA.showStorySegments);
 const FX_CAMERA = DATA.fxCamera !== false;
@@ -192,7 +191,7 @@ const GENRE_RULES=[
  ['horor',mk('horor|hantu|setan|mistis|angker|terbengkalai|kuburan|makam|pocong|kuntilanak|arwah|kutukan|malam jumat|supranatural|menyeramkan')],
  ['kriminal',mk('kriminal|pembunuhan|detektif|polisi|kasus|penjara|forensik|sidik jari|hilang|tersangka|misteri|kejahatan|noir|interogasi|bukti|mercusuar|terkunci')],
  ['konspirasi',mk('konspirasi|rahasia dunia|bunker|brankas|illuminati|elit|agen|satelit|radar|tersembunyi|terlarang|eksperimen|area 51|kode rahasia')],
- ['bisnis',mk('bisnis|sukses|kaya|miliarder|saham|investasi|uang|ekonomi|perusahaan|ceo|startup|modal|cuan|bank|emas|kekayaan')],
+ ['bisnis',mk('bisnis|sukses|kaya|miliarder|saham|investasi|uang|ekonomi|perusahaan|ceo|startup|modal|cuan|bank|emas|kekayaan|tiket|kartu|maskapai|merugi|dolar')],
  ['drama',mk('keluarga|hubungan|cinta|putus|rindu|orang tua|ibu|ayah|anak|pernikahan|sedih|menangis|hati|kesepian|drama|rumah tangga')],
  ['psikologi',mk('psikologi|otak|pikiran|tidur|kebiasaan|mental|stres|overthinking|fokus|motivasi|pengembangan diri|mindset|emosi|sadar|bifasik|insomnia|ngantuk|merem|bersin|memori|ingatan|hidung|aroma|reseptor|rasa|lidah|air liur')],
  ['mitologi',mk('mitologi|legenda|dewa|naga|sihir|pedang|ramalan|makhluk|raksasa|peri|keramat|dongeng|cerita rakyat|jimat|kutukan kuno')],
@@ -229,9 +228,9 @@ const P=Object.assign({}, G_SPEC.pal, VTHEME ? {
  text: '#f8fafc'
 });
 
-/* ===== SISTEM DETEKSI SEMANTIK & AKSI VO (1-TO-1 DENGAN SUARA VO, TANPA BINGKAI) ===== */
+/* ===== SISTEM DIORAMA B-ROLL DETAIL TINGGI & MASUK AKAL (1-TO-1 DENGAN VO) ===== */
 const STOP_WORDS=new Set([
- 'yang','dan','di','ke','dari','ini','itu','untuk','pada','dengan','adalah','sebagai','dalam','oleh','akan','juga','atau','karena','jika','bila','saat','ketika','sebelum','sesudah','setelah','lalu','kemudian','mereka','kami','kita','kamu','dia','ia','orang','manusia','para','semua','setiap','banyak','beberapa','satu','dua','tiga','empat','lima','enam','tujuh','delapan','sembilan','sepuluh','sekitar','hampir','sangat','lebih','paling','bisa','dapat','harus','mau','ingin','pernah','sering','selalu','belum','sudah','telah','sedang','masih','lagi','saja','cuma','hanya','bukan','tidak','nggak','gak','tak','ada','punya','jadi','menjadi','buat','membuat','disebut','bernama','secara','hal','cara','bagian','tahap','kali','sampai','hingga','antara','selama','tengah','awal','akhir','mungkin','ternyata','padahal','namun','tapi','tetapi','kalau','misalnya','contoh','kayak','seperti','gini','begitu','sih','nih','deh','dong','ya','kan','sekali','waktu','dulu','zaman','era','hari','bikin','malah','makin','banget','aja','lo','gue','lu','bayangkan','coba','lihat','enggak','sebuah','layaknya','masuk','mode','justru','kunci','tercepat','segera','sekadar','bahkan','biar','ngira','alasan','aslinya','jauh','serius','urusan','khusus','darurat','kalo','sengaja','tetap','menyangka','abaikan','berkat','detail','kecil','ribuan','biasanya','berbahan','sempit','penuh','mendadak','sering','pernahkah','sadar'
+ 'yang','dan','di','ke','dari','ini','itu','untuk','pada','dengan','adalah','sebagai','dalam','oleh','akan','juga','atau','karena','jika','bila','saat','ketika','sebelum','sesudah','setelah','lalu','kemudian','mereka','kami','kita','kamu','dia','ia','orang','manusia','para','semua','setiap','banyak','beberapa','satu','dua','tiga','empat','lima','enam','tujuh','delapan','sembilan','sepuluh','sekitar','hampir','sangat','lebih','paling','bisa','dapat','harus','mau','ingin','pernah','sering','selalu','belum','sudah','telah','sedang','masih','lagi','saja','cuma','hanya','bukan','tidak','nggak','gak','tak','ada','punya','jadi','menjadi','buat','membuat','disebut','bernama','secara','hal','cara','bagian','tahap','kali','sampai','hingga','antara','selama','tengah','awal','akhir','mungkin','ternyata','padahal','namun','tapi','tetapi','kalau','misalnya','contoh','kayak','seperti','gini','begitu','sih','nih','deh','dong','ya','kan','sekali','waktu','dulu','zaman','era','hari','bikin','malah','makin','banget','aja','lo','gue','lu','bayangkan','coba','lihat','enggak','sebuah','layaknya','masuk','mode','justru','kunci','tercepat','segera','sekadar','bahkan','biar','ngira','alasan','aslinya','jauh','serius','urusan','khusus','darurat','kalo','sengaja','tetap','menyangka','abaikan','berkat','detail','kecil','ribuan','biasanya','berbahan','sempit','penuh','mendadak','pernahkah','sadar'
 ]);
 
 function extractMeaningfulWords(sentence){
@@ -246,79 +245,154 @@ function summarizeVoForBroll(voSentence){
  const words=extractMeaningfulWords(clean);
  const titleStr=(words.slice(0,3).join(' ')||TX.t1).toUpperCase();
  let subStr=clean;
- if(subStr.length>46){
-  const cut=subStr.slice(0,44);
+ if(subStr.length>52){
+  const cut=subStr.slice(0,50);
   const lastSp=cut.lastIndexOf(' ');
-  subStr=(lastSp>20?cut.slice(0,lastSp):cut).trim()+'…';
+  subStr=(lastSp>22?cut.slice(0,lastSp):cut).trim()+'…';
  }
  return{titleStr,subStr,words};
 }
 
-const ICONS=[
- 'lighthouse','locked_door','dining_table','raincoat','nose_scent','tongue_taste','food_bowl','saliva_drop',
- 'ceramic_tile','sound_wave','speaker','microphone','reverb_echo','bed','moon','lamp','floating_hat',
- 'coffee_cup','smartphone','microbe','airplane','ink_bottle','pen_nib','pen_cap','lungs','air_flow',
- 'lifebuoy','dipper','wave','factory','wall_clock','lion','heart','shield','child_shield','brain',
- 'coin','planet','bolt','eye','book','doc','star','trophy','flame','sun','chip','leaf','check',
- 'magnifier','hourglass','rocket','gear','wind_swirl'
+/* 16 ADEGAN DIORAMA MEKANIKAL & NARATIF BERDETAIL TINGGI */
+const DIORAMA_CATALOG=[
+ {
+  id:'vip_pass_card',
+  diorama:'vip_pass',
+  re:mk('kartu|tiket|paspor|akses|member|emas|unlimited|seumur hidup|vip|lisensi|sertifikat|mencabut|cabut|dihentikan|diblokir'),
+  ic1:'trophy',ic2:'check',
+  kicker:'DOKUMEN & AKSES',
+  p1:'chip emas & id',p2:'akses tak terbatas',
+  strip:'Status: Akses Resmi Terverifikasi'
+ },
+ {
+  id:'flight_globe_route',
+  diorama:'flight_globe',
+  re:mk('pesawat|terbang|penerbangan|negara|paris|dunia|rute|bandara|kelas 1|first class|kursi|perjalanan|lintas|benua|makan siang'),
+  ic1:'airplane',ic2:'planet',
+  kicker:'RUTE PENERBANGAN',
+  p1:'jalur lintas negara',p2:'kabin kelas satu',
+  strip:'Mobilitas Udara Jarak Jauh'
+ },
+ {
+  id:'finance_ledger',
+  diorama:'finance_ledger',
+  re:mk('dolar|rupiah|uang|harga|membayar|bayar|merugi|rugi|jutaan|miliaran|biaya|cost|modal|saham|kekayaan|investasi|untung|ekonomi'),
+  ic1:'coin',ic2:'trophy',
+  kicker:'ANALISIS FINANSIAL',
+  p1:'arus nilai transaksi',p2:'dampak neraca biaya',
+  strip:'Perhitungan Biaya & Dampak Ekonomi'
+ },
+ {
+  id:'acoustic_chamber',
+  diorama:'acoustic_chamber',
+  re:mk('kamar mandi|mandi|keramik|ubin|gema|reverb|resonansi|akustik|suara|nyanyi|vokal|gelombang|pantul|memantul|frekuensi|speaker|konser'),
+  ic1:'sound_wave',ic2:'ceramic_tile',
+  kicker:'AKUSTIK & RESONANSI',
+  p1:'dinding pantul keras',p2:'penguatan gelombang',
+  strip:'Pantulan Gelombang Memperpanjang Bunyi'
+ },
+ {
+  id:'sensory_olfactory',
+  diorama:'sensory_olfactory',
+  re:mk('hidung|aroma|bau|reseptor|rasa|lidah|makanan|lezat|air liur|pencernaan|molekul|harum|mencium|santap|lapar'),
+  ic1:'nose_scent',ic2:'food_bowl',
+  kicker:'SISTEM INDRA & KIMIA',
+  p1:'partikel aroma masuk',p2:'400 reseptor saraf',
+  strip:'80% Persepsi Rasa Berasal dari Penciuman'
+ },
+ {
+  id:'brain_neural_net',
+  diorama:'brain_neural',
+  re:mk('otak|pikiran|saraf|sinyal|refleks|bersin|merem|mata|memori|ingatan|psikologi|fokus|sadar|hormon|adrenalin|jantung|detak'),
+  ic1:'brain',ic2:'bolt',
+  kicker:'JARINGAN SARAF OTAK',
+  p1:'impuls listrik saraf',p2:'pusat kendali refleks',
+  strip:'Transmisi Sinyal Saraf Dalam Milidetik'
+ },
+ {
+  id:'sleep_circadian',
+  diorama:'sleep_circadian',
+  re:mk('tidur|kasur|ranjang|bifasik|tengah malam|bulan|mimpi|insomnia|bangun|istirahat|malam|lilin|lampu'),
+  ic1:'bed',ic2:'moon',
+  kicker:'SIKLUS TIDUR MANUSIA',
+  p1:'fase tidur pertama',p2:'jeda bangun malam',
+  strip:'Pola Ritme Sirkadian Alami'
+ },
+ {
+  id:'mystery_crime_scene',
+  diorama:'mystery_scene',
+  re:mk('mercusuar|pulau|pintu|terkunci|hilang|lenyap|misteri|meja makan|jas hujan|detektif|jejak|bukti|kasus|penyelidikan|aneh'),
+  ic1:'lighthouse',ic2:'locked_door',
+  kicker:'REKONSTRUKSI TKP',
+  p1:'akses terkunci rapat',p2:'jejak barang utuh',
+  strip:'Anomali Lokasi Tanpa Tanda Paksa'
+ },
+ {
+  id:'respiratory_airflow',
+  diorama:'respiratory_flow',
+  re:mk('napas|paru|udara|oksigen|tutup pulpen|lubang|tersedak|ventilasi|saluran|aliran|nyawa|medis|keselamatan|anak'),
+  ic1:'lungs',ic2:'pen_cap',
+  kicker:'MEKANISME VENTILASI',
+  p1:'jalur sirkulasi udara',p2:'suplai oksigen aktif',
+  strip:'Desain Keselamatan Mencegah Penyumbatan'
+ },
+ {
+  id:'time_chronometer',
+  diorama:'time_chrono',
+  re:mk('jam|waktu|tahun|abad|detik|menit|berhenti|mati bersamaan|sejarah|kuno|masa lalu|era|zaman|durasi|tenggat'),
+  ic1:'wall_clock',ic2:'hourglass',
+  kicker:'LINIMASA & WAKTU',
+  p1:'penanda kronologi',p2:'titik perubahan era',
+  strip:'Catatan Kronologis Terverifikasi'
+ },
+ {
+  id:'mechanism_engineering',
+  diorama:'mech_gears',
+  re:mk('mesin|roda gigi|sistem|mekanisme|pabrik|industri|teknologi|komponen|rakit|cara kerja|otomasi|robot|chip|digital|hp|ponsel'),
+  ic1:'gear',ic2:'chip',
+  kicker:'REKAYASA SISTEM',
+  p1:'modul penggerak utama',p2:'sinkronisasi komponen',
+  strip:'Alur Kerja Mekanis Terintegrasi'
+ },
+ {
+  id:'cosmos_orbital',
+  diorama:'cosmos_orbit',
+  re:mk('planet|matahari|bumi|luar angkasa|antariksa|orbit|satelit|roket|bintang|galaksi|gravitasi|sains|eksperimen'),
+  ic1:'planet',ic2:'rocket',
+  kicker:'MEKANIKA ANTARIKSA',
+  p1:'lintasan orbit stabil',p2:'gaya tarik gravitasi',
+  strip:'Simulasi Skala & Pergerakan Kosmik'
+ },
+ {
+  id:'micro_biology',
+  diorama:'micro_lab',
+  re:mk('bakteri|virus|kuman|sel|mikroskop|dna|infeksi|imun|darah|kimia|reaksi|kopi|kafein'),
+  ic1:'microbe',ic2:'shield',
+  kicker:'ANALISIS MIKROSKOPIS',
+  p1:'struktur mikroorganisme',p2:'respon pertahanan sel',
+  strip:'Pengamatan Tingkat Seluler'
+ },
+ {
+  id:'nature_element',
+  diorama:'nature_wave',
+  re:mk('laut|ombak|air|banjir|gunung|api|panas|badai|hutan|pohon|singa|hewan|alam|cuaca|karat'),
+  ic1:'wave',ic2:'flame',
+  kicker:'FENOMENA ALAM',
+  p1:'dinamika energi alam',p2:'dampak lingkungan',
+  strip:'Interaksi Kekuatan Alam & Fisika'
+ },
+ {
+  id:'archive_document',
+  diorama:'archive_doc',
+  re:mk('buku|catatan|arsip|sejarawan|penelitian|riset|tulisan|naskah|fakta|bukti|terbukti|valid|resmi'),
+  ic1:'book',ic2:'check',
+  kicker:'ARSIP & VERIFIKASI',
+  p1:'dokumen sumber primer',p2:'validasi fakta sejarah',
+  strip:'Data Berdasarkan Catatan Resmi'
+ }
 ];
-const POOL=['sound_wave','brain','eye','shield','coin','planet','lamp','trophy','gear','magnifier','hourglass','rocket','sun','leaf','heart','chip','flame','check','star','book','wall_clock'];
-function pickFromPool(seedStr,exI){
- const start=hash(seedStr||'x')%POOL.length;
- for(let k=0;k<POOL.length;k++){const ic=POOL[(start+k)%POOL.length];if(!exI.has(ic))return ic}
- return POOL[start];
-}
 
-/* KATALOG VISUAL + AKSI FISIK (ACTION-DRIVEN) UNTUK SINKRONISASI VO */
-const VISUAL_CATALOG=[
- {id:'lighthouse_island',re:mk('mercusuar|pulau|menara|penjaga|flannan|lautan|ombak|terpencil'),ic1:'lighthouse',ic2:'wave',action:'beacon_scan',kicker:'LOKASI KEJADIAN',badge:'PULAU TERPENCIL'},
- {id:'locked_door_mystery',re:mk('pintu|terkunci|kunci|ruangan|kosong|menghilang|hilang|lenyap|misterius'),ic1:'locked_door',ic2:'magnifier',action:'lock_click',kicker:'ANOMALI TKP',badge:'PINTU TERKUNCI'},
- {id:'dining_table_food',re:mk('meja makan|meja|piring|tertata|rapi|hidangan|makan|sarapan|makan malam'),ic1:'dining_table',ic2:'food_bowl',action:'settle_down',kicker:'BUKTI DI LOKASI',badge:'MEJA TERTATA'},
- {id:'raincoat_hang',re:mk('jas hujan|mantel|baju|pakaian|tergantung|gantungan|lemari'),ic1:'raincoat',ic2:'wind_swirl',action:'sway_hang',kicker:'JEJAK TERTINGGAL',badge:'MASIH TERGANTUNG'},
- {id:'nose_aroma',re:mk('hidung|mencium|aroma|bau|reseptor|wewangian|harum|busuk|segar|molekul'),ic1:'nose_scent',ic2:'food_bowl',action:'inhale_stream',kicker:'INDRA PENCIUMAN',badge:'400 RESEPTOR BAU'},
- {id:'taste_flavor',re:mk('rasa|lidah|lezat|enak|manis|pahit|asin|asam|makanan|santap'),ic1:'tongue_taste',ic2:'nose_scent',action:'scale_compare',kicker:'PERSEPSI RASA',badge:'80% DARI AROMA'},
- {id:'saliva_digestion',re:mk('air liur|liur|pencernaan|mengunyah|mulut|lapar|menggoda|lonjakan'),ic1:'saliva_drop',ic2:'food_bowl',action:'drop_trigger',kicker:'RESPON TUBUH',badge:'PICU PENCERNAAN'},
- {id:'ceramic_wall',re:mk('dinding|keramik|ubin|tembok|porselen|kaca|keras|pantul|memantul|memantulkan'),ic1:'ceramic_tile',ic2:'sound_wave',action:'bounce_impact',kicker:'PERMUKAAN KERAS',badge:'PANTULAN SUARA'},
- {id:'sound_wave_bounce',re:mk('gelombang suara|bolak-balik|pantulan|memantul|ruang sempit|ruangan sempit|frekuensi|getaran'),ic1:'sound_wave',ic2:'reverb_echo',action:'wave_emit',kicker:'AKUSTIK RUANG',badge:'GELOMBANG PANTUL'},
- {id:'reverb_amplify',re:mk('reverb|gema|gaung|amplifikasi|memperpanjang|durasi bunyi|terdengar penuh|menggema'),ic1:'reverb_echo',ic2:'speaker',action:'wave_emit',kicker:'EFEK REVERB',badge:'GEMA ALAMI'},
- {id:'speaker_concert',re:mk('speaker|konser|merdu|pita suara|volume|kotak suara|menyanyi|nyanyi|vokal|lagu'),ic1:'speaker',ic2:'microphone',action:'pulse_beat',kicker:'RESONANSI VOKAL',badge:'KONSER PRIBADI'},
- {id:'sleep_bed',re:mk('tidur|kasur|ranjang|bantal|selimut|bifasik|terlelap|mimpi|insomnia'),ic1:'bed',ic2:'moon',action:'float_dream',kicker:'POLA TIDUR',badge:'2 FASE MALAM'},
- {id:'night_moon',re:mk('tengah malam|waktu jaga|malam|bulan|bintang|begadang|terbangun'),ic1:'moon',ic2:'lamp',action:'orbit_cycle',kicker:'WAKTU JAGA',badge:'JEDA 1-2 JAM'},
- {id:'prayer_read',re:mk('berdoa|doa|membaca|baca|mengobrol|tetangga|ibadah|renung'),ic1:'book',ic2:'lamp',action:'settle_down',kicker:'AKTIVITAS MALAM',badge:'AKTIVITAS TENANG'},
- {id:'wall_clock',re:mk('jam dinding|jam weker|jarum jam|berdetak|detik|menit|jam 9|jam kerja|jam pabrik|mati bersamaan|berhenti'),ic1:'wall_clock',ic2:'hourglass',action:'clock_freeze',kicker:'VISUAL WAKTU',badge:'WAKTU BERHENTI'},
- {id:'light_dark',re:mk('lilin|lampu|listrik|penerangan|terang|gelap|cahaya|lampu jalan'),ic1:'lamp',ic2:'bolt',action:'beacon_scan',kicker:'PENERANGAN',badge:'ERA LISTRIK'},
- {id:'factory_iso',re:mk('perusahaan|pabrik|industri|revolusi industri|standar|iso|produksi|merek'),ic1:'factory',ic2:'trophy',action:'rise_growth',kicker:'PERUBAHAN ZAMAN',badge:'JAM KERJA KAKU'},
- {id:'history_book',re:mk('sejarawan|catatan|buku|dokumen|arsip|tulisan|naskah|riset|penelitian|sejarah|kuno|ekirch'),ic1:'book',ic2:'doc',action:'settle_down',kicker:'ARSIP RISET',badge:'ARSIP TERCATAT'},
- {id:'floating_hat',re:mk('topi melayang|topi terbang|topi pesulap|topi'),ic1:'floating_hat',ic2:'wind_swirl',action:'float_dream',kicker:'VISUAL NASKAH',badge:'EFEK VISUAL'},
- {id:'ink_pen',re:mk('tinta|macet|mengering|menulis|ujung pena|bolpoin'),ic1:'ink_bottle',ic2:'pen_nib',action:'drop_trigger',kicker:'MITOS UMUM',badge:'MITOS TINTA'},
- {id:'pen_cap',re:mk('pulpen|tutup pulpen|lubang kecil|ventilasi'),ic1:'pen_cap',ic2:'air_flow',action:'inhale_stream',kicker:'DESAIN 3D',badge:'VENTILASI UDARA'},
- {id:'child_safety',re:mk('anak|balita|menggigit|tertutup|keselamatan|keamanan|melindungi'),ic1:'child_shield',ic2:'heart',action:'shield_guard',kicker:'PERLINDUNGAN',badge:'STANDAR AMAN'},
- {id:'airway_lungs',re:mk('jalur napas|pernapasan|paru|udara|oksigen|tertelan|tersedak|bernapas|mengalir|korban'),ic1:'lungs',ic2:'air_flow',action:'inhale_stream',kicker:'FUNGSI PENYELAMAT',badge:'ALIRAN OKSIGEN'},
- {id:'lifesaver',re:mk('nyawa|terselamatkan|menyelamatkan|pertolongan|medis|dokter|penyelamat'),ic1:'lifebuoy',ic2:'heart',action:'shield_guard',kicker:'DAMPAK NYATA',badge:'TIM PENYELAMAT'},
- {id:'lion_predator',re:mk('singa|harimau|predator|dikejar|hewan|binatang|liar'),ic1:'lion',ic2:'bolt',action:'bounce_impact',kicker:'ANCAMAN ALAM',badge:'RESPON CEPAT'},
- {id:'heart_pulse',re:mk('jantung|berdegup|denyut|darah|tekanan|adrenalin|kortisol'),ic1:'heart',ic2:'bolt',action:'pulse_beat',kicker:'REAKSI TUBUH',badge:'DETAK AKTIF'},
- {id:'bathroom_water',re:mk('kamar mandi|gayung|bak air|mandi|sabun|air dingin|shower|toilet|wc|saluran|drainase|selokan|genangan|hanyut'),ic1:'dipper',ic2:'wave',action:'wave_emit',kicker:'ARUS AIR',badge:'SIRKULASI AIR'},
- {id:'brain_reflex',re:mk('otak|pikiran|mental|fokus|psikologi|sadar|tubuh|saraf|bersin|merem|mata|sinyal|memproses|informasi'),ic1:'brain',ic2:'bolt',action:'signal_transfer',kicker:'PROSES OTAK',badge:'SINYAL SARAF'},
- {id:'money_wealth',re:mk('uang|kaya|bisnis|saham|emas|sukses|cuan|modal|harga|ekonomi'),ic1:'coin',ic2:'trophy',action:'rise_growth',kicker:'NILAI EKONOMI',badge:'PERTUMBUHAN'},
- {id:'space_science',re:mk('planet|luar angkasa|matahari|bumi|sains|teknologi|robot|ai|satelit'),ic1:'planet',ic2:'chip',action:'orbit_cycle',kicker:'EKSPLORASI SAINS',badge:'DATA SAINS'},
- {id:'food_drink',re:mk('kopi|teh|minuman|gula|garam|dapur|masak|kafein'),ic1:'coffee_cup',ic2:'bolt',action:'inhale_stream',kicker:'KONSUMSI & KIMIA',badge:'REAKSI KIMIA'},
- {id:'tech_device',re:mk('hp|ponsel|smartphone|layar|baterai|sinyal|wifi|internet|komputer|aplikasi'),ic1:'smartphone',ic2:'chip',action:'signal_transfer',kicker:'TEKNOLOGI DIGITAL',badge:'KONEKTIVITAS'},
- {id:'micro_bacteria',re:mk('bakteri|virus|kuman|sel|mikroskop|dna|infeksi|imun|antibiotik'),ic1:'microbe',ic2:'shield',action:'orbit_cycle',kicker:'DUNIA MIKROSKOPIS',badge:'MIKROSKOPIS'},
- {id:'transport_vehicle',re:mk('pesawat|mobil|kereta|kapal|mesin|kecepatan|terbang|roda|kendaraan'),ic1:'airplane',ic2:'bolt',action:'signal_transfer',kicker:'REKAYASA GERAK',badge:'AERODINAMIKA'},
- {id:'nature_disaster',re:mk('gunung|lava|gempa|tsunami|badai|bencana|banjir|laut|samudra|angin|karat|korosi'),ic1:'wave',ic2:'shield',action:'wave_emit',kicker:'ALAM & CUACA',badge:'GELOMBANG ALAM'},
- {id:'fire_heat',re:mk('api|kebakaran|membara|panas|terbakar|bara'),ic1:'flame',ic2:'shield',action:'pulse_beat',kicker:'ENERGI PANAS',badge:'SUHU TINGGI'},
- {id:'investigate',re:mk('selidik|penyelidikan|menyelidiki|jejak|investigasi|detektif|petunjuk|menemukan|terungkap|keanehan'),ic1:'magnifier',ic2:'doc',action:'beacon_scan',kicker:'PENYELIDIKAN',badge:'TEMUAN BARU'},
- {id:'long_time',re:mk('tenggat|durasi|bertahun|puluhan tahun|berabad|sejak lama|menunggu|lamanya|detik ini'),ic1:'hourglass',ic2:'wall_clock',action:'clock_freeze',kicker:'RENTANG WAKTU',badge:'RENTANG WAKTU'},
- {id:'launch_growth',re:mk('roket|peluncuran|meluncur|melejit|naik daun|tumbuh pesat|lonjakan'),ic1:'rocket',ic2:'star',action:'rise_growth',kicker:'LONJAKAN',badge:'MELESAT'},
- {id:'mechanism_gear',re:mk('roda gigi|mekanisme|komponen|rakit|cara kerja|sistem kerja|sistem keamanan|tercanggih'),ic1:'gear',ic2:'shield',action:'orbit_cycle',kicker:'CARA KERJA',badge:'SISTEM KERJA'},
- {id:'nature_plant',re:mk('tanaman|pohon|hutan|daun|taman|bunga|tumbuh'),ic1:'leaf',ic2:'sun',action:'rise_growth',kicker:'ALAM HIDUP',badge:'SIKLUS ALAM'},
- {id:'victory',re:mk('juara|menang|kemenangan|rekor|penghargaan|prestasi|piala'),ic1:'trophy',ic2:'star',action:'rise_growth',kicker:'PENCAPAIAN',badge:'PRESTASI'},
- {id:'verified',re:mk('terbukti|terverifikasi|valid|disahkan|disetujui|resmi'),ic1:'check',ic2:'shield',action:'shield_guard',kicker:'TERVERIFIKASI',badge:'FAKTA VALID'},
- {id:'daylight',re:mk('pagi|siang|sinar matahari|cerah|terbit'),ic1:'sun',ic2:'leaf',action:'beacon_scan',kicker:'WAKTU SIANG',badge:'SIANG HARI'}
-];
-
-/* 6 KOMPOSISI PANGGUNG TANPA BINGKAI (FRAMELESS COMPOSITIONS) */
-const STAGE_STYLES=['hero_floating','versus_scale','action_transfer','callout_anatomy','meter_gauge','orbit_system'];
+const ALL_DIORAMAS=['vip_pass','flight_globe','finance_ledger','acoustic_chamber','sensory_olfactory','brain_neural','sleep_circadian','mystery_scene','respiratory_flow','time_chrono','mech_gears','cosmos_orbit','micro_lab','nature_wave','archive_doc'];
 
 function detectVisualFromVoScript(voSentence,aiHintObj,excludeIds=new Set(),excludeIcons=new Set(),sceneIdx=0,scKey='b1'){
  const voClean=(voSentence||'').replace(/\*/g,'').trim();
@@ -327,74 +401,60 @@ function detectVisualFromVoScript(voSentence,aiHintObj,excludeIds=new Set(),excl
  const voLow=voClean.toLowerCase();
  const sum=summarizeVoForBroll(voClean);
 
- /* Pilih gaya panggung bebas bingkai yang selalu bervariasi antar kalimat & antar judul */
- let autoStage=STAGE_STYLES[(TITLE_HASH+sceneIdx*5+hash(voLow)%6)%STAGE_STYLES.length];
- if(/\d+\s*%/.test(voClean))autoStage='meter_gauge';
- else if(/vs|atau|dibanding|berasal dari|sedangkan|kecuali/.test(voLow))autoStage='versus_scale';
- else if(/mengirim|memproses|memicu|mengalir|memantul|tarik|dorong|dari/.test(voLow))autoStage='action_transfer';
-
  const defaultMode=(scKey==='title'||scKey==='a'||scKey==='c')?'pip_broll':'full_broll';
  const chosenMode=hintObj.mode||defaultMode;
- const meterMatch=voClean.match(/(\d{1,3})\s*%/);
- const meterPct=Number(hintObj.meterPct)||(meterMatch?cl(Number(meterMatch[1]),10,100):cl(35+((hash(voLow)+sceneIdx*19)%65),25,98));
 
- /* Ekstrak 2 label penunjuk langsung dari kata penting kalimat VO */
- const kw1=(sum.words[0]||'FAKTOR A').toUpperCase();
- const kw2=(sum.words[1]||sum.words[0]||'FAKTOR B').toUpperCase();
+ /* Ekstrak angka/persentase/nominal nyata dari VO jika ada */
+ const numMatch=voClean.match(/(\$\s*[\d.,]+|\d[\d.,]*\s*(?:%|persen|dolar|rupiah|juta|miliar|ribu|kali|tahun|jam|detik))/i);
+ const numBadge=numMatch?numMatch[1].toUpperCase():'';
 
- const base={
+ const kw1=(sum.words[0]||'komponen utama').toLowerCase();
+ const kw2=(sum.words[1]||sum.words[0]||'proses aktif').toLowerCase();
+
+ let bestItem=null,bestScore=0;
+ for(const item of DIORAMA_CATALOG){
+  const mVo=(voLow.match(new RegExp(item.re.source,'g'))||[]).length;
+  const mHint=(hintText.match(new RegExp(item.re.source,'g'))||[]).length;
+  let score=mVo*6+mHint*2;
+  if(score>0){
+   if(!excludeIds.has(item.id))score+=2;
+   if(score>bestScore){bestScore=score;bestItem=item}
+  }
+ }
+
+ const fallbackDiorama=ALL_DIORAMAS[(TITLE_HASH+sceneIdx*3)%ALL_DIORAMAS.length];
+ const chosen=bestItem||{
+  id:'auto_'+sceneIdx,
+  diorama:fallbackDiorama,
+  ic1:'brain',ic2:'bolt',
+  kicker:'VISUALISASI NARASI',
+  p1:kw1,p2:kw2,
+  strip:sum.subStr
+ };
+
+ /* Deteksi apakah kartu dicabut / dibatalkan / rugi / negatif */
+ const isNegative=/mencabut|cabut|dihentikan|merugi|rugi|gagal|hilang|terkunci|bahaya|larang|mati|berhenti/.test(voLow);
+
+ return{
+  id:chosen.id,
   mode:chosenMode,
-  stage:autoStage,
-  action:'float_dream',
-  kicker:(hintObj.kicker||'VISUAL VO').toUpperCase(),
+  diorama:chosen.diorama,
+  ic1:chosen.ic1,
+  ic2:chosen.ic2,
+  isNegative,
+  numBadge,
+  kicker:(hintObj.kicker||chosen.kicker).toUpperCase(),
   title:(hintObj.title||sum.titleStr).toUpperCase(),
-  sub:hintObj.sub||sum.subStr||'',
-  badge:hintObj.badge||sum.words.slice(0,2).join(' ').toUpperCase()||'VISUAL VO',
-  badge1:hintObj.badge1||kw1,
-  badge2:hintObj.badge2||kw2,
-  meterPct,
+  sub:hintObj.sub||sum.subStr,
+  p1:(hintObj.badge1||chosen.p1).toLowerCase(),
+  p2:(hintObj.badge2||chosen.p2).toLowerCase(),
+  strip:hintObj.badge||numBadge||chosen.strip,
   svg:hintObj.svg||'',
   svg2:hintObj.svg2||'',
   img1:null,
   img2:null,
   voQuote:voClean
  };
-
- let bestItem=null,bestScore=0;
- for(const item of VISUAL_CATALOG){
-  const mVo=(voLow.match(new RegExp(item.re.source,'g'))||[]).length;
-  const mHint=(hintText.match(new RegExp(item.re.source,'g'))||[]).length;
-  let score=mVo*6+mHint*2;
-  if(score>0){
-   if(!excludeIds.has(item.id))score+=2;
-   if(!excludeIcons.has(item.ic1))score+=1;
-   if(score>bestScore){bestScore=score;bestItem=item}
-  }
- }
-
- if(bestItem){
-  return{
-   ...base,
-   id:bestItem.id,
-   ic1:bestItem.ic1,
-   ic2:bestItem.ic2,
-   action:bestItem.action||'float_dream',
-   kicker:(hintObj.kicker||bestItem.kicker).toUpperCase(),
-   title:(hintObj.title||sum.titleStr).toUpperCase(),
-   sub:hintObj.sub||sum.subStr,
-   badge:hintObj.badge||bestItem.badge
-  };
- }
-
- const hintIcon=ICONS.find(ic=>!excludeIcons.has(ic)&&new RegExp('\\b'+ic.replace(/_/g,'[_ ]')+'\\b').test(hintText));
- if(hintIcon){
-  const ex2=new Set([...excludeIcons,hintIcon]);
-  return{...base,id:'hint_'+hintIcon,ic1:hintIcon,ic2:pickFromPool(voLow+'2',ex2)};
- }
-
- const ic1=pickFromPool(voLow+TITLE_SIG,excludeIcons);
- const ic2=pickFromPool(voLow+TITLE_SIG+'b',new Set([...excludeIcons,ic1]));
- return{...base,id:ic1,ic1,ic2};
 }
 
 function sanitizeSvgString(rawSvg){
@@ -433,7 +493,6 @@ function rasterizeSvgToImage(svgStr){
  });
 }
 
-/* Deteksi objek sampul dari gabungan Judul + Baris pertama VO agar sampul 100% relevan dengan cerita */
 const TITLE_OBJ=detectVisualFromVoScript(TITLE+' '+TX.t1+' '+TX.t2+' '+(L[0]?L[0][2]:''),null,new Set(),new Set(),0,'title');
 const LINE_BROLL_MAP={};
 const SCENE_BROLL_MAP={};
@@ -558,7 +617,6 @@ function applyExactElevenLabsTimings(){
  return true;
 }
 
-/* ===== SILENCE-ANCHORED DP ALIGNER & VOICE-ONSET WORD REFINER ===== */
 function detectIslands(env,totalWins,stepSec,thr,minSil){
  const out=[];
  let inSp=false,s0=0,sil=0;
@@ -917,7 +975,7 @@ function rgb(c){
 const al=(c,a)=>{const q=rgb(c),alpha=Number.isFinite(+a)?cl(+a,0,1):1;return'rgba('+q[0]+','+q[1]+','+q[2]+','+alpha+')'};
 const shade=(c,amt)=>{const q=rgb(c);return'rgb('+cl(Math.round(q[0]+amt),0,255)+','+cl(Math.round(q[1]+amt),0,255)+','+cl(Math.round(q[2]+amt),0,255)+')'};
 const mixC=(a,b,t)=>{const p=rgb(a),q=rgb(b);return'rgb('+Math.round(p[0]+(q[0]-p[0])*t)+','+Math.round(p[1]+(q[1]-p[1])*t)+','+Math.round(p[2]+(q[2]-p[2])*t)+')'};
-function rr(x,y,w,h,r){X.beginPath();X.moveTo(x+r,y);X.arcTo(x+w,y,x+w,y+h,r);X.arcTo(x+w,y+h,x,y+h,r);X.arcTo(x,y+h,x,y,r);X.arcTo(x,y,x+w,y,r);X.closePath()}
+function rr(x,y,w,h,r){const rad=Math.min(r,w/2,h/2);X.beginPath();X.moveTo(x+rad,y);X.arcTo(x+w,y,x+w,y+h,rad);X.arcTo(x+w,y+h,x,y+h,rad);X.arcTo(x,y+h,x,y,rad);X.arcTo(x,y,x+w,y,rad);X.closePath()}
 function txt(s,x,y,sz,col,al2='center',w=800,st=0,ff=SANS){X.font=`${w} ${sz}px ${ff}`;X.direction=RTL?'rtl':'ltr';X.textAlign=al2;X.textBaseline='middle';X.lineJoin='round';if(st){X.lineWidth=st;X.strokeStyle='rgba(8,12,20,.95)';X.strokeText(s,x,y)}X.fillStyle=col;X.fillText(s,x,y)}
 const fz=(t,mw,sz,ff=SANS)=>{X.font=`800 ${sz}px ${ff}`;const w=X.measureText(t).width;return w>0?Math.min(sz,sz*mw/w):sz};
 const tg=(y,f,colA,colB)=>{const g=X.createLinearGradient(0,y-f*.5,0,y+f*.5);g.addColorStop(0,colA);g.addColorStop(1,colB);return g};
@@ -992,8 +1050,8 @@ const WORLD_THEMES={
   layers:[{t:'moon',d:.06,c:'#d8d0ff'},{t:'pines',d:.2,c:'#0e0e1c',y:.66},{t:'fog',d:.35,c:'#7a6bb0'},{t:'pines',d:.6,c:'#07070f',y:.78},{t:'fog',d:.8,c:'#9a8be0'},{t:'ground',d:1,c:'#04040a',y:.86}]},
  alam:{re:/hutan|alam|pohon|gunung|hewan|sungai|tanaman|burung|binatang|lingkungan|singa/g,amb:'wind',sky:['#9fe3ff','#d6f5d0','#fff1b8'],light:{x:480,y:210,c:'#fffbd0'},
   layers:[{t:'clouds',d:.07},{t:'mountains',d:.18,c:'#7ab894',y:.56},{t:'hills',d:.35,c:'#5aa36b',y:.64},{t:'trees',d:.65,c:'#2f7d4a',y:.78},{t:'ground',d:1,c:'#3d6b3a',y:.84}]},
- kota:{re:/kota|jalan|gedung|modern|penduduk|lalu lintas|metropolitan|perkotaan|pasar|toko|bisnis|uang/g,amb:'city',sky:['#ffd9a0','#ffb58a','#7a6bb0'],light:{x:200,y:300,c:'#fff0c8'},
-  layers:[{t:'clouds',d:.07},{t:'skyline',d:.2,c:'#9b7fa8',y:.62},{t:'skyline',d:.5,c:'#5a4a78',y:.72},{t:'lamps',d:.85,c:'#ffd27a'},{t:'ground',d:1,c:'#2a2238',y:.84}]},
+ kota:{re:/kota|jalan|gedung|modern|penduduk|lalu lintas|metropolitan|perkotaan|pasar|toko|bisnis|uang|pesawat|tiket|maskapai|paris/g,amb:'city',sky:['#0b192c','#1e3a5f','#334155'],light:{x:200,y:300,c:'#fde68a'},
+  layers:[{t:'clouds',d:.07},{t:'skyline',d:.2,c:'#1e293b',y:.62},{t:'skyline',d:.5,c:'#0f172a',y:.72},{t:'lamps',d:.85,c:'#facc15'},{t:'ground',d:1,c:'#090d16',y:.84}]},
  psikologi_otak:{re:/otak|pikiran|mental|psikologi|emosi|stres|ingatan|memori|refleks|saraf|bersin|hidung|aroma|rasa/g,amb:'space',sky:['#0f172a','#1e293b','#0f766e'],light:{x:360,y:240,c:'#99f6e4'},
   layers:[{t:'nebula',d:.08},{t:'sound_rings',d:.3,c:'#5eead4'},{t:'stars',d:.45,n:50},{t:'grid',d:1,c:'#2dd4bf'}]},
  sains_lab:{re:/sains|eksperimen|kimia|fisika|virus|bakteri|dna|sel|mikroskop|gelombang|energi/g,amb:'hum',sky:['#042f2e','#115e59','#0f766e'],light:{x:480,y:220,c:'#99f6e4'},
@@ -1069,7 +1127,6 @@ function drawWorldLayer(ly,off,mode){
   const x=520-off*0.12%700,y=250;const col=ly.t==='moon'?(ly.c||'#fff4cf'):'#fff2b0';
   const g=X.createRadialGradient(x,y,10,x,y,190);g.addColorStop(0,al(col,.55));g.addColorStop(1,al(col,0));X.fillStyle=g;X.fillRect(x-200,y-200,400,400);
   X.fillStyle=col;X.beginPath();X.arc(x,y,ly.t==='moon'?64:58,0,6.283);X.fill();
-  if(ly.t==='moon'){X.fillStyle='rgba(0,0,0,.08)';[[-18,-10,12],[16,14,9],[8,-24,7]].forEach(q=>{X.beginPath();X.arc(x+q[0],y+q[1],q[2],0,6.283);X.fill()})}
  }else if(ly.t==='clouds'){
   ax.forEach(it=>{const x=wxOf(it,off+A*8*(0.4+it.b));if(x>W+200)return;const y=110+it.a*330,s=0.7+it.b*0.9;
    X.fillStyle=al(ly.c||'#ffffff',.45);[[0,0,46],[48,8,38],[-46,10,34],[22,-18,34]].forEach(q=>{X.beginPath();X.arc(x+q[0]*s,y+q[1]*s,q[2]*s,0,6.283);X.fill()})});
@@ -1142,11 +1199,10 @@ function drawWorld(mode,accent){
   const off=viewBase*ly.d+(WCAM.u-0.5)*240*ly.d+A*5*ly.d;
   X.save();drawWorldLayer(ly,off,mode);X.restore();
  });
- /* Jika mode B-Roll Full Layar, beri atmosfer lembut agar objek 3D tanpa bingkai berdiri kontras */
  if(mode==='broll_full'){
-  const veil=X.createRadialGradient(360,490,80,360,490,620);
-  veil.addColorStop(0,'rgba(15,23,42,0.18)');
-  veil.addColorStop(1,'rgba(15,23,42,0.52)');
+  const veil=X.createRadialGradient(360,510,90,360,510,640);
+  veil.addColorStop(0,'rgba(8,14,28,0.28)');
+  veil.addColorStop(1,'rgba(8,14,28,0.68)');
   X.fillStyle=veil;X.fillRect(0,0,W,H);
  }
  X.restore();
@@ -1192,15 +1248,15 @@ function applyCinematicCamera2(){
  const bro=/^b\d+$/.test(sc);
  const pool=bro?['push','pull','tiltUp','push','tiltDown']:(sc==='cta'?['push']:['panL','panR','drift','pull','panR']);
  const mv=pool[((TITLE_HASH>>>2)+(cur.run||0))%pool.length];
- let z=1.05,dx=0,dy=0;
- if(mv==='push'){z=1.03+0.06*e}
- else if(mv==='pull'){z=1.09-0.06*e}
- else if(mv==='panL'){dx=-16+32*e}
- else if(mv==='panR'){dx=16-32*e}
- else if(mv==='tiltUp'){z=1.045;dy=12-24*e}
- else if(mv==='tiltDown'){z=1.045;dy=-12+24*e}
- else{dx=Math.sin(A*0.35+(TITLE_HASH%9))*10;dy=Math.cos(A*0.27+(TITLE_HASH%5))*7}
- const punch=(CS&&CS.speaking&&Number.isFinite(CS.energy))?CS.energy*0.008:0;
+ let z=1.04,dx=0,dy=0;
+ if(mv==='push'){z=1.02+0.05*e}
+ else if(mv==='pull'){z=1.07-0.05*e}
+ else if(mv==='panL'){dx=-14+28*e}
+ else if(mv==='panR'){dx=14-28*e}
+ else if(mv==='tiltUp'){z=1.035;dy=10-20*e}
+ else if(mv==='tiltDown'){z=1.035;dy=-10+20*e}
+ else{dx=Math.sin(A*0.35+(TITLE_HASH%9))*8;dy=Math.cos(A*0.27+(TITLE_HASH%5))*6}
+ const punch=(CS&&CS.speaking&&Number.isFinite(CS.energy))?CS.energy*0.007:0;
  WCAM.u=(mv==='panL')?e:(mv==='panR'?1-e:0.5+dx/32);
  WCAM.x=dx;
  X.translate(360+dx,640+dy);X.scale(z+punch,z+punch);X.translate(-360,-640);
@@ -1208,7 +1264,6 @@ function applyCinematicCamera2(){
 
 function drawBrightVariedBg(mode,accent){
  if(WORLD.enabled&&drawWorld(mode,accent))return;
-
  const pan=Math.sin(A*0.42)*24;
  const cur=L[li];
  const run=cur?cur.run:0;
@@ -1217,23 +1272,17 @@ function drawBrightVariedBg(mode,accent){
  const sPrev=BG_LIGHT_SCHEMES[(TITLE_HASH+Math.max(0,run-1))%NS];
  const mt=(cur&&run>0&&tm>=COVER_HOLD)?eo(cl((tm-cur.rs)/0.5)):1;
  const sch={top:mixC(sPrev.top,sNow.top,mt),mid:mixC(sPrev.mid,sNow.mid,mt),bot:mixC(sPrev.bot,sNow.bot,mt),sunX:sPrev.sunX+(sNow.sunX-sPrev.sunX)*mt};
-
  X.save();
  const sky=X.createLinearGradient(0,0,0,H);
- sky.addColorStop(0,sch.top);
- sky.addColorStop(0.55,sch.mid);
- sky.addColorStop(1,sch.bot);
- X.fillStyle=sky;
- X.fillRect(0,0,W,H);
-
+ sky.addColorStop(0,sch.top);sky.addColorStop(0.55,sch.mid);sky.addColorStop(1,sch.bot);
+ X.fillStyle=sky;X.fillRect(0,0,W,H);
  const sunX=sch.sunX+pan*1.4;
  const sunRadius=560+Math.sin(A*1.2)*38;
  const sunGlow=X.createRadialGradient(sunX,175,20,sunX,210,sunRadius);
  sunGlow.addColorStop(0,'rgba(255,255,255,0.96)');
  sunGlow.addColorStop(0.45,al(accent,0.24));
  sunGlow.addColorStop(1,'rgba(255,255,255,0)');
- X.fillStyle=sunGlow;
- X.fillRect(0,0,W,H);
+ X.fillStyle=sunGlow;X.fillRect(0,0,W,H);
  X.restore();
  drawLivingDust(accent,0.62);
 }
@@ -1394,7 +1443,7 @@ function initCharFromUrl(url){
 }
 function initCharSafe(url){return Promise.race([initCharFromUrl(url).catch(()=>false),new Promise(r=>setTimeout(()=>r(false),8000))])}
 
-/* ===== STIKER SAMPUL & RENDERER 60+ OBJEK 3D BEBAS BINGKAI ===== */
+/* ===== STIKER SAMPUL & KOMPONEN CALLOUT BERDETAIL TINGGI ===== */
 function drawStickerBadge(shapeId,r,fillCol,borderCol){
  X.save();
  X.beginPath();
@@ -1434,464 +1483,93 @@ function drawStickerBadge(shapeId,r,fillCol,borderCol){
  X.restore();
 }
 
-function draw3DObject(type,x,y,r,col,customImg=null,actProg=1){
+/* KAPSUL CALLOUT PUTIH BERSIH DENGAN TITIK AKSEN (GAYA INFOGRAPHIC DETAIL) */
+function drawSmartCallout(xTarget,yTarget,xPill,yPill,label,dotCol,alpha=1){
+ if(alpha<=0.02)return;
  X.save();
- X.translate(x,y);
- X.lineCap='round';X.lineJoin='round';
+ X.globalAlpha*=alpha;
+ X.font='700 17px Poppins,sans-serif';
+ const tw=X.measureText(label).width;
+ const pw=Math.min(280,tw+46);
+ const ph=34;
+ const px=xPill-pw/2;
+ const py=yPill-ph/2;
 
- /* Bayangan lantai 3D lembut tanpa kotak bingkai */
- X.save();
- const shG=X.createRadialGradient(0,r*0.95,r*0.08,0,r*0.95,r*0.85);
- shG.addColorStop(0,'rgba(2,6,23,0.34)');
- shG.addColorStop(1,'rgba(2,6,23,0)');
- X.fillStyle=shG;
+ /* Garis penunjuk siku yang rapi ke titik target di objek */
+ X.strokeStyle='rgba(255,255,255,0.75)';
+ X.lineWidth=2.5;
  X.beginPath();
- X.ellipse(0,r*0.95,r*0.82,r*0.22,0,0,Math.PI*2);
- X.fill();
+ X.moveTo(xTarget,yTarget);
+ const elbowX=xTarget+(xPill-xTarget)*0.45;
+ X.lineTo(elbowX,yPill);
+ X.lineTo(xPill,yPill);
+ X.stroke();
+
+ /* Titik target di objek */
+ X.fillStyle=dotCol;
+ X.beginPath();X.arc(xTarget,yTarget,6.5,0,Math.PI*2);X.fill();
+ X.strokeStyle='#0f172a';X.lineWidth=2;X.stroke();
+
+ /* Kapsul label putih bersih */
+ X.shadowColor='rgba(2,6,23,0.45)';X.shadowBlur=12;X.shadowOffsetY=4;
+ X.fillStyle='#ffffff';
+ rr(px,py,pw,ph,ph/2);X.fill();
+ X.shadowColor='transparent';
+ X.strokeStyle='#0f172a';X.lineWidth=2.2;
+ rr(px,py,pw,ph,ph/2);X.stroke();
+
+ /* Titik indikator berwarna di dalam kapsul */
+ X.fillStyle=dotCol;
+ X.beginPath();X.arc(px+16,yPill,5.5,0,Math.PI*2);X.fill();
+
+ /* Teks label */
+ X.fillStyle='#0f172a';
+ X.textAlign='left';X.textBaseline='middle';
+ X.fillText(label,px+28,yPill+0.5,pw-38);
  X.restore();
+}
 
- if(customImg){
-  const sz=r*2.30;
-  X.drawImage(customImg,-sz/2,-sz/2,sz,sz);
-  X.restore();
-  return;
- }
+/* PITA DATA DI BAWAH ADEGAN (MUNCUL SAAT MENJELASKAN FAKTA/ANGKA) */
+function drawBottomDataStrip(text,cx,cy,accentCol,alpha=1){
+ if(!text||alpha<=0.02)return;
+ X.save();
+ X.globalAlpha*=alpha;
+ const w=560,h=42;
+ X.shadowColor='rgba(2,6,23,0.45)';X.shadowBlur=14;X.shadowOffsetY=4;
+ X.fillStyle=accentCol;
+ rr(cx-w/2,cy-h/2,w,h,12);X.fill();
+ X.shadowColor='transparent';
+ X.strokeStyle='#0f172a';X.lineWidth=2.5;
+ rr(cx-w/2,cy-h/2,w,h,12);X.stroke();
+ txt(text,cx,cy+1,fz(text,w-32,18),'#091017','center',900);
+ X.restore();
+}
 
- const cTop=shade(col,55);
- const cMid=col;
- const cDark=shade(col,-60);
-
- if(type==='lighthouse'){
-  /* Mercusuar 3D + sorot cahaya berputar */
-  const beamAng=Math.sin(A*2.2)*0.45;
-  X.save();
-  X.translate(0,-r*0.64);
-  X.rotate(beamAng);
-  const bG=X.createLinearGradient(0,0,r*1.6,0);
-  bG.addColorStop(0,'rgba(254,240,138,0.85)');
-  bG.addColorStop(1,'rgba(254,240,138,0)');
-  X.fillStyle=bG;
-  X.beginPath();X.moveTo(0,-r*0.06);X.lineTo(r*1.6,-r*0.42);X.lineTo(r*1.6,r*0.42);X.lineTo(0,r*0.06);X.closePath();X.fill();
-  X.beginPath();X.moveTo(0,-r*0.06);X.lineTo(-r*1.6,-r*0.42);X.lineTo(-r*1.6,r*0.42);X.lineTo(0,r*0.06);X.closePath();X.fill();
-  X.restore();
-
-  X.fillStyle='#475569';
-  X.beginPath();X.ellipse(0,r*0.82,r*0.76,r*0.20,0,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-
+function drawCoverIcon(type,r,col){
+ X.save();
+ X.lineCap='round';X.lineJoin='round';
+ const cTop=shade(col,50),cDark=shade(col,-50);
+ if(type==='airplane'){
+  X.rotate(-0.25);
   X.fillStyle='#ffffff';
-  X.beginPath();X.moveTo(-r*0.36,r*0.76);X.lineTo(-r*0.22,-r*0.48);X.lineTo(r*0.22,-r*0.48);X.lineTo(r*0.36,r*0.76);X.closePath();X.fill();
-  X.stroke();
-
-  X.fillStyle='#ef4444';
-  X.beginPath();X.moveTo(-r*0.31,r*0.32);X.lineTo(-r*0.26,-r*0.04);X.lineTo(r*0.26,-r*0.04);X.lineTo(r*0.31,r*0.32);X.closePath();X.fill();
-
-  X.fillStyle='#fef08a';rr(-r*0.24,-r*0.74,r*0.48,r*0.26,6);X.fill();X.stroke();
-  X.fillStyle='#ef4444';
-  X.beginPath();X.moveTo(-r*0.28,-r*0.74);X.lineTo(0,-r*0.98);X.lineTo(r*0.28,-r*0.74);X.closePath();X.fill();X.stroke();
-
- }else if(type==='locked_door'){
-  /* Pintu kayu 3D + gembok terkunci bergetar saat VO menyebut pintu terkunci */
-  const shake=actProg<0.6?Math.sin(A*28)*0.04*(1-actProg):0;
-  X.rotate(shake);
-  X.fillStyle='#1e293b';rr(-r*0.52,-r*0.86,r*1.04,r*1.72,14);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.5;X.stroke();
-
-  const dG=X.createLinearGradient(-r*0.44,-r*0.78,r*0.44,r*0.78);
-  dG.addColorStop(0,'#d97706');dG.addColorStop(1,'#78350f');
-  X.fillStyle=dG;rr(-r*0.44,-r*0.78,r*0.88,r*1.58,10);X.fill();X.stroke();
-
-  /* Gembok kuning besar di tengah pintu */
-  X.strokeStyle='#e2e8f0';X.lineWidth=8;
-  X.beginPath();X.arc(0,-r*0.06,r*0.20,Math.PI,0);X.stroke();
-  X.fillStyle='#facc15';rr(-r*0.26,-r*0.04,r*0.52,r*0.42,10);X.fill();X.stroke();
-  X.fillStyle='#0f172a';X.beginPath();X.arc(0,r*0.14,r*0.07,0,Math.PI*2);X.fill();
-
- }else if(type==='dining_table'){
-  /* Meja makan 3D dengan piring & gelas rapi */
-  X.fillStyle='#92400e';rr(-r*0.86,r*0.06,r*1.72,r*0.22,8);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.fillStyle='#78350f';
-  rr(-r*0.66,r*0.28,r*0.16,r*0.56,4);X.fill();X.stroke();
-  rr(r*0.50,r*0.28,r*0.16,r*0.56,4);X.fill();X.stroke();
-  /* 3 piring rapi di atas meja */
-  [-0.45,0,0.45].forEach((px,k)=>{
-   X.fillStyle='#ffffff';X.beginPath();X.ellipse(px*r,r*0.02,r*0.18,r*0.06,0,0,Math.PI*2);X.fill();X.stroke();
-   X.fillStyle=k===1?'#f97316':'#38bdf8';X.beginPath();X.arc(px*r,-r*0.04,r*0.08,0,Math.PI*2);X.fill();
-  });
-
- }else if(type==='raincoat'){
-  /* Jas hujan kuning tergantung berayun */
-  X.rotate(Math.sin(A*2.4)*0.07);
-  X.strokeStyle='#94a3b8';X.lineWidth=6;
-  X.beginPath();X.arc(0,-r*0.74,r*0.14,Math.PI,0.2);X.stroke();
-  const rcG=X.createLinearGradient(-r*0.5,-r*0.6,r*0.5,r*0.7);
-  rcG.addColorStop(0,'#fde047');rcG.addColorStop(1,'#eab308');
-  X.fillStyle=rcG;
-  X.beginPath();
-  X.moveTo(-r*0.24,-r*0.60);X.lineTo(r*0.24,-r*0.60);
-  X.lineTo(r*0.56,r*0.12);X.lineTo(r*0.36,r*0.20);X.lineTo(r*0.42,r*0.78);
-  X.lineTo(-r*0.42,r*0.78);X.lineTo(-r*0.36,r*0.20);X.lineTo(-r*0.56,r*0.12);
-  X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-
- }else if(type==='nose_scent'){
-  /* Hidung 3D + gelombang partikel aroma melayang masuk */
-  const nG=X.createLinearGradient(-r*0.4,-r*0.7,r*0.5,r*0.6);
-  nG.addColorStop(0,'#fed7aa');nG.addColorStop(1,'#fb923c');
-  X.fillStyle=nG;
-  X.beginPath();
-  X.moveTo(-r*0.12,-r*0.76);
-  X.quadraticCurveTo(-r*0.06,-r*0.15,r*0.36,r*0.22);
-  X.quadraticCurveTo(r*0.54,r*0.46,r*0.18,r*0.56);
-  X.quadraticCurveTo(-r*0.18,r*0.64,-r*0.34,r*0.42);
-  X.quadraticCurveTo(-r*0.38,r*0.16,-r*0.22,-r*0.76);
-  X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.4;X.stroke();
-  /* Partikel molekul bau naik masuk ke hidung */
-  for(let k=0;k<4;k++){
-   const ph=((A*0.9+k*0.25)%1);
-   const px=r*0.25+Math.sin(ph*6+k)*14;
-   const py=r*0.95-ph*r*0.48;
-   X.fillStyle=al('#34d399',1-ph*0.6);
-   X.beginPath();X.arc(px,py,6+k*1.5,0,Math.PI*2);X.fill();
-  }
-
- }else if(type==='tongue_taste'||type==='food_bowl'){
-  /* Mangkuk makanan hangat + uap aroma lezat */
-  const bG=X.createLinearGradient(-r*0.7,0,r*0.7,r*0.7);
-  bG.addColorStop(0,'#38bdf8');bG.addColorStop(1,'#0284c7');
-  X.fillStyle=bG;
-  X.beginPath();
-  X.moveTo(-r*0.76,r*0.04);X.lineTo(r*0.76,r*0.04);
-  X.quadraticCurveTo(r*0.64,r*0.74,0,r*0.76);
-  X.quadraticCurveTo(-r*0.64,r*0.74,-r*0.76,r*0.04);
-  X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.4;X.stroke();
-  X.fillStyle='#fbbf24';
-  X.beginPath();X.ellipse(0,r*0.04,r*0.72,r*0.16,0,0,Math.PI*2);X.fill();X.stroke();
-  /* 3 garis uap aroma */
-  [-0.32,0,0.32].forEach((sx,idx)=>{
-   const wv=Math.sin(A*4+idx)*10;
-   X.strokeStyle='#fde047';X.lineWidth=5;
-   X.beginPath();X.moveTo(sx*r,-r*0.16);X.quadraticCurveTo(sx*r+wv,-r*0.44,sx*r-wv,-r*0.72);X.stroke();
-  });
-
- }else if(type==='saliva_drop'){
-  /* Tetesan air liur / cairan biru berkilau */
-  const dG=X.createRadialGradient(-r*0.2,-r*0.1,r*0.08,0,r*0.15,r*0.85);
-  dG.addColorStop(0,'#ffffff');dG.addColorStop(0.35,'#7dd3fc');dG.addColorStop(1,'#0284c7');
-  X.fillStyle=dG;
-  X.beginPath();
-  X.moveTo(0,-r*0.84);
-  X.bezierCurveTo(r*0.68,-r*0.05,r*0.74,r*0.78,0,r*0.82);
-  X.bezierCurveTo(-r*0.74,r*0.78,-r*0.68,-r*0.05,0,-r*0.84);
-  X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.4;X.stroke();
-
- }else if(type==='ceramic_tile'){
-  X.save();
-  X.rotate(-0.12);
-  X.fillStyle='#475569';rr(-r*0.72,-r*0.66,r*1.52,r*1.44,18);X.fill();
-  const tileG=X.createLinearGradient(-r*0.78,-r*0.74,r*0.78,r*0.74);
-  tileG.addColorStop(0,'#ffffff');tileG.addColorStop(0.55,'#e0f2fe');tileG.addColorStop(1,'#7dd3fc');
-  X.fillStyle=tileG;rr(-r*0.78,-r*0.74,r*1.52,r*1.44,18);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.5;X.stroke();
-  X.strokeStyle='#38bdf8';X.lineWidth=4;
-  [-0.26,0.24].forEach(pos=>{
-   X.beginPath();X.moveTo(pos*r,-r*0.72);X.lineTo(pos*r,r*0.68);X.stroke();
-   X.beginPath();X.moveTo(-r*0.76,pos*r);X.lineTo(r*0.72,pos*r);X.stroke();
-  });
-  X.restore();
-
- }else if(type==='sound_wave'){
-  const bars=[-0.64,-0.42,-0.20,0.02,0.24,0.46,0.68];
-  const heights=[0.34,0.62,0.88,0.52,0.92,0.58,0.32];
-  bars.forEach((bx,idx)=>{
-   const h=r*heights[idx]*(0.78+0.26*Math.abs(Math.sin(A*5.5+idx*0.9)));
-   const bG=X.createLinearGradient(0,-h,0,h);
-   bG.addColorStop(0,cTop);bG.addColorStop(0.5,cMid);bG.addColorStop(1,cDark);
-   X.fillStyle=bG;
-   rr(bx*r-r*0.07,-h,r*0.14,h*2,r*0.07);X.fill();
-   X.strokeStyle='#0f172a';X.lineWidth=2.6;X.stroke();
-  });
-
- }else if(type==='reverb_echo'){
-  for(let k=0;k<3;k++){
-   const rad=r*(0.36+k*0.26)+Math.sin(A*4-k)*4;
-   X.strokeStyle=k===0?cMid:(k===1?cTop:'#38bdf8');
-   X.lineWidth=8-k*1.5;
-   X.beginPath();X.arc(-r*0.18,0,rad,-Math.PI*0.42,Math.PI*0.42);X.stroke();
-  }
-  X.fillStyle='#ffffff';X.beginPath();X.arc(-r*0.38,0,r*0.20,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3;X.stroke();
-
- }else if(type==='speaker'){
-  const boxG=X.createLinearGradient(-r*0.6,-r*0.8,r*0.6,r*0.8);
-  boxG.addColorStop(0,'#334155');boxG.addColorStop(1,'#0f172a');
-  X.fillStyle=boxG;rr(-r*0.58,-r*0.82,r*1.16,r*1.64,22);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.5;X.stroke();
-  const beat=1+Math.sin(A*8)*0.07;
-  X.fillStyle=cMid;X.beginPath();X.arc(0,r*0.22,r*0.42*beat,0,Math.PI*2);X.fill();X.stroke();
-  X.fillStyle='#0f172a';X.beginPath();X.arc(0,r*0.22,r*0.18*beat,0,Math.PI*2);X.fill();
-  X.fillStyle=cTop;X.beginPath();X.arc(0,-r*0.44,r*0.20,0,Math.PI*2);X.fill();X.stroke();
-
- }else if(type==='microphone'){
-  const mG=X.createRadialGradient(-r*0.15,-r*0.38,r*0.06,0,-r*0.28,r*0.42);
-  mG.addColorStop(0,'#ffffff');mG.addColorStop(0.5,cTop);mG.addColorStop(1,cDark);
-  X.fillStyle=mG;rr(-r*0.28,-r*0.74,r*0.56,r*0.76,r*0.28);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.strokeStyle='#ffffff';X.lineWidth=5;
-  X.beginPath();X.arc(0,-r*0.28,r*0.44,0.15,Math.PI-0.15);X.stroke();
-  X.beginPath();X.moveTo(0,r*0.16);X.lineTo(0,r*0.68);X.moveTo(-r*0.32,r*0.68);X.lineTo(r*0.32,r*0.68);X.stroke();
-
- }else if(type==='bed'){
-  X.fillStyle='#78350f';rr(-r*0.84,-r*0.44,r*0.22,r*1.04,8);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.fillStyle='#92400e';rr(-r*0.84,r*0.26,r*1.68,r*0.34,8);X.fill();X.stroke();
-  X.fillStyle='#f8fafc';rr(-r*0.64,-r*0.02,r*1.44,r*0.32,10);X.fill();X.stroke();
-  const blG=X.createLinearGradient(-r*0.2,0,r*0.8,r*0.3);
-  blG.addColorStop(0,cTop);blG.addColorStop(1,cMid);
-  X.fillStyle=blG;rr(-r*0.22,-r*0.04,r*1.04,r*0.36,10);X.fill();X.stroke();
-  X.fillStyle='#ffffff';rr(-r*0.62,-r*0.24,r*0.38,r*0.22,10);X.fill();X.stroke();
-
- }else if(type==='moon'){
-  const mG=X.createRadialGradient(-r*0.2,-r*0.2,r*0.1,0,0,r*0.9);
-  mG.addColorStop(0,'#fef08a');mG.addColorStop(0.55,'#f59e0b');mG.addColorStop(1,'#b45309');
-  X.fillStyle=mG;
-  X.beginPath();
-  X.arc(0,0,r*0.82,0.55,Math.PI*1.68);
-  X.quadraticCurveTo(-r*0.12,-r*0.05,Math.cos(0.55)*r*0.82,Math.sin(0.55)*r*0.82);
-  X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-
- }else if(type==='lamp'){
-  const glowR=r*0.88+Math.sin(A*5)*6;
-  const gL=X.createRadialGradient(0,-r*0.22,r*0.08,0,-r*0.22,glowR);
-  gL.addColorStop(0,'rgba(253,224,71,0.75)');gL.addColorStop(1,'rgba(253,224,71,0)');
-  X.fillStyle=gL;X.beginPath();X.arc(0,-r*0.22,glowR,0,Math.PI*2);X.fill();
-  X.fillStyle='#f8fafc';rr(-r*0.24,r*0.05,r*0.48,r*0.64,8);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.fillStyle=cMid;rr(-r*0.36,r*0.62,r*0.72,r*0.18,6);X.fill();X.stroke();
-
- }else if(type==='floating_hat'){
-  const levY=Math.sin(A*3.2)*10;
-  X.save();X.translate(0,levY-6);X.rotate(Math.sin(A*2.1)*0.08);
-  X.fillStyle='#1e293b';
-  X.beginPath();X.moveTo(-r*0.42,-r*0.58);X.lineTo(r*0.42,-r*0.58);X.lineTo(r*0.50,r*0.24);X.lineTo(-r*0.50,r*0.24);X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.fillStyle=col;rr(-r*0.48,r*0.02,r*0.96,r*0.18,4);X.fill();X.stroke();
-  X.fillStyle='#1e293b';X.beginPath();X.ellipse(0,r*0.26,r*0.86,r*0.22,0,0,Math.PI*2);X.fill();X.stroke();
-  X.restore();
-
- }else if(type==='coffee_cup'){
-  X.fillStyle='#ffffff';
-  X.beginPath();X.moveTo(-r*0.52,-r*0.22);X.lineTo(r*0.52,-r*0.22);X.quadraticCurveTo(r*0.45,r*0.65,0,r*0.68);X.quadraticCurveTo(-r*0.45,r*0.65,-r*0.52,-r*0.22);X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.fillStyle='#451a03';X.beginPath();X.ellipse(0,-r*0.22,r*0.50,r*0.14,0,0,Math.PI*2);X.fill();X.stroke();
-
- }else if(type==='smartphone'){
-  X.save();X.rotate(-0.12);
-  X.fillStyle='#0f172a';rr(-r*0.44,-r*0.82,r*0.88,r*1.64,20);X.fill();
-  X.strokeStyle='#ffffff';X.lineWidth=3.2;X.stroke();
-  X.fillStyle=cMid;rr(-r*0.36,-r*0.70,r*0.72,r*1.40,14);X.fill();
-  X.restore();
-
- }else if(type==='microbe'){
-  X.fillStyle=cMid;X.beginPath();X.arc(0,0,r*0.66,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  for(let i=0;i<8;i++){
-   const ang=i*Math.PI/4+A*0.6;
-   X.strokeStyle=cTop;X.lineWidth=5;
-   X.beginPath();X.moveTo(Math.cos(ang)*r*0.64,Math.sin(ang)*r*0.64);X.lineTo(Math.cos(ang)*r*0.90,Math.sin(ang)*r*0.90);X.stroke();
-  }
-
- }else if(type==='airplane'){
-  X.save();X.rotate(-0.22+Math.sin(A*2.5)*0.04);
-  X.fillStyle='#ffffff';
-  X.beginPath();X.moveTo(-r*0.82,r*0.05);X.lineTo(-r*0.20,-r*0.12);X.lineTo(r*0.15,-r*0.68);X.lineTo(r*0.34,-r*0.68);X.lineTo(r*0.16,-r*0.12);X.lineTo(r*0.82,-r*0.12);X.quadraticCurveTo(r*0.96,0,r*0.82,r*0.14);X.lineTo(r*0.12,r*0.18);X.lineTo(-r*0.18,r*0.64);X.lineTo(-r*0.36,r*0.64);X.lineTo(-r*0.22,r*0.18);X.lineTo(-r*0.72,r*0.26);X.lineTo(-r*0.88,r*0.42);X.closePath();
-  X.fill();X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.restore();
-
- }else if(type==='ink_bottle'||type==='pen_nib'){
-  X.fillStyle='#38bdf8';rr(-r*0.48,-r*0.24,r*0.96,r*0.94,18);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.fillStyle='#1e1b4b';rr(-r*0.38,r*0.05,r*0.76,r*0.56,12);X.fill();
-  X.fillStyle=cTop;rr(-r*0.32,-r*0.56,r*0.64,r*0.32,8);X.fill();X.stroke();
-
- }else if(type==='pen_cap'){
-  X.save();X.rotate(-0.20+Math.sin(A*2.2)*0.05);
-  X.fillStyle=cMid;
-  X.beginPath();X.moveTo(-r*0.32,-r*0.62);X.lineTo(r*0.32,-r*0.62);X.lineTo(r*0.40,r*0.72);X.quadraticCurveTo(0,r*0.86,-r*0.40,r*0.72);X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.restore();
-
- }else if(type==='lungs'||type==='air_flow'){
-  const breath=1+Math.sin(A*3.2)*0.05;
-  X.scale(breath,breath);
-  X.fillStyle='#cbd5e1';rr(-r*0.12,-r*0.82,r*0.24,r*0.65,8);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  [-1,1].forEach(side=>{
-   X.fillStyle='#fb7185';
-   X.beginPath();X.moveTo(side*r*0.10,-r*0.32);X.bezierCurveTo(side*r*0.72,-r*0.42,side*r*0.88,r*0.28,side*r*0.68,r*0.62);X.quadraticCurveTo(side*r*0.24,r*0.72,side*r*0.10,r*0.46);X.closePath();X.fill();X.stroke();
-  });
-
- }else if(type==='lifebuoy'){
-  X.fillStyle='#ef4444';X.beginPath();X.arc(0,0,r*0.86,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.5;X.stroke();
-  X.fillStyle='#ffffff';
-  [0,1,2,3].forEach(k=>{const a=k*Math.PI/2-0.28;X.beginPath();X.moveTo(0,0);X.arc(0,0,r*0.85,a,a+0.56);X.closePath();X.fill()});
-  X.fillStyle='#0f172a';X.beginPath();X.arc(0,0,r*0.38,0,Math.PI*2);X.fill();
-
- }else if(type==='dipper'||type==='wave'){
-  X.fillStyle='#0284c7';rr(-r*0.82,-r*0.25,r*1.64,r*0.85,20);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.strokeStyle='#ffffff';X.lineWidth=5;
-  X.beginPath();X.moveTo(-r*0.52,r*0.12);X.quadraticCurveTo(-r*0.25,-r*0.08,0,r*0.12);X.quadraticCurveTo(r*0.25,r*0.32,r*0.52,r*0.12);X.stroke();
-
- }else if(type==='factory'){
-  X.fillStyle=cMid;
-  X.beginPath();X.moveTo(-r*0.82,-r*0.15);X.lineTo(r*0.10,-r*0.15);X.lineTo(r*0.10,r*0.72);X.lineTo(-r*0.82,r*0.72);X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-
- }else if(type==='wall_clock'||type==='clock'){
-  X.fillStyle=cTop;X.beginPath();X.arc(0,0,r*1.02,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.fillStyle='#ffffff';X.beginPath();X.arc(0,0,r*0.84,0,Math.PI*2);X.fill();X.stroke();
-  const secAng=Math.floor(A*4)*(Math.PI/6),minAng=A*0.6;
-  X.strokeStyle='#0f172a';X.lineWidth=5;X.beginPath();X.moveTo(0,0);X.lineTo(Math.sin(minAng)*r*0.45,-Math.cos(minAng)*r*0.45);X.stroke();
-  X.strokeStyle='#ef4444';X.lineWidth=3.5;X.beginPath();X.moveTo(0,0);X.lineTo(Math.sin(secAng)*r*0.62,-Math.cos(secAng)*r*0.62);X.stroke();
-
- }else if(type==='lion'){
-  X.fillStyle='#b45309';X.beginPath();X.arc(0,0,r*0.92,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.fillStyle='#fef3c7';X.beginPath();X.arc(0,r*0.06,r*0.60,0,Math.PI*2);X.fill();X.stroke();
-
- }else if(type==='heart'){
-  X.fillStyle=col;
-  X.beginPath();X.moveTo(0,r*0.74);
-  X.bezierCurveTo(-r*0.96,r*0.12,-r*0.96,-r*0.68,-r*0.42,-r*0.68);
-  X.bezierCurveTo(-r*0.14,-r*0.68,0,-r*0.42,0,-r*0.35);
-  X.bezierCurveTo(0,-r*0.42,r*0.14,-r*0.68,r*0.42,-r*0.68);
-  X.bezierCurveTo(r*0.96,-r*0.68,r*0.96,r*0.12,0,r*0.74);
-  X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-
- }else if(type==='shield'||type==='child_shield'){
-  X.fillStyle=cMid;
-  X.beginPath();X.moveTo(0,-r*0.84);X.lineTo(r*0.72,-r*0.46);X.quadraticCurveTo(r*0.68,r*0.38,0,r*0.88);X.quadraticCurveTo(-r*0.68,r*0.38,-r*0.72,-r*0.46);X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.6;X.stroke();
-  X.strokeStyle='#ffffff';X.lineWidth=6;
-  X.beginPath();X.moveTo(-r*0.26,r*0.02);X.lineTo(-r*0.06,r*0.24);X.lineTo(r*0.30,-r*0.22);X.stroke();
-
- }else if(type==='brain'){
-  const bG=X.createRadialGradient(-r*0.2,-r*0.2,r*0.1,0,0,r*0.85);
-  bG.addColorStop(0,'#fbcfe8');bG.addColorStop(0.55,'#f472b6');bG.addColorStop(1,'#db2777');
-  X.fillStyle=bG;X.beginPath();X.arc(-r*0.24,-r*0.1,r*0.48,0,Math.PI*2);X.arc(r*0.24,-r*0.1,r*0.48,0,Math.PI*2);X.arc(0,r*0.24,r*0.44,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-
+  X.beginPath();X.moveTo(-r*0.8,0);X.lineTo(r*0.2,-r*0.65);X.lineTo(r*0.35,-r*0.65);X.lineTo(r*0.15,-r*0.1);X.lineTo(r*0.8,-r*0.1);X.lineTo(r*0.8,r*0.12);X.lineTo(r*0.12,r*0.15);X.lineTo(-r*0.2,r*0.65);X.lineTo(-r*0.35,r*0.65);X.lineTo(-r*0.2,r*0.15);X.lineTo(-r*0.8,r*0.25);X.closePath();X.fill();
  }else if(type==='coin'){
-  X.fillStyle='#f59e0b';X.beginPath();X.arc(0,0,r*0.84,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.6;X.stroke();
+  X.fillStyle='#facc15';X.beginPath();X.arc(0,0,r*0.82,0,Math.PI*2);X.fill();
   txt('$',0,2,r*0.95,'#0f172a','center',900);
-
- }else if(type==='planet'){
-  X.fillStyle='#0284c7';X.beginPath();X.arc(0,0,r*0.66,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.strokeStyle='#f59e0b';X.lineWidth=8;
-  X.beginPath();X.ellipse(0,0,r*0.98,r*0.24,-0.32,0,Math.PI*2);X.stroke();
-
- }else if(type==='trophy'){
-  X.fillStyle='#f59e0b';
-  X.beginPath();X.moveTo(-r*0.52,-r*0.64);X.lineTo(r*0.52,-r*0.64);X.quadraticCurveTo(r*0.48,r*0.22,0,r*0.36);X.quadraticCurveTo(-r*0.48,r*0.22,-r*0.52,-r*0.64);X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.fillStyle='#78350f';rr(-r*0.4,r*0.58,r*0.8,r*0.2,6);X.fill();X.stroke();
-
- }else if(type==='flame'){
-  X.fillStyle='#f97316';
-  X.beginPath();X.moveTo(0,-r*0.86);X.bezierCurveTo(r*0.2,-r*0.42,r*0.74,-r*0.12,r*0.6,r*0.3);X.bezierCurveTo(r*0.52,r*0.72,-r*0.52,r*0.72,-r*0.6,r*0.3);X.bezierCurveTo(-r*0.7,-r*0.06,-r*0.2,-r*0.3,0,-r*0.86);X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-
- }else if(type==='sun'){
-  X.fillStyle='#fde047';X.beginPath();X.arc(0,0,r*0.58,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-
- }else if(type==='chip'){
-  X.fillStyle=cMid;rr(-r*0.58,-r*0.58,r*1.16,r*1.16,14);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.fillStyle='#0f172a';rr(-r*0.3,-r*0.3,r*0.6,r*0.6,8);X.fill();
-
- }else if(type==='leaf'){
-  X.save();X.rotate(-0.5);
-  X.fillStyle='#22c55e';
-  X.beginPath();X.moveTo(0,-r*0.86);X.bezierCurveTo(r*0.82,-r*0.4,r*0.7,r*0.5,0,r*0.74);X.bezierCurveTo(-r*0.7,r*0.5,-r*0.82,-r*0.4,0,-r*0.86);X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.restore();
-
- }else if(type==='check'){
-  X.fillStyle='#16a34a';X.beginPath();X.arc(0,0,r*0.82,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.4;X.stroke();
-  X.strokeStyle='#ffffff';X.lineWidth=r*0.18;
-  X.beginPath();X.moveTo(-r*0.34,r*0.02);X.lineTo(-r*0.08,r*0.3);X.lineTo(r*0.38,-r*0.24);X.stroke();
-
- }else if(type==='magnifier'){
-  X.strokeStyle='#f8fafc';X.lineWidth=r*0.24;
-  X.beginPath();X.moveTo(r*0.26,r*0.26);X.lineTo(r*0.8,r*0.8);X.stroke();
-  X.fillStyle='rgba(125,211,252,0.92)';X.beginPath();X.arc(-r*0.14,-r*0.14,r*0.52,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=r*0.16;X.stroke();
-
- }else if(type==='hourglass'){
-  X.fillStyle='rgba(186,230,253,0.90)';
-  X.beginPath();X.moveTo(-r*0.42,-r*0.66);X.lineTo(r*0.42,-r*0.66);X.lineTo(r*0.06,0);X.lineTo(r*0.42,r*0.66);X.lineTo(-r*0.42,r*0.66);X.lineTo(-r*0.06,0);X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-
- }else if(type==='rocket'){
-  X.save();X.rotate(-0.6);
-  X.fillStyle='#ffffff';
-  X.beginPath();X.moveTo(0,-r*0.88);X.bezierCurveTo(r*0.5,-r*0.4,r*0.42,r*0.36,r*0.3,r*0.58);X.lineTo(-r*0.3,r*0.58);X.bezierCurveTo(-r*0.42,r*0.36,-r*0.5,-r*0.4,0,-r*0.88);X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  X.restore();
-
- }else if(type==='gear'){
-  X.rotate(A*0.5);
-  X.fillStyle=cMid;X.beginPath();
-  for(let i=0;i<8;i++){
-   const a=i*Math.PI/4;
-   const pts=[[a-0.2,r*0.64],[a-0.12,r*0.9],[a+0.12,r*0.9],[a+0.2,r*0.64]];
-   pts.forEach((pt,k)=>{const px=Math.cos(pt[0])*pt[1],py=Math.sin(pt[0])*pt[1];(i===0&&k===0)?X.moveTo(px,py):X.lineTo(px,py)});
+ }else if(type==='brain'){
+  X.fillStyle='#f472b6';X.beginPath();X.arc(-r*0.22,-r*0.1,r*0.46,0,Math.PI*2);X.arc(r*0.22,-r*0.1,r*0.46,0,Math.PI*2);X.arc(0,r*0.24,r*0.42,0,Math.PI*2);X.fill();
+ }else if(type==='sound_wave'){
+  [-0.5,-0.25,0,0.25,0.5].forEach((bx,i)=>{
+   const hh=r*(0.35+(i%2)*0.45);
+   X.fillStyle=cTop;rr(bx*r-r*0.08,-hh,r*0.16,hh*2,4);X.fill();
+  });
+ }else{
+  X.fillStyle=cTop;X.beginPath();
+  for(let i=0;i<10;i++){
+   const rad=i%2===0?r*0.75:r*0.34,ang=i*Math.PI/5-Math.PI/2;
+   i===0?X.moveTo(Math.cos(ang)*rad,Math.sin(ang)*rad):X.lineTo(Math.cos(ang)*rad,Math.sin(ang)*rad);
   }
   X.closePath();X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-
- }else if(type==='wind_swirl'){
-  X.strokeStyle='#38bdf8';X.lineWidth=8;
-  [-0.35,0,0.35].forEach((yy)=>{
-   X.beginPath();X.moveTo(-r*0.75,yy*r);X.lineTo(r*0.65,yy*r);X.stroke();
-  });
-
- }else{
-  const g3d=X.createRadialGradient(-r*0.28,-r*0.28,r*0.08,0,0,r*0.92);
-  g3d.addColorStop(0,'#ffffff');g3d.addColorStop(0.28,cTop);g3d.addColorStop(0.65,cMid);g3d.addColorStop(1,cDark);
-  X.fillStyle=g3d;
-  X.beginPath();X.arc(0,0,r*0.84,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=3.2;X.stroke();
-  if(type==='bolt'){
-   X.fillStyle='#ffffff';
-   X.beginPath();X.moveTo(r*0.10,-r*0.52);X.lineTo(-r*0.32,r*0.06);X.lineTo(r*0.04,r*0.06);X.lineTo(-r*0.12,r*0.52);X.lineTo(r*0.32,-r*0.06);X.lineTo(-r*0.04,-r*0.06);X.closePath();X.fill();
-  }else if(type==='eye'){
-   X.fillStyle='#ffffff';X.beginPath();X.ellipse(0,0,r*0.54,r*0.32,0,0,Math.PI*2);X.fill();
-   X.fillStyle='#0f172a';X.beginPath();X.arc(0,0,r*0.18,0,Math.PI*2);X.fill();
-  }else if(type==='book'||type==='doc'){
-   X.fillStyle='#ffffff';rr(-r*0.38,-r*0.44,r*0.76,r*0.88,8);X.fill();
-   X.strokeStyle=cDark;X.lineWidth=4;X.beginPath();X.moveTo(-r*0.2,-r*0.18);X.lineTo(r*0.2,-r*0.18);X.moveTo(-r*0.2,r*0.04);X.lineTo(r*0.2,r*0.04);X.stroke();
-  }else{
-   X.fillStyle='#ffffff';X.beginPath();
-   for(let i=0;i<10;i++){
-    const rad=i%2===0?r*0.48:r*0.22,ang=i*Math.PI/5-Math.PI/2;
-    i===0?X.moveTo(Math.cos(ang)*rad,Math.sin(ang)*rad):X.lineTo(Math.cos(ang)*rad,Math.sin(ang)*rad);
-   }
-   X.closePath();X.fill();
-  }
  }
  X.restore();
 }
@@ -1910,7 +1588,8 @@ function drawCoverProps(){
  X.shadowColor='rgba(2,6,23,0.45)';X.shadowBlur=18;X.shadowOffsetY=6;
  drawStickerBadge(s1,42,'#0f172a',P.a);
  X.shadowColor='transparent';
- draw3DObject(TITLE_OBJ.ic1,0,0,34,P.a,COVER_IMGS.img1);
+ if(COVER_IMGS.img1)X.drawImage(COVER_IMGS.img1,-34,-34,68,68);
+ else drawCoverIcon(TITLE_OBJ.ic1,32,P.a);
  X.restore();
 
  X.save();
@@ -1920,45 +1599,469 @@ function drawCoverProps(){
  X.shadowColor='rgba(2,6,23,0.45)';X.shadowBlur=18;X.shadowOffsetY=6;
  drawStickerBadge(s2,42,'#0f172a',P.t);
  X.shadowColor='transparent';
- draw3DObject(TITLE_OBJ.ic2,0,0,34,P.t,COVER_IMGS.img2);
+ if(COVER_IMGS.img2)X.drawImage(COVER_IMGS.img2,-34,-34,68,68);
+ else drawCoverIcon(TITLE_OBJ.ic2,32,P.t);
  X.restore();
 }
 
-/* ===== HELPER LABEL PENUNJUK MINIMALIS TANPA BINGKAI KOTAK ===== */
-function drawFloatingPill(text,cx,cy,bgCol,txtCol,fontSz=16){
+/* ============================================================================
+   MESIN DIORAMA B-ROLL BERDETAIL TINGGI (16 ADEGAN LENGKAP, LOGIS & TERUKUR)
+   ============================================================================ */
+function drawDetailedDiorama(det,cx,cy,scale,prog){
+ const dType=det.diorama||'vip_pass';
+ const isNeg=Boolean(det.isNegative);
+ const build=eo(cl(prog/0.35));
+
  X.save();
- X.font=`900 ${fontSz}px ${SANS}`;
- const tw=X.measureText(text).width;
- const pw=Math.min(580,tw+36);
- const ph=fontSz+18;
- X.shadowColor='rgba(2,6,23,0.38)';X.shadowBlur=12;X.shadowOffsetY=4;
- X.fillStyle=bgCol;
- rr(cx-pw/2,cy-ph/2,pw,ph,ph/2);X.fill();
- X.shadowColor='transparent';
- txt(text,cx,cy+1,fz(text,pw-24,fontSz),txtCol,'center',900);
+ X.translate(cx,cy);
+ X.scale(scale,scale);
+
+ /* Panggung bayangan 3D realistis di bawah diorama */
+ const floorG=X.createRadialGradient(0,185,15,0,185,270);
+ floorG.addColorStop(0,'rgba(2,6,23,0.52)');
+ floorG.addColorStop(1,'rgba(2,6,23,0)');
+ X.fillStyle=floorG;
+ X.beginPath();X.ellipse(0,185,270,48,0,0,Math.PI*2);X.fill();
+
+ if(det.img1){
+  X.drawImage(det.img1,-200,-180,400,360);
+  X.restore();
+  return;
+ }
+
+ /* -------------------------------------------------------------------------
+    1. DIORAMA KARTU VIP / TIKET SEUMUR HIDUP / AKSES RESMI (Detail Tinggi)
+    ------------------------------------------------------------------------- */
+ if(dType==='vip_pass'){
+  const tilt=Math.sin(A*1.8)*0.035;
+  X.save();
+  X.rotate(tilt);
+
+  /* Kartu Belakang (Bayangan & Lapisan Kedua) */
+  X.fillStyle='#1e293b';
+  rr(-195,-125,390,245,26);X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=4;X.stroke();
+
+  /* Badan Kartu Utama (Gradien Emas Metalik) */
+  const cardG=X.createLinearGradient(-205,-135,205,120);
+  cardG.addColorStop(0,'#fef08a');
+  cardG.addColorStop(0.35,'#f59e0b');
+  cardG.addColorStop(0.75,'#d97706');
+  cardG.addColorStop(1,'#92400e');
+  X.fillStyle=cardG;
+  rr(-205,-135,410,255,26);X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=4.5;X.stroke();
+
+  /* Kilau Hologram Melintas di Permukaan Kartu */
+  X.save();
+  rr(-205,-135,410,255,26);X.clip();
+  const shineX=-320+((A*0.75)%1.8)*640;
+  const shG=X.createLinearGradient(shineX-60,-135,shineX+60,120);
+  shG.addColorStop(0,'rgba(255,255,255,0)');
+  shG.addColorStop(0.5,'rgba(255,255,255,0.42)');
+  shG.addColorStop(1,'rgba(255,255,255,0)');
+  X.fillStyle=shG;X.fillRect(-210,-140,420,265);
+  X.restore();
+
+  /* Strip Magnetik & Header Kartu */
+  X.fillStyle='#0f172a';
+  X.fillRect(-203,-102,406,36);
+  txt('FIRST CLASS • UNLIMITED ACCESS',0,-84,14,'#fde047','center',900);
+
+  /* Chip EMV Detail di Kiri */
+  X.fillStyle='#e2e8f0';rr(-170,-42,64,48,10);X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=2.5;X.stroke();
+  X.beginPath();
+  X.moveTo(-170,-26);X.lineTo(-106,-26);
+  X.moveTo(-170,-10);X.lineTo(-106,-10);
+  X.moveTo(-148,-42);X.lineTo(-148,6);
+  X.moveTo(-128,-42);X.lineTo(-128,6);
+  X.stroke();
+
+  /* Simbol Infinity / Mahkota di Kanan */
+  X.strokeStyle='#0f172a';X.lineWidth=6;
+  X.beginPath();
+  X.moveTo(95,-18);
+  X.bezierCurveTo(68,-44,68,8,95,-18);
+  X.bezierCurveTo(122,-44,122,8,95,-18);
+  X.stroke();
+
+  /* Nomor Serial & Nama Pemegang Kartu */
+  txt('4092  8810  1987  ∞',-170,38,20,'#0f172a','left',900);
+  txt('LIFETIME PASS HOLDER',-170,74,13,'#451a03','left',800);
+
+  /* Barcode Presisi di Pojok Kanan Bawah */
+  for(let b=0;b<14;b++){
+   X.fillStyle='#0f172a';
+   X.fillRect(72+b*8,54,(b%3===0)?4:2,32);
+  }
+
+  /* Jika VO menyebut pencabutan / blokir kartu -> Stempel REVOKED animasi turun */
+  if(isNeg){
+   const stampSc=1.5-0.5*eo(cl((prog-0.15)/0.35));
+   X.save();
+   X.rotate(-0.22);
+   X.scale(stampSc,stampSc);
+   X.fillStyle='rgba(220,38,38,0.92)';
+   rr(-150,-38,300,76,14);X.fill();
+   X.strokeStyle='#ffffff';X.lineWidth=4;X.stroke();
+   txt('AKSES DICABUT',0,1,26,'#ffffff','center',900);
+   X.restore();
+  }
+  X.restore();
+
+  /* Callout penunjuk komponen kartu */
+  drawSmartCallout(-138,-35,-165,-165,det.p1,P.a,eo(cl(prog/0.25)));
+  if(prog>0.28)drawSmartCallout(110,65,165,155,det.p2,P.t,eo(cl((prog-0.28)/0.25)));
+
+ /* -------------------------------------------------------------------------
+    2. DIORAMA PENERBANGAN LINTAS DUNIA & RUTE PESAWAT (Detail Tinggi)
+    ------------------------------------------------------------------------- */
+ }else if(dType==='flight_globe'){
+  /* Globe Bumi 3D Berputar dengan Benua & Grid Koordinat */
+  const gR=135;
+  const gGrad=X.createRadialGradient(-45,-45,15,0,0,gR);
+  gGrad.addColorStop(0,'#38bdf8');
+  gGrad.addColorStop(0.6,'#0284c7');
+  gGrad.addColorStop(1,'#0c4a6e');
+  X.fillStyle=gGrad;
+  X.beginPath();X.arc(0,10,gR,0,Math.PI*2);X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=4.5;X.stroke();
+
+  /* Siluet Benua Hijau Zamrud di dalam Globe */
+  X.save();
+  X.beginPath();X.arc(0,10,gR-2,0,Math.PI*2);X.clip();
+  const shift=(A*28)%260;
+  X.fillStyle='#10b981';
+  [[-90,-30,55,40],[10,-45,65,50],[120,-20,50,45],[-140,35,60,35],[50,30,55,40]].forEach(([bx,by,bw,bh])=>{
+   const rx=((bx+shift+200)%360)-180;
+   X.beginPath();X.ellipse(rx,by+10,bw,bh,0.2,0,Math.PI*2);X.fill();
+  });
+  /* Garis lintang & bujur */
+  X.strokeStyle='rgba(255,255,255,0.22)';X.lineWidth=2;
+  X.beginPath();X.moveTo(-gR,10);X.lineTo(gR,10);X.moveTo(0,10-gR);X.lineTo(0,10+gR);X.stroke();
+  X.beginPath();X.ellipse(0,10,gR*0.52,gR,0,0,Math.PI*2);X.stroke();
+  X.restore();
+
+  /* Jalur Penerbangan Melengkung dari Titik A ke Titik B */
+  X.strokeStyle='#fde047';X.lineWidth=4.5;X.setLineDash([10,8]);
+  X.beginPath();
+  X.moveTo(-165,45);
+  X.quadraticCurveTo(0,-165,165,25);
+  X.stroke();
+  X.setLineDash([]);
+
+  /* Pin Kota Keberangkatan & Tujuan */
+  [[-165,45,'ASAL'],[165,25,'TUJUAN']].forEach(([px,py,lbl],idx)=>{
+   X.fillStyle=idx===0?'#f97316':'#22c55e';
+   X.beginPath();X.arc(px,py,11,0,Math.PI*2);X.fill();
+   X.strokeStyle='#0f172a';X.lineWidth=3;X.stroke();
+  });
+
+  /* Pesawat Komersial Detail Melesat di Sepanjang Busur Penerbangan */
+  const tFly=cl(0.15+prog*0.75);
+  const bx=(1-tFly)*(1-tFly)*(-165)+2*(1-tFly)*tFly*0+tFly*tFly*165;
+  const by=(1-tFly)*(1-tFly)*45+2*(1-tFly)*tFly*(-165)+tFly*tFly*25;
+  const dx=2*(1-tFly)*(0-(-165))+2*tFly*(165-0);
+  const dy=2*(1-tFly)*(-165-45)+2*tFly*(25-(-165));
+  const ang=Math.atan2(dy,dx);
+
+  X.save();
+  X.translate(bx,by);
+  X.rotate(ang);
+  X.fillStyle='#ffffff';
+  X.beginPath();
+  X.moveTo(34,0);X.lineTo(8,-7);X.lineTo(-10,-32);X.lineTo(-20,-32);
+  X.lineTo(-8,-7);X.lineTo(-28,-7);X.lineTo(-36,-18);X.lineTo(-42,-18);
+  X.lineTo(-36,0);X.lineTo(-42,18);X.lineTo(-36,18);X.lineTo(-28,7);
+  X.lineTo(-8,7);X.lineTo(-20,32);X.lineTo(-10,32);X.lineTo(8,7);
+  X.closePath();X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=3;X.stroke();
+  X.restore();
+
+  drawSmartCallout(-90,-65,-175,-155,det.p1,P.a,eo(cl(prog/0.25)));
+  if(prog>0.28)drawSmartCallout(130,30,175,145,det.p2,P.t,eo(cl((prog-0.28)/0.25)));
+
+ /* -------------------------------------------------------------------------
+    3. DIORAMA NERACA FINANSIAL & GRAFIK RUGI / UNTUNG (Detail Tinggi)
+    ------------------------------------------------------------------------- */
+ }else if(dType==='finance_ledger'){
+  /* Panel Layar Keuangan Bersih dengan Grid Sumbu */
+  X.fillStyle='#0f172a';rr(-230,-145,460,290,22);X.fill();
+  X.strokeStyle='#334155';X.lineWidth=3.5;X.stroke();
+
+  /* Grid Grafik */
+  X.strokeStyle='rgba(148,163,184,0.18)';X.lineWidth=1.5;
+  for(let gy=-95;gy<=95;gy+=47.5){X.beginPath();X.moveTo(-200,gy);X.lineTo(200,gy);X.stroke()}
+
+  /* Batang Grafik Historis */
+  const bars=[-160,-105,-50,5,60,115];
+  const vals=isNeg?[0.85,0.72,0.55,0.38,0.22,0.12]:[0.25,0.38,0.52,0.68,0.84,0.96];
+  bars.forEach((bx,i)=>{
+   const h=170*vals[i]*eo(cl((prog-i*0.06)/0.4));
+   const bCol=isNeg?(i>2?'#ef4444':'#f59e0b'):'#10b981';
+   X.fillStyle=bCol;
+   rr(bx,105-h,36,h,6);X.fill();
+  });
+
+  /* Garis Tren Dinamis */
+  X.strokeStyle=isNeg?'#fca5a5':'#fde047';X.lineWidth=5;
+  X.beginPath();
+  bars.forEach((bx,i)=>{
+   const px=bx+18;
+   const py=105-170*vals[i]*eo(cl((prog-i*0.06)/0.4));
+   i===0?X.moveTo(px,py):X.lineTo(px,py);
+  });
+  X.stroke();
+
+  /* Koin / Nominal Besar di Pojok Kanan Atas Grafik */
+  X.save();
+  X.translate(155,-85+Math.sin(A*3)*5);
+  X.fillStyle='#facc15';X.beginPath();X.arc(0,0,42,0,Math.PI*2);X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=3.5;X.stroke();
+  txt(isNeg?'-$':'+$',0,2,28,'#0f172a','center',900);
+  X.restore();
+
+  if(det.numBadge){
+   txt(det.numBadge,-190,-105,28,isNeg?'#f87171':'#4ade80','left',900);
+  }
+
+  drawSmartCallout(-120,-30,-175,-175,det.p1,P.a,eo(cl(prog/0.25)));
+  if(prog>0.28)drawSmartCallout(115,45,175,165,det.p2,isNeg?'#ef4444':P.t,eo(cl((prog-0.28)/0.25)));
+
+ /* -------------------------------------------------------------------------
+    4. DIORAMA RUANG AKUSTIK & PANTULAN GELOMBANG (Detail Tinggi)
+    ------------------------------------------------------------------------- */
+ }else if(dType==='acoustic_chamber'){
+  /* Penampang Ruangan Keramik 3D dengan Sumber Suara & Gelombang Pantul */
+  X.fillStyle='#082f49';rr(-225,-140,450,280,22);X.fill();
+  X.strokeStyle='#38bdf8';X.lineWidth=4;X.stroke();
+
+  /* Grid Ubin Keramik di Dinding */
+  X.strokeStyle='rgba(125,211,252,0.22)';X.lineWidth=2;
+  for(let gx=-180;gx<=180;gx+=45){X.beginPath();X.moveTo(gx,-138);X.lineTo(gx,138);X.stroke()}
+  for(let gy=-90;gy<=90;gy+=45){X.beginPath();X.moveTo(-223,gy);X.lineTo(223,gy);X.stroke()}
+
+  /* Sumber Suara (Mikrofon / Vokal di Kiri) */
+  X.fillStyle='#f8fafc';rr(-185,-32,36,64,18);X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=3;X.stroke();
+  X.strokeStyle='#facc15';X.lineWidth=4;
+  X.beginPath();X.moveTo(-167,32);X.lineTo(-167,62);X.moveTo(-185,62);X.lineTo(-149,62);X.stroke();
+
+  /* Gelombang Primer Melesat ke Dinding Kanan & Memantul Balik (Reverb) */
+  for(let w=0;w<4;w++){
+   const phase=((A*1.1+w*0.25)%1);
+   const wx=-130+phase*320;
+   X.strokeStyle=al('#38bdf8',1-phase*0.6);X.lineWidth=4.5;
+   X.beginPath();X.arc(wx,0,34+w*12,-Math.PI*0.35,Math.PI*0.35);X.stroke();
+
+   /* Gelombang Pantul Balik (Reverb Echo) */
+   const rx=195-phase*290;
+   X.strokeStyle=al('#facc15',0.85*(1-phase*0.5));X.lineWidth=3.5;
+   X.beginPath();X.arc(rx,0,28+w*10,Math.PI*0.65,Math.PI*1.35);X.stroke();
+  }
+
+  /* Dinding Pantul Kanan Menyala Saat Terkena Gelombang */
+  X.fillStyle='#38bdf8';rr(196,-125,16,250,8);X.fill();
+
+  drawSmartCallout(200,-45,165,-170,det.p1,P.a,eo(cl(prog/0.25)));
+  if(prog>0.28)drawSmartCallout(-40,35,-165,165,det.p2,P.t,eo(cl((prog-0.28)/0.25)));
+
+ /* -------------------------------------------------------------------------
+    5. DIORAMA INDRA PENCIUMAN, AROMA & RESEPTOR OTAK (Detail Tinggi)
+    ------------------------------------------------------------------------- */
+ }else if(dType==='sensory_olfactory'){
+  /* Mangkuk Hidangan Hangat di Kiri -> Molekul Aroma Terbang -> Reseptor Hidung & Otak */
+  X.fillStyle='#0284c7';
+  X.beginPath();X.moveTo(-210,45);X.lineTo(-80,45);X.quadraticCurveTo(-90,115,-145,115);X.quadraticCurveTo(-200,115,-210,45);X.closePath();X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=3.5;X.stroke();
+  X.fillStyle='#fbbf24';X.beginPath();X.ellipse(-145,45,62,14,0,0,Math.PI*2);X.fill();
+
+  /* Partikel Molekul Aroma Mengalir Melengkung ke Reseptor Atas */
+  for(let k=0;k<7;k++){
+   const tP=((A*0.75+k*0.14)%1);
+   const px=-145+tP*260;
+   const py=25-Math.sin(tP*Math.PI)*115+Math.sin(A*5+k)*8;
+   X.fillStyle=k%2===0?'#34d399':'#fde047';
+   X.beginPath();X.arc(px,py,7,0,Math.PI*2);X.fill();
+   X.strokeStyle='#0f172a';X.lineWidth=2;X.stroke();
+  }
+
+  /* Modul Reseptor & Saraf Olfaktori di Kanan */
+  X.fillStyle='#1e293b';rr(55,-115,165,215,24);X.fill();
+  X.strokeStyle='#34d399';X.lineWidth=3.5;X.stroke();
+  /* 4 Cabang Reseptor Aktif */
+  [-65,-25,15,55].forEach((ry,idx)=>{
+   const act=Math.sin(A*6+idx)>0;
+   X.strokeStyle=act?'#34d399':'#64748b';X.lineWidth=5;
+   X.beginPath();X.moveTo(75,ry);X.lineTo(135,ry);X.stroke();
+   X.fillStyle=act?'#fde047':'#475569';
+   X.beginPath();X.arc(155,ry,13,0,Math.PI*2);X.fill();
+  });
+
+  drawSmartCallout(-85,-45,-165,-165,det.p1,P.a,eo(cl(prog/0.25)));
+  if(prog>0.28)drawSmartCallout(155,15,165,155,det.p2,'#34d399',eo(cl((prog-0.28)/0.25)));
+
+ /* -------------------------------------------------------------------------
+    6. DIORAMA JARINGAN OTAK & SINYAL SARAF (Detail Tinggi)
+    ------------------------------------------------------------------------- */
+ }else if(dType==='brain_neural'){
+  /* Siluet Otak Berlapis + Node Sinapsis yang Menyala Berantai */
+  const bG=X.createRadialGradient(-30,-30,15,0,0,155);
+  bG.addColorStop(0,'#fbcfe8');bG.addColorStop(0.55,'#ec4899');bG.addColorStop(1,'#831843');
+  X.fillStyle=bG;
+  X.beginPath();
+  X.arc(-48,-24,84,0,Math.PI*2);
+  X.arc(48,-24,84,0,Math.PI*2);
+  X.arc(-32,44,72,0,Math.PI*2);
+  X.arc(32,44,72,0,Math.PI*2);
+  X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=4;X.stroke();
+
+  /* Jaringan Jalur Saraf & Impuls Listrik di Dalam Otak */
+  const nodes=[[-65,-40],[0,-60],[65,-35],[-45,25],[15,15],[60,35]];
+  X.strokeStyle='rgba(255,255,255,0.65)';X.lineWidth=3.5;
+  for(let i=0;i<nodes.length-1;i++){
+   X.beginPath();X.moveTo(nodes[i][0],nodes[i][1]);X.lineTo(nodes[i+1][0],nodes[i+1][1]);X.stroke();
+  }
+  const activeNode=Math.floor((A*4)%nodes.length);
+  nodes.forEach(([nx,ny],idx)=>{
+   const on=idx===activeNode;
+   X.fillStyle=on?'#fde047':'#38bdf8';
+   X.beginPath();X.arc(nx,ny,on?13:8,0,Math.PI*2);X.fill();
+   X.strokeStyle='#0f172a';X.lineWidth=2.5;X.stroke();
+  });
+
+  drawSmartCallout(-45,-40,-175,-165,det.p1,P.a,eo(cl(prog/0.25)));
+  if(prog>0.28)drawSmartCallout(55,30,175,155,det.p2,P.t,eo(cl((prog-0.28)/0.25)));
+
+ /* -------------------------------------------------------------------------
+    7. DIORAMA REKONSTRUKSI TKP / MISTERI (Detail Tinggi)
+    ------------------------------------------------------------------------- */
+ }else if(dType==='mystery_scene'){
+  /* Denah Ruangan TKP dengan Pintu Terkunci, Meja Tertata & Kaca Pembesar */
+  X.fillStyle='#1e293b';rr(-220,-140,440,280,22);X.fill();
+  X.strokeStyle='#f59e0b';X.lineWidth=3.5;X.stroke();
+
+  /* Pintu Terkunci di Kiri */
+  X.fillStyle='#92400e';rr(-185,-95,110,190,10);X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=3;X.stroke();
+  X.fillStyle='#facc15';rr(-148,-12,36,30,6);X.fill();X.stroke();
+
+  /* Meja & Bukti Tertata di Kanan */
+  X.fillStyle='#475569';rr(-20,25,190,22,6);X.fill();
+  [-10,145].forEach(lx=>{X.fillRect(lx,47,16,50)});
+  [15,75,130].forEach(px=>{
+   X.fillStyle='#f8fafc';X.beginPath();X.ellipse(px,20,20,7,0,0,Math.PI*2);X.fill();
+  });
+
+  /* Kaca Pembesar Memindai Lokasi */
+  const scanX=-40+Math.sin(A*2)*85;
+  const scanY=-25+Math.cos(A*1.7)*35;
+  X.strokeStyle='#f8fafc';X.lineWidth=9;
+  X.beginPath();X.moveTo(scanX+32,scanY+32);X.lineTo(scanX+72,scanY+72);X.stroke();
+  X.fillStyle='rgba(56,189,248,0.28)';
+  X.beginPath();X.arc(scanX,scanY,46,0,Math.PI*2);X.fill();
+  X.strokeStyle='#38bdf8';X.lineWidth=5;X.stroke();
+
+  drawSmartCallout(-130,0,-175,-170,det.p1,'#facc15',eo(cl(prog/0.25)));
+  if(prog>0.28)drawSmartCallout(80,20,175,165,det.p2,'#38bdf8',eo(cl((prog-0.28)/0.25)));
+
+ /* -------------------------------------------------------------------------
+    8. DIORAMA SISTEM PERNAPASAN & ALIRAN UDARA (Detail Tinggi)
+    ------------------------------------------------------------------------- */
+ }else if(dType==='respiratory_flow'){
+  /* Saluran Trakea + Paru-Paru Kiri & Kanan dengan Aliran Oksigen */
+  X.fillStyle='#cbd5e1';rr(-18,-145,36,95,10);X.fill();
+  X.strokeStyle='#0f172a';X.lineWidth=3.5;X.stroke();
+
+  const bScale=1+Math.sin(A*3.2)*0.04;
+  X.save();X.scale(bScale,bScale);
+  [-1,1].forEach(side=>{
+   X.fillStyle='#fb7185';
+   X.beginPath();
+   X.moveTo(side*16,-65);
+   X.bezierCurveTo(side*155,-85,side*185,55,side*140,120);
+   X.quadraticCurveTo(side*45,140,side*16,85);
+   X.closePath();X.fill();
+   X.strokeStyle='#0f172a';X.lineWidth=4;X.stroke();
+  });
+  X.restore();
+
+  /* Partikel Oksigen Biru Mengalir Masuk ke Kedua Paru */
+  for(let k=0;k<5;k++){
+   const tA=((A*1.1+k*0.2)%1);
+   const py=-140+tA*160;
+   const spread=tA>0.45?(tA-0.45)*140*(k%2===0?1:-1):0;
+   X.fillStyle='#38bdf8';
+   X.beginPath();X.arc(spread,py,7.5,0,Math.PI*2);X.fill();
+  }
+
+  drawSmartCallout(0,-105,-175,-165,det.p1,'#38bdf8',eo(cl(prog/0.25)));
+  if(prog>0.28)drawSmartCallout(95,35,175,155,det.p2,'#fb7185',eo(cl((prog-0.28)/0.25)));
+
+ /* -------------------------------------------------------------------------
+    9. DIORAMA MEKANISME RODA GIGI & SISTEM KERJA (Detail Tinggi)
+    ------------------------------------------------------------------------- */
+ }else if(dType==='mech_gears'){
+  const drawGear=(gx,gy,gr,teeth,col,dir)=>{
+   X.save();X.translate(gx,gy);X.rotate(A*0.7*dir);
+   X.fillStyle=col;X.beginPath();
+   for(let i=0;i<teeth*2;i++){
+    const a=i*Math.PI/teeth;
+    const rad=i%2===0?gr:gr*0.80;
+    i===0?X.moveTo(Math.cos(a)*rad,Math.sin(a)*rad):X.lineTo(Math.cos(a)*rad,Math.sin(a)*rad);
+   }
+   X.closePath();X.fill();
+   X.strokeStyle='#0f172a';X.lineWidth=3.5;X.stroke();
+   X.fillStyle='#0f172a';X.beginPath();X.arc(0,0,gr*0.32,0,Math.PI*2);X.fill();
+   X.restore();
+  };
+  drawGear(-75,-20,96,12,P.a,1);
+  drawGear(88,35,72,10,P.t,-1.2);
+  drawGear(55,-95,50,8,'#34d399',1.5);
+
+  drawSmartCallout(-75,-20,-175,-165,det.p1,P.a,eo(cl(prog/0.25)));
+  if(prog>0.28)drawSmartCallout(88,35,175,155,det.p2,P.t,eo(cl((prog-0.28)/0.25)));
+
+ /* -------------------------------------------------------------------------
+    10. DIORAMA DEFAULT BERDETAIL TINGGI (KRONOLOGI, ORBIT, SIKLUS, ARSIP)
+    ------------------------------------------------------------------------- */
+ }else{
+  /* Panggung Diagram 2-Node Terhubung (Input -> Proses -> Output) */
+  X.fillStyle='rgba(15,23,42,0.88)';rr(-230,-135,460,270,26);X.fill();
+  X.strokeStyle=P.a;X.lineWidth=3.5;X.stroke();
+
+  /* Jalur Koneksi Aktif di Tengah */
+  X.strokeStyle='rgba(255,255,255,0.28)';X.lineWidth=5;X.setLineDash([12,10]);
+  X.beginPath();X.moveTo(-110,0);X.lineTo(110,0);X.stroke();
+  X.setLineDash([]);
+
+  const pulseX=-110+((A*0.9)%1)*220;
+  X.fillStyle='#fde047';X.beginPath();X.arc(pulseX,0,10,0,Math.PI*2);X.fill();
+
+  /* Node Kiri (Faktor Pemicu) */
+  X.save();X.translate(-125,0);
+  X.fillStyle=al(P.a,0.22);X.beginPath();X.arc(0,0,74,0,Math.PI*2);X.fill();
+  X.strokeStyle=P.a;X.lineWidth=3.5;X.stroke();
+  drawCoverIcon(det.ic1,44,P.a);
+  X.restore();
+
+  /* Node Kanan (Hasil / Dampak) */
+  X.save();X.translate(125,0);
+  X.fillStyle=al(P.t,0.22);X.beginPath();X.arc(0,0,74,0,Math.PI*2);X.fill();
+  X.strokeStyle=P.t;X.lineWidth=3.5;X.stroke();
+  drawCoverIcon(det.ic2,44,P.t);
+  X.restore();
+
+  drawSmartCallout(-125,-45,-175,-168,det.p1,P.a,eo(cl(prog/0.25)));
+  if(prog>0.28)drawSmartCallout(125,45,175,168,det.p2,P.t,eo(cl((prog-0.28)/0.25)));
+ }
+
  X.restore();
 }
 
-function drawCalloutPointer(xFrom,yFrom,xTo,yTo,label,accentCol){
- X.save();
- X.strokeStyle=accentCol;
- X.lineWidth=3.5;
- X.beginPath();
- X.moveTo(xFrom,yFrom);
- const midX=(xFrom+xTo)*0.5;
- X.lineTo(midX,yTo);
- X.lineTo(xTo,yTo);
- X.stroke();
-
- X.fillStyle=accentCol;
- X.beginPath();X.arc(xFrom,yFrom,7,0,Math.PI*2);X.fill();
- X.strokeStyle='#0f172a';X.lineWidth=2.5;X.stroke();
-
- drawFloatingPill(label,xTo,yTo,'rgba(15,23,42,0.92)','#ffffff',15);
- X.restore();
-}
-
-/* ===== RENDERER B-ROLL BEBAS BINGKAI (FRAMELESS) SINKRON AKSI VO ===== */
+/* ===== RENDERER B-ROLL UTAMA (FULL & PIP DI ATAS KARAKTER) ===== */
 function getActiveLineBroll(){
  if(LINE_BROLL_MAP[li])return LINE_BROLL_MAP[li];
  const cur=L[li];
@@ -1972,239 +2075,27 @@ function drawFramelessBroll(tLine,isPip=false){
  const cur=L[li];
  const e=eo(cl(tLine/0.26));
  const prog=cur?cl((tm-cur.t0)/Math.max(0.25,cur.d)):0;
- const aw=activeWordIdx(cur);
- const isEmWord=(aw>=0&&cur&&cur.w[aw]&&cur.w[aw].em);
- const pulseEm=isEmWord?1.08:1.0;
 
  X.save();
  X.globalAlpha*=e;
 
- /* =========================================================================
-    MODE 1: B-ROLL KECIL (PIP DI ATAS KARAKTER) — 100% BEBAS BINGKAI KOTAK!
-    ========================================================================= */
  if(isPip){
-  const stageY=315+Math.sin(A*2.4)*7;
-  const stageMode=li%3;
+  /* Mode PIP di atas karakter: tetap menampilkan diorama detail skala 0.72 */
+  X.fillStyle=P.a;rr(250,118,220,30,15);X.fill();
+  txt(det.kicker,360,133,13,'#091017','center',900);
+  txt(det.title,360,174,fz(det.title,620,36,SERIF),'#ffffff','center',900,8,SERIF);
 
-  /* Aura cahaya latar di belakang objek */
-  const auraG=X.createRadialGradient(360,stageY,16,360,stageY,220);
-  auraG.addColorStop(0,al(P.a,0.34));
-  auraG.addColorStop(1,al(P.a,0));
-  X.fillStyle=auraG;
-  X.beginPath();X.arc(360,stageY,220,0,Math.PI*2);X.fill();
-
-  /* Pita topik melayang di atas */
-  drawFloatingPill(det.kicker,360,152,P.a,'#091017',14);
-  txt(det.title,360,202,fz(det.title,620,40,SERIF),'#ffffff','center',900,8,SERIF);
-
-  if(stageMode===1){
-   /* Aksi transfer dari Objek 1 ke Objek 2 sesuai progres VO */
-   const flowT=(A*1.3)%1;
-   const px=235+flowT*250;
-   X.strokeStyle=al(P.t,0.55);X.lineWidth=4;X.setLineDash([10,10]);
-   X.beginPath();X.moveTo(235,stageY+15);X.lineTo(485,stageY+15);X.stroke();
-   X.setLineDash([]);
-   X.fillStyle=P.a;X.beginPath();X.arc(px,stageY+15,9,0,Math.PI*2);X.fill();
-
-   X.save();X.translate(225,stageY+15);X.scale(pulseEm,pulseEm);
-   draw3DObject(det.ic1,0,0,76,P.a,det.img1,prog);
-   X.restore();
-
-   X.save();X.translate(495,stageY+15);X.scale(0.92+0.12*prog,0.92+0.12*prog);
-   draw3DObject(det.ic2,0,0,72,P.t,det.img2,prog);
-   X.restore();
-
-   drawFloatingPill(det.badge1,225,stageY+116,'rgba(15,23,42,0.88)','#ffffff',14);
-   drawFloatingPill(det.badge2,495,stageY+116,P.t,'#091017',14);
-  }else if(stageMode===2){
-   /* Objek utama besar di tengah + 2 callout pointer otomatis dari kalimat VO */
-   X.save();X.translate(360,stageY+22);X.scale(pulseEm*(0.95+0.08*prog),pulseEm*(0.95+0.08*prog));
-   draw3DObject(det.ic1,0,0,98,P.a,det.img1,prog);
-   X.restore();
-
-   drawCalloutPointer(285,stageY-12,145,stageY-48,det.badge1,P.a);
-   if(prog>0.25){
-    drawCalloutPointer(435,stageY+42,575,stageY+78,det.badge2,P.t);
-   }
-  }else{
-   /* Objek utama mengambang dinamis + satelit pendukung + badge kata kunci VO */
-   X.save();X.translate(340,stageY+22);X.scale(pulseEm,pulseEm);
-   draw3DObject(det.ic1,0,0,102,P.a,det.img1,prog);
-   X.restore();
-
-   X.save();X.translate(485,stageY-30+Math.cos(A*3)*8);
-   draw3DObject(det.ic2,0,0,46,P.t,det.img2,prog);
-   X.restore();
-
-   drawFloatingPill(det.badge,360,stageY+142,'rgba(15,23,42,0.90)','#ffffff',15);
-  }
-
-  X.restore();
-  return true;
- }
-
- /* =========================================================================
-    MODE 2: B-ROLL FULL LAYAR — 100% BEBAS BINGKAI KOTAK & SINKRON AKSI VO!
-    ========================================================================= */
- const st=det.stage||'hero_floating';
- const centerY=515;
-
- /* Header judul bebas bingkai di atas */
- drawFloatingPill(det.kicker,360,136,P.a,'#091017',15);
- txt(det.title,360,196,fz(det.title,640,48,SERIF),'#ffffff','center',900,10,SERIF);
-
- /* Aura cahaya lembut di belakang objek utama */
- const backGlow=X.createRadialGradient(360,centerY,20,360,centerY,310);
- backGlow.addColorStop(0,al(P.a,0.32));
- backGlow.addColorStop(0.55,al(P.t,0.14));
- backGlow.addColorStop(1,'rgba(0,0,0,0)');
- X.fillStyle=backGlow;
- X.beginPath();X.arc(360,centerY,310,0,Math.PI*2);X.fill();
-
- if(st==='versus_scale'){
-  /* Perbandingan 2 kekuatan/skala langsung di ruang terbuka (tanpa kotak) */
-  const leftScale=0.95+0.12*eo(cl(prog/0.4));
-  const rightScale=0.95+0.12*eo(cl((prog-0.25)/0.4));
-
-  X.save();
-  X.translate(195,centerY-10+Math.sin(A*2.4)*8);
-  X.scale(leftScale,leftScale);
-  draw3DObject(det.ic1,0,0,115,P.a,det.img1,prog);
-  X.restore();
-  drawFloatingPill(det.badge1,195,centerY+150,'rgba(15,23,42,0.92)','#ffffff',17);
-
-  /* Simbol pembanding melayang di tengah */
-  X.fillStyle=P.a;X.beginPath();X.arc(360,centerY-10,30,0,Math.PI*2);X.fill();
-  X.strokeStyle='#0f172a';X.lineWidth=4;X.stroke();
-  txt('VS',360,centerY-9,18,'#091017','center',900);
-
-  X.save();
-  X.translate(525,centerY-10+Math.cos(A*2.2)*8);
-  X.scale(rightScale,rightScale);
-  draw3DObject(det.ic2,0,0,115,P.t,det.img2,prog);
-  X.restore();
-  drawFloatingPill(det.badge2,525,centerY+150,P.t,'#091017',17);
-
-  txt(det.sub,360,745,fz(det.sub,620,23),'#f8fafc','center',800,5);
-
- }else if(st==='action_transfer'){
-  /* Simulasi fisika/aksi bergerak dari Pemicu (kiri) ke Target (kanan) seiring VO bicara */
-  const travel=eo(cl(prog/0.75));
-  const startX=185,endX=535;
-  const curPartX=startX+(endX-startX)*travel;
-
-  /* Jalur aliran energi / gelombang */
-  X.strokeStyle=al(P.t,0.45);X.lineWidth=5;X.setLineDash([14,12]);
-  X.beginPath();X.moveTo(startX,centerY-10);X.lineTo(endX,centerY-10);X.stroke();
-  X.setLineDash([]);
-
-  /* Partikel melesat mengikuti progres kalimat VO */
-  for(let k=0;k<4;k++){
-   const pOffset=cl(travel-k*0.09,0,1);
-   const px=startX+(endX-startX)*pOffset;
-   const py=centerY-10+Math.sin(A*8+k)*12;
-   X.fillStyle=k===0?'#ffffff':P.a;
-   X.beginPath();X.arc(px,py,11-k*2,0,Math.PI*2);X.fill();
-  }
-
-  /* Objek 1 (Sumber aksi) */
-  X.save();X.translate(startX,centerY-10);X.scale(pulseEm,pulseEm);
-  draw3DObject(det.ic1,0,0,108,P.a,det.img1,prog);
-  X.restore();
-  drawFloatingPill(det.badge1,startX,centerY+145,'rgba(15,23,42,0.92)','#ffffff',16);
-
-  /* Objek 2 (Penerima aksi - bereaksi membesar saat partikel tiba) */
-  const hitReact=travel>0.75?(1+Math.sin((travel-0.75)*Math.PI*4)*0.12):1;
-  X.save();X.translate(endX,centerY-10);X.scale(hitReact,hitReact);
-  draw3DObject(det.ic2,0,0,108,P.t,det.img2,prog);
-  X.restore();
-  drawFloatingPill(det.badge2,endX,centerY+145,P.t,'#091017',16);
-
-  txt(det.sub,360,745,fz(det.sub,620,23),'#f8fafc','center',800,5);
-
- }else if(st==='callout_anatomy'){
-  /* Objek 3D utama besar di tengah + garis penunjuk anatomi yang muncul bertahap sesuai VO */
-  X.save();
-  X.translate(360,centerY+10+Math.sin(A*2.2)*7);
-  X.scale(pulseEm*(0.94+0.08*prog),pulseEm*(0.94+0.08*prog));
-  draw3DObject(det.ic1,0,0,152,P.a,det.img1,prog);
-  X.restore();
-
-  /* Callout 1 muncul di paruh pertama VO */
-  if(prog>=0.08){
-   drawCalloutPointer(265,centerY-55,155,centerY-145,det.badge1,P.a);
-  }
-  /* Callout 2 muncul di paruh kedua VO */
-  if(prog>=0.38){
-   drawCalloutPointer(455,centerY+45,565,centerY+130,det.badge2,P.t);
-  }
-
-  drawFloatingPill(det.sub,360,745,'rgba(15,23,42,0.90)','#ffffff',19);
-
- }else if(st==='meter_gauge'){
-  /* Indikator angka/persentase terbuka tanpa kotak bingkai */
-  const curPct=Math.round((det.meterPct||75)*eo(cl(prog/0.65)));
-  X.save();
-  X.translate(220,centerY+Math.sin(A*2.4)*7);
-  X.scale(pulseEm,pulseEm);
-  draw3DObject(det.ic1,0,0,122,P.a,det.img1,prog);
-  X.restore();
-
-  const gx=515,gy=centerY-10,gr=104;
-  X.strokeStyle='rgba(255,255,255,0.18)';X.lineWidth=20;
-  X.beginPath();X.arc(gx,gy,gr,0,Math.PI*2);X.stroke();
-  X.strokeStyle=P.t;X.lineWidth=20;
-  X.beginPath();X.arc(gx,gy,gr,-Math.PI/2,-Math.PI/2+(Math.PI*2)*(curPct/100));X.stroke();
-  txt(curPct+'%',gx,gy-4,48,'#ffffff','center',900,6,SERIF);
-  txt(det.badge2,gx,gy+38,14,P.a,'center',900,4);
-
-  drawFloatingPill(det.sub,360,745,'rgba(15,23,42,0.92)','#ffffff',19);
-
- }else if(st==='orbit_system'){
-  /* Sistem orbit 3D terbuka tanpa bingkai */
-  X.save();
-  X.translate(360,centerY+10);
-  X.strokeStyle=al(P.t,0.45);X.lineWidth=4;X.setLineDash([14,12]);
-  X.rotate(A*0.35);X.beginPath();X.ellipse(0,0,265,115,0,0,Math.PI*2);X.stroke();
-  X.restore();
-
-  X.save();
-  X.translate(360,centerY+10+Math.sin(A*2.5)*8);
-  X.scale(pulseEm,pulseEm);
-  draw3DObject(det.ic1,0,0,136,P.a,det.img1,prog);
-  X.restore();
-
-  /* Objek kedua mengorbit di sekitar objek utama */
-  const orbAng=A*1.6;
-  const ox=360+Math.cos(orbAng)*235;
-  const oy=centerY+10+Math.sin(orbAng)*95;
-  X.save();X.translate(ox,oy);
-  draw3DObject(det.ic2,0,0,54,P.t,det.img2,prog);
-  X.restore();
-
-  drawFloatingPill(det.sub,360,745,'rgba(15,23,42,0.92)','#ffffff',19);
-
+  drawDetailedDiorama(det,360,345,0.74,prog);
  }else{
-  /* Hero Floating Stage: Objek 3D megah mengambang bebas di atas panggung cahaya */
-  const podG=X.createRadialGradient(360,centerY+155,10,360,centerY+155,220);
-  podG.addColorStop(0,al(P.t,0.45));
-  podG.addColorStop(1,al(P.t,0));
-  X.fillStyle=podG;
-  X.beginPath();X.ellipse(360,centerY+155,220,55,0,0,Math.PI*2);X.fill();
+  /* Mode Full Layar: Diorama Besar 1.0x + Header + Strip Data Bawah */
+  X.fillStyle=P.a;rr(240,114,240,34,17);X.fill();
+  txt(det.kicker,360,131,14,'#091017','center',900);
+  txt(det.title,360,186,fz(det.title,640,46,SERIF),'#ffffff','center',900,10,SERIF);
 
-  X.save();
-  X.translate(360,centerY-10+Math.sin(A*2.4)*10);
-  X.scale(pulseEm*(0.94+0.08*prog),pulseEm*(0.94+0.08*prog));
-  draw3DObject(det.ic1,0,0,154,P.a,det.img1,prog);
-  X.restore();
+  drawDetailedDiorama(det,360,470,1.02,prog);
 
-  /* Satelit objek kedua melayang di kanan atas */
-  X.save();
-  X.translate(555,centerY-135+Math.cos(A*2.2)*9);
-  draw3DObject(det.ic2,0,0,54,P.t,det.img2,prog);
-  X.restore();
-
-  drawFloatingPill(det.sub,360,745,'rgba(15,23,42,0.92)','#ffffff',19);
+  /* Pita Data Penjelas di Bawah Diorama */
+  drawBottomDataStrip(det.strip,360,725,P.a,eo(cl((prog-0.12)/0.25)));
  }
 
  X.restore();
@@ -2276,7 +2167,7 @@ function renderDynamicVoStage(t,preferPip){
  if(isPip){
   drawBrightVariedBg('studio',P.a);
   drawFramelessBroll(t,true);
-  char({oy:115,sc:0.88});
+  char({oy:125,sc:0.86});
  }else{
   drawBrightVariedBg('broll_full',P.t);
   drawFramelessBroll(t,false);
@@ -2285,15 +2176,13 @@ function renderDynamicVoStage(t,preferPip){
 
 const SCN={
  cover(t){
-  /* WAJIB TAMPIL PENUH SEJAK DETIK 0:00 (TANPA LAYAR HITAM) */
   X.save();
   X.globalAlpha=1;
   drawBrightVariedBg('cover',P.a);
 
-  /* Overlay kontras lembut di bagian atas agar judul sampul selalu terbaca tajam */
   const topScrim=X.createLinearGradient(0,0,0,540);
-  topScrim.addColorStop(0,'rgba(2,6,23,0.72)');
-  topScrim.addColorStop(0.75,'rgba(2,6,23,0.28)');
+  topScrim.addColorStop(0,'rgba(2,6,23,0.74)');
+  topScrim.addColorStop(0.75,'rgba(2,6,23,0.30)');
   topScrim.addColorStop(1,'rgba(2,6,23,0)');
   X.fillStyle=topScrim;
   X.fillRect(0,0,W,540);
@@ -2301,7 +2190,6 @@ const SCN={
   const u=bk(cl(t/.28));
   const ly=COVER_LAYOUT;
 
-  /* Kicker Badge Sampul */
   if(ly===0||ly===2){
    X.fillStyle=P.a;rr(200,98,320,42,21);X.fill();
    X.strokeStyle='#0f172a';X.lineWidth=3.5;rr(200,98,320,42,21);X.stroke();
@@ -2312,7 +2200,6 @@ const SCN={
    txt('•  '+TX.kicker.toUpperCase()+'  •',360,119,16,'#ffffff','center',900);
   }
 
-  /* Judul Utama Sampul (2 Baris Besar & Berkilau) */
   X.save();
   X.translate(360,262);
   X.scale(0.94+0.06*u,0.94+0.06*u);
@@ -2322,15 +2209,11 @@ const SCN={
   txt(TX.t2,0,48,s2,tg(48,s2,P.a,'#ffffff'),'center',900,14,SERIF);
   X.restore();
 
-  /* Sub-badge ajakan tonton */
   X.fillStyle='rgba(15,23,42,0.90)';rr(205,356,310,36,18);X.fill();
   X.strokeStyle=al(P.a,0.7);X.lineWidth=2.5;rr(205,356,310,36,18);X.stroke();
   txt(TX.watch.toUpperCase(),360,374,15,'#ffffff','center',800);
 
-  /* Stiker 3D Kiri & Kanan Sesuai Judul Video */
   drawCoverProps();
-
-  /* Karakter Host di Sampul */
   char({oy:35,sc:0.96});
   X.restore();
  },
@@ -2360,7 +2243,7 @@ const SCN={
  }
 };
 
-/* ===== SUBTITLE RENDERING (AFTER EFFECTS + HIGHLIGHT PILL) ===== */
+/* ===== SUBTITLE RENDERING ===== */
 function activeWordIdx(l){
  if(!l||!l.w||!l.w.length)return-1;
  if(tm<l.ss)return-1;
@@ -2573,7 +2456,6 @@ function drawSubs(){
 
 /* ===== TRANSISI & EFEK SINEMATIK ===== */
 function applySceneEnterExit(tAbs){
- /* JANGAN PERNAH FADE-IN DARI HITAM PADA SAMPUL (tAbs < COVER_HOLD) */
  if(tAbs<COVER_HOLD)return;
 
  const cur=L[li];
