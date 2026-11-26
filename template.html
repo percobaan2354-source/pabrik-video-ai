@@ -181,7 +181,7 @@ const GENRE_RULES=[
  ['konspirasi',mk('konspirasi|rahasia dunia|bunker|brankas|illuminati|elit|agen|satelit|radar|tersembunyi|terlarang|eksperimen|area 51|kode rahasia')],
  ['bisnis',mk('bisnis|sukses|kaya|miliarder|saham|investasi|uang|ekonomi|perusahaan|ceo|startup|modal|cuan|bank|emas|kekayaan|tiket|kartu|maskapai|merugi|dolar')],
  ['drama',mk('keluarga|hubungan|cinta|putus|rindu|orang tua|ibu|ayah|anak|pernikahan|sedih|menangis|hati|kesepian|drama|rumah tangga')],
- ['psikologi',mk('psikologi|otak|pikiran|tidur|kebiasaan|mental|stres|overthinking|fokus|motivasi|pengembangan diri|mindset|emosi|sadar|bifasik|insomnia|ngantuk|merem|bersin|memori|ingatan|hidung|aroma|reseptor|rasa|lidah|air liur|menguap|menutup mulut')],
+ ['psikologi',mk('psikologi|otak|pikiran|tidur|kebiasaan|mental|stres|overthinking|fokus|motivasi|pengembangan diri|mindset|emosi|sadar|bifasik|insomnia|ngantuk|merem|bersin|memori|ingatan|hidung|aroma|reseptor|rasa|lidah|air liur|menguap|menutup mulut|ditatap|tatapan|mata')],
  ['mitologi',mk('mitologi|legenda|dewa|naga|sihir|pedang|ramalan|makhluk|raksasa|peri|keramat|dongeng|cerita rakyat|jimat|kutukan kuno')],
  ['sains',mk('sains|antariksa|luar angkasa|planet|matahari|bulan|bintang|galaksi|ai|robot|masa depan|kuantum|dna|teknologi|orbit|mars|nasa|gelombang|frekuensi|fisika|sinar|elektron|tabung')],
  ['bencana',mk('bencana|gempa|tsunami|gunung meletus|lava|badai|topan|banjir|kebakaran|bertahan hidup|survival|salju ekstrem|tenggelam|karam|hanyut')],
@@ -217,7 +217,7 @@ const P=Object.assign({}, G_SPEC.pal, VTHEME ? {
 });
 
 /* ============================================================================
-   MESIN B-ROLL 1 JALUR PASTI (VIDEO / FOTO HD ASLI)
+   MESIN B-ROLL 1 JALUR PASTI (VIDEO / FOTO HD ASLI + ILUSTRASI VEKTOR TEMATIK)
    ============================================================================ */
 const STOP_WORDS=new Set([
  'yang','dan','di','ke','dari','ini','itu','untuk','pada','dengan','adalah','sebagai','dalam','oleh','akan','juga','atau','karena','jika','bila','saat','ketika','sebelum','sesudah','setelah','lalu','kemudian','mereka','kami','kita','kamu','dia','ia','orang','manusia','para','semua','setiap','banyak','beberapa','satu','dua','tiga','empat','lima','enam','tujuh','delapan','sembilan','sepuluh','sekitar','hampir','sangat','lebih','paling','bisa','dapat','harus','mau','ingin','pernah','sering','selalu','belum','sudah','telah','sedang','masih','lagi','saja','cuma','hanya','bukan','tidak','nggak','gak','tak','ada','punya','jadi','menjadi','buat','membuat','disebut','bernama','secara','hal','cara','bagian','tahap','kali','sampai','hingga','antara','selama','tengah','awal','akhir','mungkin','ternyata','padahal','namun','tapi','tetapi','kalau','misalnya','contoh','kayak','seperti','gini','begitu','sih','nih','deh','dong','ya','kan','sekali','waktu','dulu','zaman','era','hari','bikin','malah','makin','banget','aja','lo','gue','lu','bayangkan','coba','lihat','enggak','sebuah','layaknya','masuk','mode','justru','kunci','tercepat','segera','sekadar','bahkan','biar','ngira','alasan','aslinya','jauh','serius','urusan','khusus','darurat','kalo','sengaja','tetap','menyangka','abaikan','berkat','detail','kecil','ribuan','biasanya','berbahan','sempit','penuh','mendadak','pernahkah','sadar'
@@ -322,7 +322,7 @@ function attachPhotoToItem(item,imgUrl){
  return new Promise(resolve=>{
   if(!imgUrl)return resolve(false);
   const im=new Image();
-  im.crossOrigin='anonymous';
+  if(/^https?:\/\//i.test(imgUrl))im.crossOrigin='anonymous';
   const timer=setTimeout(()=>resolve(false),8000);
   im.onload=()=>{
    clearTimeout(timer);
@@ -340,7 +340,7 @@ function attachVideoElementToItem(item,mp4Url){
   if(!mp4Url)return resolve(false);
   try{
    const v=document.createElement('video');
-   v.crossOrigin='anonymous';
+   if(/^https?:\/\//i.test(mp4Url))v.crossOrigin='anonymous';
    v.muted=true;
    v.loop=true;
    v.playsInline=true;
@@ -371,7 +371,6 @@ async function preloadAllRealVideos(){
   let vUrl=item.videoUrl;
   let pUrl=item.photoUrl;
 
-  /* Jika dari server Node.js belum ada file lokal & PIXABAY_KEY tersedia di browser, cari langsung */
   if(!vUrl&&!pUrl&&PIXABAY_KEY){
    const found=await fetchPixabayMedia(item.videoQuery,idx);
    vUrl=found.videoUrl;
@@ -781,7 +780,8 @@ function char(o={}){
 
 function initCharFromUrl(url){
  return new Promise(resolve=>{
-  const im=new Image();im.crossOrigin='anonymous';
+  const im=new Image();
+  if(/^https?:\/\//i.test(url))im.crossOrigin='anonymous';
   im.onload=()=>{
    const tw=440,th=440,cc=document.createElement('canvas');cc.width=tw;cc.height=th;
    const cx=cc.getContext('2d',{willReadFrequently:true});
@@ -807,7 +807,7 @@ function initCharFromUrl(url){
 function initCharSafe(url){return Promise.race([initCharFromUrl(url).catch(()=>false),new Promise(r=>setTimeout(()=>r(false),8000))])}
 
 /* ============================================================================
-   RENDERER B-ROLL 1 JALUR TUNGGAL (TANPA DIAGRAM 01 - 02)
+   RENDERER B-ROLL 1 JALUR TUNGGAL (FOTO / VIDEO HD + ILUSTRASI VEKTOR TEMATIK)
    ============================================================================ */
 function drawMediaCoverFit(mediaEl,mw,mh,dx,dy,dw,dh,zoom=1.04,panX=0){
  const scale=Math.max(dw/mw,dh/mh)*zoom;
@@ -818,14 +818,40 @@ function drawMediaCoverFit(mediaEl,mw,mh,dx,dy,dw,dh,zoom=1.04,panX=0){
 }
 
 function drawEditorialQuoteCard(det,cx,cy,cw,ch){
+ const q=(det.videoQuery+' '+det.title+' '+det.kicker).toLowerCase();
  X.save();
  const g=X.createLinearGradient(cx-cw/2,cy-ch/2,cx+cw/2,cy+ch/2);
  g.addColorStop(0,'#0f172a');
  g.addColorStop(1,'#1e293b');
  X.fillStyle=g;rr(cx-cw/2,cy-ch/2,cw,ch,28);X.fill();
  X.strokeStyle=P.a;X.lineWidth=4;rr(cx-cw/2,cy-ch/2,cw,ch,28);X.stroke();
- txt(det.title,cx,cy-28,fz(det.title,cw-60,38,SERIF),'#ffffff','center',900,0,SERIF);
- txt(det.sub,cx,cy+28,fz(det.sub,cw-64,22),'#cbd5e1','center',600);
+
+ const iy=cy-34;
+ X.save();
+ X.translate(cx,iy);
+ if(/eye|mata|tatap|vision|sclera/.test(q)){
+  X.strokeStyle=P.a;X.lineWidth=6;
+  X.beginPath();X.moveTo(-95,0);X.quadraticCurveTo(0,-68,95,0);X.quadraticCurveTo(0,68,-95,0);X.stroke();
+  X.fillStyle='#ffffff';X.beginPath();X.ellipse(0,0,76,40,0,0,Math.PI*2);X.fill();
+  X.fillStyle=P.a;X.beginPath();X.arc(Math.sin(A*2.2)*12,0,26,0,Math.PI*2);X.fill();
+  X.fillStyle='#091017';X.beginPath();X.arc(Math.sin(A*2.2)*12,0,12,0,Math.PI*2);X.fill();
+ }else if(/brain|otak|neuro|amigdala|alert|alarm/.test(q)){
+  for(let r=1;r<=3;r++){
+   X.strokeStyle=al(P.a,0.75-r*0.2);X.lineWidth=4;
+   X.beginPath();X.arc(0,0,24+r*22+Math.sin(A*5)*4,0,Math.PI*2);X.stroke();
+  }
+  X.fillStyle=P.a;X.beginPath();X.arc(0,0,24,0,Math.PI*2);X.fill();
+ }else{
+  for(let r=1;r<=3;r++){
+   X.strokeStyle=al(P.a,0.8-r*0.22);X.lineWidth=4;
+   X.beginPath();X.arc(0,0,20+r*24,0,Math.PI*2);X.stroke();
+  }
+  X.fillStyle=P.t;X.beginPath();X.arc(0,0,18,0,Math.PI*2);X.fill();
+ }
+ X.restore();
+
+ txt(det.title,cx,cy+56,fz(det.title,cw-60,34,SERIF),'#ffffff','center',900,0,SERIF);
+ txt(det.sub,cx,cy+100,fz(det.sub,cw-64,20),'#cbd5e1','center',600);
  X.restore();
 }
 
