@@ -1,4 +1,4 @@
-/* ===== SCRIPT UTAMA: buat_video.js (Versi Lengkap: Render HD, Auto YouTube, Notifikasi Telegram, & Smart Queue Prime Time) ===== */
+/* ===== SCRIPT UTAMA: buat_video.js (Versi V45: Pixabay Real Video/Photo B-Roll + Karakter Reaction) ===== */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -8,6 +8,7 @@ const { chromium } = require('playwright');
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || '';
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgDQGcFmaJgB';
+const PIXABAY_API_KEY = (process.env.PIXABAY_API_KEY || '').trim();
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
@@ -15,11 +16,7 @@ const JUDUL = process.env.INPUT_JUDUL || process.env.JUDUL || 'Fakta Unik yang J
 const BAHASA = process.env.INPUT_BAHASA || process.env.BAHASA || 'Indonesia';
 const UKURAN = process.env.INPUT_UKURAN || process.env.UKURAN || '9:16';
 
-const YT_CLIENT_ID = process.env.YT_CLIENT_ID || '';
-const YT_CLIENT_SECRET = process.env.YT_CLIENT_SECRET || '';
-const YT_REFRESH_TOKEN = process.env.YT_REFRESH_TOKEN || '';
-
-const COVER_HOLD_SEC = 1.35;
+const COVER_HOLD_SEC = 1.65;
 
 if (!GEMINI_API_KEY) {
   console.error('ERROR: GEMINI_API_KEY belum diisi di Secrets!');
@@ -81,19 +78,13 @@ async function kirimPesanTelegram(pesan) {
   }
 }
 
-// Analisis Jam Ramai Dinamis berdasarkan Hari (Senin-Minggu)
 function deteksiPrimeTimeHariIni() {
   const now = new Date();
   const jamWib = (now.getUTCHours() + 7) % 24;
-  const hari = now.getDay(); // 0 = Minggu, 6 = Sabtu
-
+  const hari = now.getDay();
   let targetJamRamai = 18;
-  if (hari === 0 || hari === 6) {
-    targetJamRamai = 16; // Akhir pekan sore
-  } else if (hari === 5) {
-    targetJamRamai = 20; // Jumat malam
-  }
-
+  if (hari === 0 || hari === 6) targetJamRamai = 16;
+  else if (hari === 5) targetJamRamai = 20;
   return { jamWib, targetJamRamai };
 }
 
@@ -113,7 +104,7 @@ function pilihTemaVisualDariJudul(judul) {
       theme: { name: 'ancient_gold', bg1: '#1c140d', bg2: '#332214', card: '#291b10', accent: '#f59e0b', accent2: '#ef4444', text: '#fef3c7' }
     },
     {
-      re: /alam|hewan|laut|hutan|gunung|bumi|samudra|tumbuhan|ikan|burung|cuaca/,
+      re: /alam|hewan|laut|hutan|gunung|bumi|samudra|tumbuhan|ikan|burung|cuaca|mercusuar/,
       theme: { name: 'emerald_wild', bg1: '#062019', bg2: '#0e3b2e', card: '#0a2e24', accent: '#10b981', accent2: '#eab308', text: '#ecfdf5' }
     },
     {
@@ -121,20 +112,14 @@ function pilihTemaVisualDariJudul(judul) {
       theme: { name: 'crimson_mystery', bg1: '#180912', bg2: '#2e1022', card: '#240c1a', accent: '#f43f5e', accent2: '#a855f7', text: '#fff1f2' }
     },
     {
-      re: /bisnis|uang|kaya|sukses|ekonomi|saham|emas|kerja|kaya|miliarder/,
+      re: /bisnis|uang|kaya|sukses|ekonomi|saham|emas|kerja|miliarder/,
       theme: { name: 'royal_wealth', bg1: '#0f172a', bg2: '#1e293b', card: '#162033', accent: '#eab308', accent2: '#38bdf8', text: '#f8fafc' }
     }
   ];
   for (const p of presets) {
     if (p.re.test(q)) return p.theme;
   }
-  const hash = Array.from(q).reduce((a, c) => a + c.charCodeAt(0), 0);
-  const fallbacks = [
-    { name: 'indigo_spark', bg1: '#111029', bg2: '#221f4d', card: '#19173b', accent: '#818cf8', accent2: '#fb7185', text: '#eef2ff' },
-    { name: 'teal_prism', bg1: '#091e24', bg2: '#133842', card: '#0e2b33', accent: '#2dd4bf', accent2: '#fb923c', text: '#f0fdfa' },
-    { name: 'amber_studio', bg1: '#1f150c', bg2: '#382514', card: '#2b1c0f', accent: '#fb923c', accent2: '#38bdf8', text: '#fff7ed' }
-  ];
-  return fallbacks[hash % fallbacks.length];
+  return { name: 'indigo_spark', bg1: '#0f172a', bg2: '#1e293b', card: '#141e38', accent: '#38bdf8', accent2: '#f59e0b', text: '#f8fafc' };
 }
 
 function rapikanNaskah(data, dim, ttsInfo) {
@@ -144,27 +129,20 @@ function rapikanNaskah(data, dim, ttsInfo) {
   data.lines = data.lines.filter(l => Array.isArray(l) && l.length >= 3 && typeof l[2] === 'string' && l[2].trim() !== '');
   if (data.lines.length < 4) throw new Error('Naskah dari Gemini terlalu pendek / format "lines" rusak.');
 
-  const layouts = ['hero_stage', 'split_compare', 'process_flow', 'spotlight_card', 'timeline_meter', 'diagram_callout'];
-  const anims = ['pulse', 'flow', 'rise', 'orbit', 'scan', 'bounce'];
-  const seed = Array.from(JUDUL).reduce((a, c) => a + c.charCodeAt(0), 0);
-
-  data.lines = data.lines.map((l, idx) => {
+  data.lines = data.lines.map((l) => {
     const sc = l[0] || 'b1';
     const mood = l[1] || 'n';
     const text = l[2].trim();
     const fx = l[3] || '';
-    let meta = (l[4] && typeof l[4] === 'object') ? l[4] : null;
+    let meta = (l[4] && typeof l[4] === 'object') ? l[4] : {};
 
-    if (meta) {
-      if (!meta.layout || !layouts.includes(meta.layout)) {
-        meta.layout = layouts[(seed + idx * 3) % layouts.length];
-      }
-      if (!meta.anim || !anims.includes(meta.anim)) {
-        meta.anim = anims[(seed + idx * 5) % anims.length];
-      }
+    if (sc !== 'cta' && sc !== 'end') {
       if (!meta.mode) {
         meta.mode = (sc === 'title' || sc === 'a' || sc === 'c') ? 'pip_broll' : 'full_broll';
       }
+      if (!meta.videoQuery && meta.query) meta.videoQuery = meta.query;
+    } else {
+      meta = null;
     }
     return [sc, mood, text, fx, meta];
   });
@@ -197,11 +175,122 @@ function rapikanNaskah(data, dim, ttsInfo) {
     ? Object.assign(pilihTemaVisualDariJudul(JUDUL), data.visualTheme)
     : pilihTemaVisualDariJudul(JUDUL);
 
-  data.lang      = ttsInfo.langCode;
-  data.width     = dim.width;
-  data.height    = dim.height;
+  data.lang = ttsInfo.langCode;
+  data.width = dim.width;
+  data.height = dim.height;
   data.coverHold = COVER_HOLD_SEC;
+  if (PIXABAY_API_KEY) data.pixabayApiKey = PIXABAY_API_KEY;
   return data;
+}
+
+/* ===== UNDUH VIDEO / FOTO PIXABAY LANGSUNG DI NODE.JS AGAR BEBAS CORS ===== */
+async function siapkanMediaPixabayLokal(videoData) {
+  if (!PIXABAY_API_KEY) {
+    console.warn('PERINGATAN: PIXABAY_API_KEY kosong! Melewati unduhan klip Pixabay.');
+    return;
+  }
+
+  fs.mkdirSync('media', { recursive: true });
+  const videoCache = new Map();
+  const photoCache = new Map();
+  const usedUrls = new Set();
+
+  async function cariKandidatPixabay(query) {
+    const qClean = (query || 'mystery ocean night').replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    const key = qClean.toLowerCase();
+
+    if (!videoCache.has(key)) {
+      try {
+        const res = await fetch(`https://pixabay.com/api/videos/?key=${encodeURIComponent(PIXABAY_API_KEY)}&q=${encodeURIComponent(qClean)}&safesearch=true&per_page=8`, {
+          signal: AbortSignal.timeout(15000)
+        });
+        const json = res.ok ? await res.json() : { hits: [] };
+        const urls = (json.hits || []).map(h => {
+          const v = h.videos || {};
+          return (v.small && v.small.url) || (v.medium && v.medium.url) || (v.tiny && v.tiny.url) || '';
+        }).filter(Boolean);
+        videoCache.set(key, urls);
+      } catch (_) {
+        videoCache.set(key, []);
+      }
+    }
+
+    if (!photoCache.has(key)) {
+      try {
+        const res = await fetch(`https://pixabay.com/api/?key=${encodeURIComponent(PIXABAY_API_KEY)}&q=${encodeURIComponent(qClean)}&image_type=photo&safesearch=true&per_page=8`, {
+          signal: AbortSignal.timeout(15000)
+        });
+        const json = res.ok ? await res.json() : { hits: [] };
+        const urls = (json.hits || []).map(h => h.largeImageURL || h.webformatURL || '').filter(Boolean);
+        photoCache.set(key, urls);
+      } catch (_) {
+        photoCache.set(key, []);
+      }
+    }
+
+    return {
+      videos: videoCache.get(key) || [],
+      photos: photoCache.get(key) || []
+    };
+  }
+
+  async function unduhKeFile(url, outFile) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
+      if (!res.ok) return false;
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length < 4096) return false;
+      fs.writeFileSync(outFile, buf);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  let berhasil = 0;
+  for (let i = 0; i < videoData.lines.length; i++) {
+    const l = videoData.lines[i];
+    const sc = l[0];
+    if (sc === 'cta' || sc === 'end') continue;
+
+    const meta = (l[4] && typeof l[4] === 'object') ? l[4] : (l[4] = {});
+    const query = meta.videoQuery || 'mystery ocean night';
+    console.log(`   [Baris ${i + 1}] Mencari klip Pixabay: "${query}"...`);
+
+    let { videos, photos } = await cariKandidatPixabay(query);
+    if (!videos.length && !photos.length && query.includes(' ')) {
+      const shortQ = query.split(/\s+/).slice(0, 2).join(' ');
+      const retry = await cariKandidatPixabay(shortQ);
+      videos = retry.videos;
+      photos = retry.photos;
+    }
+
+    const chosenVid = videos.find(u => !usedUrls.has(u)) || videos[0] || '';
+    if (chosenVid) {
+      const localMp4 = `media/clip_${i}.mp4`;
+      const ok = await unduhKeFile(chosenVid, localMp4);
+      if (ok) {
+        usedUrls.add(chosenVid);
+        meta.videoUrl = localMp4;
+        berhasil++;
+        console.log(`   [Baris ${i + 1}] OK Video lokal -> ${localMp4}`);
+        continue;
+      }
+    }
+
+    const chosenImg = photos.find(u => !usedUrls.has(u)) || photos[0] || '';
+    if (chosenImg) {
+      const localJpg = `media/photo_${i}.jpg`;
+      const ok = await unduhKeFile(chosenImg, localJpg);
+      if (ok) {
+        usedUrls.add(chosenImg);
+        meta.photoUrl = localJpg;
+        berhasil++;
+        console.log(`   [Baris ${i + 1}] OK Foto HD lokal -> ${localJpg}`);
+      }
+    }
+  }
+  console.log(`Total media Pixabay terunduh: ${berhasil} klip.`);
 }
 
 async function buatNaskahJSON(dim, ttsInfo) {
@@ -209,43 +298,33 @@ async function buatNaskahJSON(dim, ttsInfo) {
     ? '9-10 kalimat storytelling santai & mengalir (maksimal 9-12 kata per kalimat agar total durasi baca 38-50 detik)'
     : '12-15 kalimat padat dan informatif (untuk video landscape 16:9)';
 
-  const prompt = `Kamu adalah sutradara animasi explainer & ilustrator vektor SVG kelas dunia.
+  const prompt = `Kamu adalah sutradara video dokumenter & short-form storytelling kelas dunia.
 Buatkan data video lengkap dalam format JSON MURNI (tanpa markdown/teks pembuka) untuk topik:
 - Judul: "${JUDUL}"
 - Bahasa Video: ${BAHASA} (kode BCP-47: ${ttsInfo.langCode})
 - Ukuran: ${UKURAN} (${dim.width}x${dim.height})
 
-PRINSIP UTAMA SINKRONISASI VISUAL-VO (WAJIB DIPATUHI):
-1. SETIAP kalimat VO yang menjelaskan objek, proses, sebab-akibat, angka, atau bagian tubuh/benda WAJIB langsung menampilkan visual B-Roll yang menggambarkan PERSIS apa yang sedang diucapkan di kalimat itu!
-   - Contoh: Jika VO menyebut "jantung memompa darah", SVG harus menggambar ilustrasi jantung berdetak + panah aliran darah (BUKAN lingkaran/ikon abstrak polos!).
-   - Contoh: Jika VO menyebut "baterai HP cepat habis saat dingin", SVG harus menggambar ikon baterai merah menurun + kristal es/termometer!
-2. DILARANG memakai tata letak B-Roll yang sama terus-menerus! Variasikan "layout" pada setiap adegan dari 6 pilihan unik ini:
-   - "hero_stage": 1 panggung visual besar di tengah dengan ilustrasi utama + lencana status bergerak.
-   - "split_compare": perbandingan 2 sisi (Kiri vs Kanan, misal Sebelum vs Sesudah atau Penyebab vs Dampak) dengan 2 ilustrasi berbeda.
-   - "process_flow": diagram alur 2 tahap (svg -> panah proses -> svg2) yang menunjukkan mekanisme kerja.
-   - "spotlight_card": kartu sorotan melayang di bagian atas layar sementara karakter tetap berbicara di bawah ("mode": "pip_broll").
-   - "timeline_meter": visual dengan indikator progres/persentase/skala ukur nyata sesuai angka/tingkatan di VO.
-   - "diagram_callout": ilustrasi utama di tengah dengan 2 label penunjuk (callout badge) yang menunjuk bagian penting dari objek di VO.
+PRINSIP UTAMA VISUAL B-ROLL (WAJIB DIPATUHI):
+1. SETIAP kalimat VO yang menjelaskan lokasi, benda, peristiwa, emosi, atau aksi WAJIB dilengkapi "videoQuery" dalam BAHASA INGGRIS (2-4 kata kunci sederhana yang sangat mudah ditemukan di Pixabay Stock Video/Photo)!
+   - Contoh: Jika VO membahas mercusuar di pulau terpencil -> "videoQuery": "lighthouse ocean island waves"
+   - Contoh: Jika VO membahas meja makan terkunci -> "videoQuery": "vintage dining table room"
+   - Contoh: Jika VO membahas penjaga menangis ketakutan -> "videoQuery": "sad scared man dark"
+2. Variasikan mode visual antara "pip_broll" (B-Roll kecil di atas sementara karakter utama ikut nge-reaction di bawah) dan "full_broll" (B-Roll layar penuh sinematik):
+   - Gunakan "pip_broll" pada adegan "title", "a", dan "c".
+   - Gunakan "full_broll" pada adegan "b1", "b2", "b3", "b4", "b5".
 3. Buat ${jumlahKalimat} di dalam array "lines".
    Format tiap elemen: ["kunci_adegan", "mood", "Kalimat VO dengan *kata* ditekankan.", "fx_opsional", META_VISUAL]
    - Kunci adegan: gunakan urutan dinamis seperti "title", "b1", "b2", "a", "b3", "b4", "cta", "cta", "b5", "end".
-   - Semua baris kecuali "cta" dan "end" BOLEH dan SANGAT DISARANKAN memiliki objek META_VISUAL agar visual terus berubah mengikuti ucapan VO!
-   - Struktur META_VISUAL:
+   - Struktur META_VISUAL (untuk semua baris kecuali "cta" dan "end"):
      {
-       "mode": "full_broll" atau "pip_broll",
-       "layout": "hero_stage" | "split_compare" | "process_flow" | "spotlight_card" | "timeline_meter" | "diagram_callout",
-       "anim": "pulse" | "flow" | "rise" | "orbit" | "scan" | "bounce",
+       "mode": "pip_broll" atau "full_broll",
+       "videoQuery": "2-4 english keywords for pixabay stock footage",
        "kicker": "LABEL KONTEKS 1-2 KATA SESUAI VO",
        "title": "JUDUL SINGKAT 2-3 KATA SESUAI VO",
-       "sub": "Penjelasan ringkas 3-6 kata sesuai kalimat VO",
-       "badge1": "Label bagian 1 (singkat)",
-       "badge2": "Label bagian 2 (singkat)",
-       "meterPct": 75,
-       "svg": "<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...MINIMAL 6 ELEMEN VEKTOR KAYA WARNA & DETAIL YANG MENGGAMBARKAN ISI KALIMAT VO INI...</svg>",
-       "svg2": "<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...ILUSTRASI PENDAMPING/HASIL AKHIR YANG BERBEDA DARI svg...</svg>"
+       "sub": "Keterangan ringkas 3-6 kata sesuai kalimat VO",
+       "badge1": "Detail 1",
+       "badge2": "Detail 2"
      }
-4. "visualTheme": pilih palet warna unik yang paling cocok dengan suasana judul "${JUDUL}" (hex color gelap untuk bg1/bg2/card dan cerah kontras untuk accent/accent2).
-5. "coverSvg1" & "coverSvg2": SVG ikon utama sesuai judul "${JUDUL}".
 
 KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
 {
@@ -266,8 +345,6 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
     "accent2": "#f59e0b",
     "text": "#f8fafc"
   },
-  "coverSvg1": "<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>",
-  "coverSvg2": "<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>",
   "tx": {
     "kicker": "FAKTA UNIK",
     "t1": "KATA ATAS",
@@ -280,15 +357,15 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
     "src": "Sumber"
   },
   "lines": [
-    ["title", "d", "Kalimat pembuka dengan *kata kunci* sesuai judul.", "", {"mode":"pip_broll","layout":"spotlight_card","anim":"bounce","kicker":"HOOK","title":"TOPIK UTAMA","sub":"Keterangan singkat sesuai kalimat pembuka","badge1":"Fakta 1","badge2":"Fakta 2","meterPct":50,"svg":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>","svg2":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"}],
-    ["b1", "n", "Kalimat kedua menjelaskan bagian/objek pertama.", "p", {"mode":"full_broll","layout":"diagram_callout","anim":"pulse","kicker":"BAGIAN 1","title":"OBJEK PERTAMA","sub":"Keterangan sesuai kalimat kedua","badge1":"Komponen A","badge2":"Komponen B","meterPct":40,"svg":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>","svg2":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"}],
-    ["b2", "e", "Kalimat ketiga menjelaskan proses atau perbandingan.", "p", {"mode":"full_broll","layout":"split_compare","anim":"flow","kicker":"PERBANDINGAN","title":"DUA KONDISI","sub":"Keterangan sesuai kalimat ketiga","badge1":"Kondisi Awal","badge2":"Kondisi Akhir","meterPct":70,"svg":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>","svg2":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"}],
-    ["a", "n", "Kalimat keempat memperkuat penjelasan dari karakter.", "", {"mode":"pip_broll","layout":"spotlight_card","anim":"orbit","kicker":"MEKANISME","title":"CARA KERJA","sub":"Keterangan sesuai kalimat keempat","badge1":"Tahap 1","badge2":"Tahap 2","meterPct":65,"svg":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>","svg2":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"}],
-    ["b3", "d", "Kalimat kelima menjelaskan tahapan sebab-akibat.", "p", {"mode":"full_broll","layout":"process_flow","anim":"flow","kicker":"PROSES","title":"ALUR TERJADI","sub":"Keterangan sesuai kalimat kelima","badge1":"Pemicu","badge2":"Hasil","meterPct":85,"svg":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>","svg2":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"}],
-    ["b4", "e", "Kalimat keenam menjelaskan lonjakan/dampak terukur.", "p", {"mode":"full_broll","layout":"timeline_meter","anim":"rise","kicker":"DAMPAK NYATA","title":"TINGKAT EFEK","sub":"Keterangan sesuai kalimat keenam","badge1":"Normal","badge2":"Puncak","meterPct":92,"svg":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>","svg2":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"}],
+    ["title", "d", "Kalimat pembuka dengan *kata kunci* sesuai judul.", "", {"mode":"pip_broll","videoQuery":"lighthouse ocean night storm","kicker":"MISTERI NYATA","title":"AWAL KISAH","sub":"Keterangan singkat sesuai kalimat pembuka","badge1":"Lokasi","badge2":"Misteri"}],
+    ["b1", "n", "Kalimat kedua menjelaskan lokasi atau objek pertama.", "p", {"mode":"full_broll","videoQuery":"ocean waves island cliff","kicker":"LOKASI","title":"TEMPAT KEJADIAN","sub":"Keterangan sesuai kalimat kedua","badge1":"Kondisi","badge2":"Fakta"}],
+    ["b2", "e", "Kalimat ketiga menjelaskan kejadian aneh.", "p", {"mode":"full_broll","videoQuery":"empty dining room table","kicker":"KEJANGGALAN","title":"BUKTI UTAMA","sub":"Keterangan sesuai kalimat ketiga","badge1":"Petunjuk 1","badge2":"Petunjuk 2"}],
+    ["a", "n", "Kalimat keempat memperkuat penjelasan dari karakter.", "", {"mode":"pip_broll","videoQuery":"lighthouse light beam night","kicker":"KONTRADISI","title":"FAKTA ANEH","sub":"Keterangan sesuai kalimat keempat","badge1":"Terkunci","badge2":"Menyala"}],
+    ["b3", "d", "Kalimat kelima menjelaskan catatan atau bukti tertulis.", "p", {"mode":"full_broll","videoQuery":"old diary book writing","kicker":"CATATAN","title":"ARSIP TERAKHIR","sub":"Keterangan sesuai kalimat kelima","badge1":"Tanggal","badge2":"Isi Log"}],
+    ["b4", "e", "Kalimat keenam menjelaskan kondisi emosi atau saksi.", "p", {"mode":"full_broll","videoQuery":"sad stressed man dark","kicker":"KESAKSIAN","title":"REAKSI SAKSI","sub":"Keterangan sesuai kalimat keenam","badge1":"Kondisi","badge2":"Dampak"}],
     ["cta", "n", "Mau bikin video kayak gini juga?", "", null],
     ["cta", "e", "Langsung aja cek *link di bio*.", "c", null],
-    ["b5", "d", "Kalimat kesembilan memberi kesimpulan visual utama.", "p", {"mode":"full_broll","layout":"hero_stage","anim":"scan","kicker":"KESIMPULAN","title":"INTI FAKTA","sub":"Keterangan sesuai kalimat kesembilan","badge1":"Bukti Utama","badge2":"Fakta Akhir","meterPct":100,"svg":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>","svg2":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"}],
+    ["b5", "d", "Kalimat kesembilan memberi kesimpulan visual utama.", "p", {"mode":"full_broll","videoQuery":"misty ocean mystery horizon","kicker":"KESIMPULAN","title":"MISTERI ABADI","sub":"Keterangan sesuai kalimat kesembilan","badge1":"Jejak","badge2":"Misteri"}],
     ["end", "s", "Kalimat penutup yang meninggalkan *kesan*.", "", null]
   ]
 }`;
@@ -328,7 +405,7 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
         }
       } catch (err) {}
     }
-    await tunggu(5000);
+    await tunggu(4000);
   }
   throw new Error('Gagal menghasilkan naskah dari Gemini API.');
 }
@@ -438,7 +515,7 @@ function pilihBgmSkalaDariJudul(judul, seedNum) {
   const q = (judul || '').toLowerCase();
   const genreScales = [
     { re: /kamar mandi|mandi|keramik|gema|reverb|akustik|nyanyi|air|laut/, notes: [293.66, 349.23, 440.00, 523.25], tempo: 1.35, lp: 1350 },
-    { re: /horor|hantu|mistis|angker|kuburan|kutukan|misteri|gelap|malam|tidur|alarm/, notes: [146.83, 174.61, 220.00, 261.63], tempo: 0.85, lp: 780 },
+    { re: /horor|hantu|mistis|angker|kuburan|kutukan|misteri|gelap|malam|tidur|alarm|hilang|mercusuar/, notes: [146.83, 174.61, 220.00, 261.63], tempo: 0.85, lp: 780 },
     { re: /sejarah|kuno|kerajaan|romawi|mesir|abad|dinasti|piramida/, notes: [220.00, 261.63, 293.66, 392.00], tempo: 0.95, lp: 920 },
     { re: /sains|antariksa|planet|teknologi|robot|ai\b|kuantum|listrik|lampu/, notes: [261.63, 311.13, 392.00, 466.16], tempo: 1.50, lp: 1500 },
     { re: /psikologi|otak|pikiran|mental|stres|mimpi|kebiasaan/, notes: [246.94, 293.66, 369.99, 440.00], tempo: 0.90, lp: 850 },
@@ -534,15 +611,47 @@ function mixAudioWithBgmAndSfx(voPath, sceneTimes, totalLenSec, seedNum, outWavP
 }
 
 function mulaiServerLokal(dir) {
-  const mime = { '.html': 'text/html', '.js': 'application/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.json': 'application/json' };
+  const mime = {
+    '.html': 'text/html',
+    '.js': 'application/javascript',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.mp3': 'audio/mpeg',
+    '.wav': 'audio/wav',
+    '.json': 'application/json'
+  };
   const server = http.createServer((req, res) => {
     const cleanUrl = decodeURIComponent((req.url || '/').split('?')[0]);
     const filePath = path.join(dir, cleanUrl === '/' ? 'index.html' : cleanUrl);
     if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-      res.writeHead(200, { 'Content-Type': mime[path.extname(filePath)] || 'application/octet-stream' });
-      fs.createReadStream(filePath).pipe(res);
+      const stat = fs.statSync(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+      const range = req.headers.range;
+      if (range && (ext === '.mp4' || ext === '.webm')) {
+        const parts = range.replace(/bytes=/, '').split('-');
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+        res.writeHead(206, {
+          'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': (end - start) + 1,
+          'Content-Type': mime[ext] || 'video/mp4'
+        });
+        fs.createReadStream(filePath, { start, end }).pipe(res);
+      } else {
+        res.writeHead(200, {
+          'Content-Length': stat.size,
+          'Content-Type': mime[ext] || 'application/octet-stream'
+        });
+        fs.createReadStream(filePath).pipe(res);
+      }
     } else {
-      res.writeHead(404); res.end('Not Found');
+      res.writeHead(404);
+      res.end('Not Found');
     }
   });
   return new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port })));
@@ -559,7 +668,7 @@ function cariFileKarakter() {
 async function kirimVideoTelegram(videoPath, data) {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
   console.log('Mengirim hasil video ke Telegram...');
-  const caption = `🎬 *VIDEO 3D V44.0 SELESAI DIRENDER!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
+  const caption = `🎬 *VIDEO V45.0 SELESAI DIRENDER!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
 
   try {
     const form = new FormData();
@@ -577,94 +686,28 @@ async function kirimVideoTelegram(videoPath, data) {
   }
 }
 
-async function uploadKeYouTube(videoPath, data) {
-  if (!YT_CLIENT_ID || !YT_CLIENT_SECRET || !YT_REFRESH_TOKEN) {
-    console.log('Lewati YouTube (Secret YT belum lengkap).');
-    return;
-  }
-  console.log('Memulai upload otomatis ke YouTube...');
-  try {
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: YT_CLIENT_ID,
-        client_secret: YT_CLIENT_SECRET,
-        refresh_token: YT_REFRESH_TOKEN,
-        grant_type: 'refresh_token'
-      })
-    });
-    const tokenData = await tokenRes.json();
-    if (!tokenData.access_token) {
-      console.error('Gagal mendapatkan access_token YouTube:', tokenData);
-      return;
-    }
-
-    const metadata = {
-      snippet: {
-        title: data.title.slice(0, 100),
-        description: `${data.desc}\n\n${data.tags}`,
-        tags: data.tags.replace(/#/g, '').split(/\s+/).filter(Boolean),
-        categoryId: '27'
-      },
-      status: { privacyStatus: 'public', selfDeclaredMadeForKids: false }
-    };
-
-    const fileSize = fs.statSync(videoPath).size;
-    const initRes = await fetch('https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${tokenData.access_token}`,
-        'Content-Type': 'application/json',
-        'X-Upload-Content-Length': fileSize,
-        'X-Upload-Content-Type': 'video/mp4'
-      },
-      body: JSON.stringify(metadata)
-    });
-
-    const uploadUrl = initRes.headers.get('location');
-    if (!uploadUrl) {
-      console.error('Gagal membuat sesi upload YouTube');
-      return;
-    }
-
-    const upRes = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Length': fileSize, 'Content-Type': 'video/mp4' },
-      body: fs.readFileSync(videoPath)
-    });
-    const upData = await upRes.json();
-    if (upData.id) {
-      console.log(`Sukses upload ke YouTube! Link: https://youtu.be/${upData.id}`);
-      await kirimPesanTelegram(`✅ *BERHASIL UPLOAD KE YOUTUBE!*\n\nhttps://youtu.be/${upData.id}`);
-    } else {
-      console.error('Gagal upload YouTube:', upData);
-    }
-  } catch (err) {
-    console.error('Error saat upload YouTube:', err.message);
-  }
-}
-
 (async () => {
   try {
     const dim = getDimensi(UKURAN);
     const ttsInfo = getBahasaConfig(BAHASA);
     const { jamWib, targetJamRamai } = deteksiPrimeTimeHariIni();
 
-    console.log(`=== MEMULAI PRODUKSI VIDEO V44.0 (${UKURAN} | ${BAHASA}) ===`);
+    console.log(`=== MEMULAI PRODUKSI VIDEO V45.0 (${UKURAN} | ${BAHASA}) ===`);
     console.log(`Jam saat ini: ${jamWib}:00 WIB | Target Jam Ramai Hari Ini: ${targetJamRamai}:00 WIB`);
 
-    // Logika Pintar: Cek apakah terlambat dari jam ramai hari ini
     if (jamWib > targetJamRamai) {
       await kirimPesanTelegram(`⚠️ *STATUS: PENDING / ANTREAN GESER*\n\nKamu membuat video pada pukul ${jamWib}:00 WIB (melewati jam ramai ${targetJamRamai}:00 WIB hari ini).\nSistem otomatis menggeser jadwal publikasi ke slot prime time berikutnya agar tidak sepi penonton!`);
     } else {
       await kirimPesanTelegram(`🔔 *INFO PRA-RAMAI*\n\nJam ramai hari ini terdeteksi pukul *${targetJamRamai}:00 WIB*. Video sedang diproses tepat waktu!`);
     }
 
-    console.log('1. Menyusun naskah & ilustrasi B-Roll dinamis per kalimat VO dari Gemini...');
+    console.log('1. Menyusun naskah & kata kunci B-Roll Pixabay per kalimat VO dari Gemini...');
     const videoData = await buatNaskahJSON(dim, ttsInfo);
 
-    console.log('2. Membuat suara Voice Over...');
+    console.log('2. Mengunduh klip video/foto asli dari Pixabay...');
+    await siapkanMediaPixabayLokal(videoData);
+
+    console.log('3. Membuat suara Voice Over...');
     const exactTimings = await buatAudioTTS(videoData.lines, 'vo.mp3', ttsInfo);
     if (exactTimings) videoData.lineTimings = exactTimings;
 
@@ -672,16 +715,17 @@ async function uploadKeYouTube(videoPath, data) {
     const charFile = cariFileKarakter();
     if (charFile) videoData.charUrl = charFile;
 
-    await kirimPesanTelegram(`✅ *Naskah & suara VO selesai.*\nSekarang merender video 3D HD + Watermark @raii.punyacerita...`);
+    await kirimPesanTelegram(`✅ *Naskah, klip B-Roll, & suara VO selesai.*\nSekarang merender video HD + karakter reaction...`);
 
-    console.log('3. Merakit index.html dari template.html (Mode Full Canvas Tanpa Tombol Play)...');
+    console.log('4. Merakit index.html dari template.html...');
     let tpl = fs.readFileSync('template.html', 'utf8');
     const safeTitle = videoData.title.replace(/"/g, '&quot;');
     const safeJson = JSON.stringify(videoData).replace(/<\/script>/gi, '<\\/script>');
 
     tpl = tpl.replace('__TITLE__', () => safeTitle)
              .replace('__ASPECT__', () => dim.aspect)
-             .replace('__VIDEO_DATA_JSON__', () => safeJson);
+             .replace('__VIDEO_DATA_JSON__', () => safeJson)
+             .replace(/__PIXABAY_API_KEY__/g, () => PIXABAY_API_KEY);
 
     const serverCleanCss = `<style>
       .poster, .bar, .tl, .toast { display: none !important; opacity: 0 !important; visibility: hidden !important; }
@@ -690,13 +734,14 @@ async function uploadKeYouTube(videoPath, data) {
     </style></head>`;
     tpl = tpl.replace('</head>', () => serverCleanCss);
 
-    /* Bridge otomatis agar setiap baris VO berganti layout B-Roll 1-to-1 & tidak pernah timeout */
+    /* Bridge otomatis: menyinkronkan seek video B-Roll per frame + karakter reaction */
     const renderBridgeScript = `<script>
       window.__ASSETS_READY = false;
       window.__VIDEO_LEN = typeof LEN !== 'undefined' ? LEN : 40;
       window.__SCENE_TIMES = [];
       let __bridgePrevLine = -1;
-      window.__renderFrameAt = function(tSec) {
+
+      window.__renderFrameAt = async function(tSec) {
         if (typeof playing !== 'undefined') playing = false;
         if (typeof LEN !== 'undefined') window.__VIDEO_LEN = LEN;
         const t = Math.min(Math.max(0, Number(tSec) || 0), window.__VIDEO_LEN);
@@ -713,33 +758,51 @@ async function uploadKeYouTube(videoPath, data) {
           pScene = curSc;
           __bridgePrevLine = li;
         }
+
+        /* Seek video B-Roll aktif tepat ke detik relatif kalimat VO */
+        if (typeof LINE_BROLL_MAP !== 'undefined' && LINE_BROLL_MAP[li] && typeof COVER_HOLD !== 'undefined' && t >= COVER_HOLD) {
+          const item = LINE_BROLL_MAP[li];
+          const cur = L[li];
+          if (item && item.videoEl && item.videoReady && cur && item.videoEl.duration && Number.isFinite(item.videoEl.duration)) {
+            const relT = Math.max(0, t - cur.t0) % item.videoEl.duration;
+            if (Math.abs(item.videoEl.currentTime - relT) > 0.025) {
+              await new Promise(resolve => {
+                let done = false;
+                const fin = () => { if (!done) { done = true; resolve(); } };
+                item.videoEl.addEventListener('seeked', fin, { once: true });
+                setTimeout(fin, 180);
+                try { item.videoEl.currentTime = relT; } catch (_) { fin(); }
+              });
+            }
+          }
+        }
+
         if (typeof now !== 'undefined') now = t;
         if (typeof charTick === 'function') charTick();
         X.save();
         X.clearRect(0, 0, W, H);
-        if (typeof FX_CAMERA !== 'undefined' && FX_CAMERA) {
-          if (typeof CAM_V2 !== 'undefined' && CAM_V2 && typeof applyCinematicCamera2 === 'function') applyCinematicCamera2();
-          else if (typeof applyCinematicCamera === 'function') applyCinematicCamera();
-        }
-        if (typeof applySceneEnterExit === 'function') applySceneEnterExit(t);
         const fn = (typeof SCN !== 'undefined' && SCN[curSc]) ? SCN[curSc] : (typeof SCN !== 'undefined' ? SCN.a : null);
         const lineStart = (L[li] && typeof L[li].t0 === 'number') ? L[li].t0 : 0;
         if (fn) fn((typeof COVER_HOLD !== 'undefined' && t < COVER_HOLD) ? t : Math.max(0, t - lineStart));
-        if (typeof FX_PARTICLES !== 'undefined' && FX_PARTICLES && typeof drawAmbientParticles === 'function') drawAmbientParticles();
         X.restore();
-        if (typeof FX_LEAK !== 'undefined' && FX_LEAK && typeof drawLightLeak === 'function') drawLightLeak();
-        if (typeof drawStorySegments === 'function') drawStorySegments();
         if (typeof drawSubs === 'function') drawSubs();
-        if (typeof FX_BURST !== 'undefined' && FX_BURST && typeof drawEmphasisBurst === 'function') drawEmphasisBurst();
-        if (typeof drawTransition === 'function') drawTransition();
         if (typeof drawWatermark === 'function') drawWatermark();
         if (typeof ov !== 'undefined') X.drawImage(ov, 0, 0, W, H);
         if (typeof PORT !== 'undefined' && !PORT && typeof composeFrame === 'function') composeFrame();
       };
+
       (function waitReadyPoll(){
-        const iv = setInterval(() => {
+        const iv = setInterval(async () => {
           if (window.__READY__ === true || window.__APP_READY__ === true) {
             clearInterval(iv);
+            /* Pastikan foto lokal yang diunduh Node.js juga termuat jika video tidak ada */
+            if (typeof LINE_BROLL_MAP !== 'undefined' && typeof attachPhotoToItem === 'function') {
+              for (const item of Object.values(LINE_BROLL_MAP)) {
+                if (item && !item.videoReady && !item.photoReady && item.photoUrl) {
+                  await attachPhotoToItem(item, item.photoUrl);
+                }
+              }
+            }
             if (typeof LEN !== 'undefined') window.__VIDEO_LEN = LEN;
             if (typeof L !== 'undefined') {
               window.__SCENE_TIMES = L.map(x => ({ sc: x[0], t0: x.t0 || 0, fx: x[3] || '' }));
@@ -752,7 +815,7 @@ async function uploadKeYouTube(videoPath, data) {
     tpl = tpl.replace('</body>', () => renderBridgeScript);
     fs.writeFileSync('index.html', tpl, 'utf8');
 
-    console.log('4. Menjalankan browser & merekam frame video HD...');
+    console.log('5. Menjalankan browser & merekam frame video HD...');
     const { server, port } = await mulaiServerLokal(process.cwd());
     const browser = await chromium.launch({
       headless: true,
@@ -763,7 +826,6 @@ async function uploadKeYouTube(videoPath, data) {
       deviceScaleFactor: 1
     });
 
-    /* Kumpulkan error browser supaya kalau template rusak, penyebabnya langsung kelihatan (bukan cuma "Timeout") */
     const pageErrors = [];
     page.on('pageerror', err => {
       pageErrors.push(err.message);
@@ -772,7 +834,7 @@ async function uploadKeYouTube(videoPath, data) {
     await page.goto(`http://127.0.0.1:${port}/index.html?autorender=1`, { waitUntil: 'domcontentloaded' });
 
     try {
-      await page.waitForFunction(() => window.__ASSETS_READY === true, { timeout: 45000 });
+      await page.waitForFunction(() => window.__ASSETS_READY === true, { timeout: 60000 });
     } catch (e) {
       try { await browser.close(); } catch (_) {}
       try { server.close(); } catch (_) {}
@@ -781,6 +843,7 @@ async function uploadKeYouTube(videoPath, data) {
       }
       throw e;
     }
+
     const totalLenSec = await page.evaluate(() => window.__VIDEO_LEN);
     const sceneTimes = await page.evaluate(() => window.__SCENE_TIMES || []);
     const fps = 30;
@@ -805,7 +868,7 @@ async function uploadKeYouTube(videoPath, data) {
     await browser.close();
     server.close();
 
-    console.log('5. Menggabungkan BGM + SFX + VO & merender MP4 final...');
+    console.log('6. Menggabungkan BGM + SFX + VO & merender MP4 final...');
     const seedNum = Array.from(videoData.title).reduce((a, c) => a + c.charCodeAt(0), 0);
     mixAudioWithBgmAndSfx('vo.mp3', sceneTimes, totalLenSec, seedNum, 'mixed_audio.wav', videoData.title);
 
@@ -816,9 +879,8 @@ async function uploadKeYouTube(videoPath, data) {
       { stdio: 'inherit' }
     );
 
-    console.log('6. Mengirim hasil video ke Telegram & Upload ke YouTube...');
+    console.log('7. Mengirim hasil video ke Telegram...');
     await kirimVideoTelegram('output_final.mp4', videoData);
-    await uploadKeYouTube('output_final.mp4', videoData);
 
     console.log('=== SEMUA PROSES SELESAI 100%! ===');
   } catch (err) {
