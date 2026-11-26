@@ -52,7 +52,7 @@ canvas{display:block;width:100%;height:100%}
   <div class="tl" id="tl"><b id="pg"></b></div>
   <div class="bar">
     <button class="btn" id="syncBtn" style="flex:1">Sinkron: 0 ms</button>
-    <button class="btn" id="apiBtn" style="flex:1">Video: Set API</button>
+    <button class="btn" id="apiBtn" style="flex:1">Video: Auto</button>
     <button class="btn" id="qBtn" style="flex:1">HD 60 FPS</button>
   </div>
   <div class="bar">
@@ -63,6 +63,10 @@ canvas{display:block;width:100%;height:100%}
 <script>
 /* ===== DATA DINAMIS DARI OTAK AI (AUTO-INJECT GITHUB) ===== */
 var DATA = __VIDEO_DATA_JSON__;
+var INJECTED_PIXABAY_KEY = "__PIXABAY_API_KEY__";
+if (INJECTED_PIXABAY_KEY && !INJECTED_PIXABAY_KEY.startsWith("__PIXABAY")) {
+  DATA.pixabayApiKey = INJECTED_PIXABAY_KEY.trim();
+}
 window.DATA = DATA;
 var c1 = null;
 
@@ -236,11 +240,10 @@ const STOP_WORDS=new Set([
  'yang','dan','di','ke','dari','ini','itu','untuk','pada','dengan','adalah','sebagai','dalam','oleh','akan','juga','atau','karena','jika','bila','saat','ketika','sebelum','sesudah','setelah','lalu','kemudian','mereka','kami','kita','kamu','dia','ia','orang','manusia','para','semua','setiap','banyak','beberapa','satu','dua','tiga','empat','lima','enam','tujuh','delapan','sembilan','sepuluh','sekitar','hampir','sangat','lebih','paling','bisa','dapat','harus','mau','ingin','pernah','sering','selalu','belum','sudah','telah','sedang','masih','lagi','saja','cuma','hanya','bukan','tidak','nggak','gak','tak','ada','punya','jadi','menjadi','buat','membuat','disebut','bernama','secara','hal','cara','bagian','tahap','kali','sampai','hingga','antara','selama','tengah','awal','akhir','mungkin','ternyata','padahal','namun','tapi','tetapi','kalau','misalnya','contoh','kayak','seperti','gini','begitu','sih','nih','deh','dong','ya','kan','sekali','waktu','dulu','zaman','era','hari','bikin','malah','makin','banget','aja','lo','gue','lu','bayangkan','coba','lihat','enggak','sebuah','layaknya','masuk','mode','justru','kunci','tercepat','segera','sekadar','bahkan','biar','ngira','alasan','aslinya','jauh','serius','urusan','khusus','darurat','kalo','sengaja','tetap','menyangka','abaikan','berkat','detail','kecil','ribuan','biasanya','berbahan','sempit','penuh','mendadak','pernahkah','sadar'
 ]);
 
-/* Pemetaan Naskah VO Indonesia -> Kata Kunci Pencarian Video Nyata di Pixabay */
 const VO_TO_VIDEO_QUERY=[
  {re:mk('belajar|buku|membaca|baca|ujian|sekolah|kuliah|catatan|menulis|pelajar|mahasiswa|perpustakaan|murid'),q:'student studying reading book',diorama:'archive_doc',kicker:'AKTIVITAS BELAJAR',p1:'fokus membaca materi',p2:'catatan & referensi'},
  {re:mk('anak muda|remaja|pemuda|cowok|cewek|pria muda|wanita muda'),q:'young person lifestyle portrait',diorama:'brain_neural',kicker:'AKTIVITAS VISUAL',p1:'ekspresi & fokus',p2:'konteks cerita'},
- {re:mk('membangun|bangunan|bata|semen|katedral|gereja|arsitektur|konstruksi|proyek|tukang|batu|menara|kubah|tanah kosong'),q:'construction architecture cathedral building',diorama:'mech_gears',kicker:'KONSTRUKSI & KARYA',p1:'penyusunan struktur',p2:'arsitektur megah'},
+ {re:mk('membangun|bangunan|bata|semen|katedral|gereja|arsitektur|konstruksi|proyek|tukang|batu|menara|kubah|tanah kosong|istana|rumah'),q:'construction architecture cathedral building',diorama:'mech_gears',kicker:'KONSTRUKSI & KARYA',p1:'penyusunan struktur',p2:'arsitektur megah'},
  {re:mk('pesawat|terbang|penerbangan|bandara|kelas satu|first class|kursi pesawat|perjalanan|paris|negara|liburan'),q:'airplane flying clouds airport travel',diorama:'flight_globe',kicker:'PERJALANAN UDARA',p1:'rute penerbangan',p2:'kabin penumpang'},
  {re:mk('kartu|tiket|paspor|pembayaran|gesek|vip|emas|akses|membeli|beli'),q:'credit card payment airport ticket',diorama:'vip_pass',kicker:'AKSES & TIKET',p1:'kartu akses resmi',p2:'verifikasi identitas'},
  {re:mk('uang|dolar|rupiah|kaya|miliarder|saham|bisnis|kantor|investasi|merugi|rugi|bank|emas'),q:'money finance business office',diorama:'finance_ledger',kicker:'FINANSIAL & BISNIS',p1:'arus nilai transaksi',p2:'analisis dampak'},
@@ -378,7 +381,6 @@ async function fetchPixabayVideo(query,variantIdx=0){
    const urls=[];
    for(const h of hits){
     const v=h.videos||{};
-    /* Prioritaskan resolusi medium (1280x720 / 720x1280) atau small agar cepat dimuat dan tajam di canvas */
     const pick=(v.medium&&v.medium.url)?v.medium.url
               :(v.small&&v.small.url)?v.small.url
               :(v.large&&v.large.url)?v.large.url:'';
@@ -388,10 +390,12 @@ async function fetchPixabayVideo(query,variantIdx=0){
   };
 
   let urls=await runSearch(query);
-  /* Jika query 3-4 kata terlalu spesifik dan kosong, cari ulang dengan 2 kata kunci utama */
   if(!urls.length&&query.includes(' ')){
    const shortQ=query.split(/\s+/).slice(0,2).join(' ');
    urls=await runSearch(shortQ);
+  }
+  if(!urls.length){
+   urls=await runSearch('architecture lifestyle nature');
   }
   if(urls.length){
    VIDEO_QUERY_CACHE[cacheKey]=urls;
@@ -412,13 +416,16 @@ function attachVideoElementToItem(item,mp4Url){
    v.playsInline=true;
    v.preload='auto';
    v.src=mp4Url;
-   const timer=setTimeout(()=>resolve(false),8000);
-   v.onloadeddata=()=>{
+   const timer=setTimeout(()=>resolve(false),12000);
+   const markReady=()=>{
+    if(item.videoReady)return;
     clearTimeout(timer);
     item.videoEl=v;
     item.videoReady=true;
     resolve(true);
    };
+   v.oncanplay=markReady;
+   v.onloadeddata=markReady;
    v.onerror=()=>{clearTimeout(timer);resolve(false)};
    v.load();
   }catch(_){resolve(false)}
@@ -429,7 +436,8 @@ async function preloadAllRealVideos(){
  const entries=Object.entries(LINE_BROLL_MAP);
  if(!entries.length)return;
  updateApiBtnLabel();
- const tasks=entries.map(async([idxStr,item])=>{
+ /* Jalankan berurutan / batch agar tidak terkena rate-limit API Pixabay saat build */
+ for(const [idxStr,item] of entries){
   const idx=Number(idxStr);
   let url=item.videoUrl;
   if(!url&&PIXABAY_KEY){
@@ -438,17 +446,23 @@ async function preloadAllRealVideos(){
   }
   if(url)await attachVideoElementToItem(item,url);
   updateApiBtnLabel();
- });
- await Promise.all(tasks);
- updateApiBtnLabel();
+ }
 }
 
 function syncActiveVideoPlayback(){
  Object.entries(LINE_BROLL_MAP).forEach(([idxStr,item])=>{
   if(!item||!item.videoEl||!item.videoReady)return;
   const isCurrent=(Number(idxStr)===li)&&(tm>=COVER_HOLD);
-  if(isCurrent&&playing){
-   if(item.videoEl.paused)item.videoEl.play().catch(()=>{});
+  if(isCurrent){
+   /* Pastikan frame video sinkron dengan waktu baris VO saat headless render / seek */
+   const cur=L[li];
+   if(cur&&item.videoEl.duration&&Number.isFinite(item.videoEl.duration)){
+    const relT=Math.max(0,tm-cur.t0)%item.videoEl.duration;
+    if(!playing||Math.abs(item.videoEl.currentTime-relT)>0.35){
+     try{item.videoEl.currentTime=relT}catch(_){}
+    }
+   }
+   if(playing&&item.videoEl.paused)item.videoEl.play().catch(()=>{});
   }else{
    if(!item.videoEl.paused)item.videoEl.pause();
   }
@@ -906,7 +920,6 @@ function drawHybridBroll(tLine,isPip=false){
  if(hasRealVideo){
   const kenBurns=1.02+prog*0.07;
   if(isPip){
-   /* Mode PIP: Kartu Video Nyata 16:9 / 4:3 Tajam di Atas Kepala Karakter */
    const vw=580,vh=340,vx=70,vy=180;
    X.save();
    X.shadowColor='rgba(2,6,23,0.6)';X.shadowBlur=24;X.shadowOffsetY=10;
@@ -920,7 +933,6 @@ function drawHybridBroll(tLine,isPip=false){
    X.fillStyle=P.a;rr(250,122,220,30,15);X.fill();
    txt(det.kicker,360,137,13,'#091017','center',900);
   }else{
-   /* Mode Full Layar: Video Asli Full-Screen 720x1280 + Scrim Atas/Bawah agar Teks Tajam */
    drawVideoCoverFit(det.videoEl,0,0,W,H,kenBurns);
 
    const topG=X.createLinearGradient(0,0,0,340);
@@ -934,13 +946,11 @@ function drawHybridBroll(tLine,isPip=false){
    botG.addColorStop(1,'rgba(5,11,17,0.94)');
    X.fillStyle=botG;X.fillRect(0,820,W,H-820);
 
-   /* Badge Topik Kecil di Atas */
    X.fillStyle=P.a;rr(240,94,240,32,16);X.fill();
    txt(det.kicker,360,110,13,'#091017','center',900);
    txt(det.title,360,158,fz(det.title,640,42,SERIF),'#ffffff','center',900,8,SERIF);
   }
  }else{
-  /* Fallback ke Diorama Detail jika Video Belum Di-set atau Tidak Tersedia */
   if(isPip){
    X.fillStyle=P.a;rr(250,118,220,30,15);X.fill();
    txt(det.kicker,360,133,13,'#091017','center',900);
@@ -1299,7 +1309,7 @@ $('exp').onclick=()=>{
  seekTo(0);playing=true;playVoiceAt(0);updatePlayIcon();rec.start();
 };
 
-/* ===== BOOTSTRAP ===== */
+/* ===== BOOTSTRAP (TUNGGU VIDEO KLIP SIAP SEBELUM SERVER MERENDER) ===== */
 (async function boot(){
  try{
   if(DATA.audioUrl){
@@ -1319,7 +1329,8 @@ $('exp').onclick=()=>{
  }catch(err){
   console.warn('Boot warning:',err);
  }finally{
-  window.LEN=LEN;window.__READY__=true;
+  window.LEN=LEN;
+  window.__READY__=true;
   requestAnimationFrame(draw);
  }
 })();
