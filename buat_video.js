@@ -765,7 +765,7 @@ async function uploadKeYouTube(videoPath, data) {
     page.on('pageerror', err => console.error('Browser PageError:', err.message));
     await page.goto(`http://127.0.0.1:${port}/index.html?autorender=1`, { waitUntil: 'domcontentloaded' });
 
-    await page.waitForFunction(() => window.__ASSETS_READY === true, { timeout: 45000 });
+    await page.waitForFunction(() => window.__ASSETS_READY === true, { timeout: 60000 });
     const totalLenSec = await page.evaluate(() => window.__VIDEO_LEN);
     const sceneTimes = await page.evaluate(() => window.__SCENE_TIMES || []);
     const fps = 30;
