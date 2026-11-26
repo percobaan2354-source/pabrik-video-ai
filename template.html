@@ -217,7 +217,7 @@ const P=Object.assign({}, G_SPEC.pal, VTHEME ? {
 });
 
 /* ============================================================================
-   MESIN B-ROLL 100% REAL VIDEO PIXABAY SESUAI KALIMAT VO
+   MESIN B-ROLL 100% REAL VIDEO PIXABAY + FRAME SEQUENCE HEADLESS RENDERER
    ============================================================================ */
 const STOP_WORDS=new Set([
  'yang','dan','di','ke','dari','ini','itu','untuk','pada','dengan','adalah','sebagai','dalam','oleh','akan','juga','atau','karena','jika','bila','saat','ketika','sebelum','sesudah','setelah','lalu','kemudian','mereka','kami','kita','kamu','dia','ia','orang','manusia','para','semua','setiap','banyak','beberapa','satu','dua','tiga','empat','lima','enam','tujuh','delapan','sembilan','sepuluh','sekitar','hampir','sangat','lebih','paling','bisa','dapat','harus','mau','ingin','pernah','sering','selalu','belum','sudah','telah','sedang','masih','lagi','saja','cuma','hanya','bukan','tidak','nggak','gak','tak','ada','punya','jadi','menjadi','buat','membuat','disebut','bernama','secara','hal','cara','bagian','tahap','kali','sampai','hingga','antara','selama','tengah','awal','akhir','mungkin','ternyata','padahal','namun','tapi','tetapi','kalau','misalnya','contoh','kayak','seperti','gini','begitu','sih','nih','deh','dong','ya','kan','sekali','waktu','dulu','zaman','era','hari','bikin','malah','makin','banget','aja','lo','gue','lu','bayangkan','coba','lihat','enggak','sebuah','layaknya','masuk','mode','justru','kunci','tercepat','segera','sekadar','bahkan','biar','ngira','alasan','aslinya','jauh','serius','urusan','khusus','darurat','kalo','sengaja','tetap','menyangka','abaikan','berkat','detail','kecil','ribuan','biasanya','berbahan','sempit','penuh','mendadak','pernahkah','sadar'
@@ -260,6 +260,9 @@ function detectVisualFromVoScript(voSentence,aiHintObj,sceneIdx=0,scKey='b1'){
   mode:chosenMode,
   videoQuery:customQuery,
   videoUrl:directVideoUrl,
+  videoFrames:Array.isArray(hintObj.videoFrames)?hintObj.videoFrames:[],
+  videoFps:Number(hintObj.videoFps)||15,
+  frameImgs:[],
   videoEl:null,
   videoReady:false,
   photoUrl:directPhotoUrl,
@@ -369,6 +372,23 @@ async function preloadAllRealVideos(){
  updateApiBtnLabel();
  for(const [idxStr,item] of entries){
   const idx=Number(idxStr);
+
+  // Prioritas utama: muat frame sequence hasil ekstraksi FFmpeg (100% stabil di Chromium Headless)
+  if(Array.isArray(item.videoFrames)&&item.videoFrames.length>0){
+   const loadedImgs=await Promise.all(item.videoFrames.map(src=>new Promise(res=>{
+    const im=new Image();
+    im.onload=()=>res(im);
+    im.onerror=()=>res(null);
+    im.src=src;
+   })));
+   item.frameImgs=loadedImgs.filter(Boolean);
+   if(item.frameImgs.length>0){
+    item.videoReady=true;
+    updateApiBtnLabel();
+    continue;
+   }
+  }
+
   let vUrl=item.videoUrl;
   let pUrl=item.photoUrl;
 
@@ -410,7 +430,7 @@ function syncActiveVideoPlayback(){
 function updateApiBtnLabel(){
  const btn=$('apiBtn');
  if(!btn)return;
- const loadedCount=Object.values(LINE_BROLL_MAP).filter(x=>x&&(x.videoReady||x.photoReady)).length;
+ const loadedCount=Object.values(LINE_BROLL_MAP).filter(x=>x&&(x.videoReady||x.photoReady||(x.frameImgs&&x.frameImgs.length>0))).length;
  const totalCount=Object.keys(LINE_BROLL_MAP).length;
  if(loadedCount>0)btn.textContent=`Video: ${loadedCount}/${totalCount} Klip`;
  else if(PIXABAY_KEY)btn.textContent='Video: Memuat…';
@@ -809,7 +829,7 @@ function initCharFromUrl(url){
 function initCharSafe(url){return Promise.race([initCharFromUrl(url).catch(()=>false),new Promise(r=>setTimeout(()=>r(false),8000))])}
 
 /* ============================================================================
-   RENDERER B-ROLL VIDEO REAL PIXABAY
+   RENDERER B-ROLL VIDEO REAL PIXABAY (FRAME SEQUENCE + VIDEO + PHOTO)
    ============================================================================ */
 function drawMediaCoverFit(mediaEl,mw,mh,dx,dy,dw,dh,zoom=1.04,panX=0){
  const scale=Math.max(dw/mw,dh/mh)*zoom;
@@ -821,11 +841,13 @@ function drawMediaCoverFit(mediaEl,mw,mh,dx,dy,dw,dh,zoom=1.04,panX=0){
 
 function getActiveLineBroll(){
  const direct=LINE_BROLL_MAP[li];
- if(direct&&(direct.videoReady||direct.photoReady))return direct;
- const readyPool=Object.values(LINE_BROLL_MAP).filter(x=>x&&(x.videoReady||x.photoReady));
+ if(direct&&((direct.frameImgs&&direct.frameImgs.length>0)||direct.videoReady||direct.photoReady))return direct;
+ const readyPool=Object.values(LINE_BROLL_MAP).filter(x=>x&&((x.frameImgs&&x.frameImgs.length>0)||x.videoReady||x.photoReady));
  if(readyPool.length>0){
   const fallbackMedia=readyPool[li%readyPool.length];
   return Object.assign({},direct||fallbackMedia,{
+   frameImgs:fallbackMedia.frameImgs,
+   videoFps:fallbackMedia.videoFps,
    videoEl:fallbackMedia.videoEl,
    videoReady:fallbackMedia.videoReady,
    photoEl:fallbackMedia.photoEl,
@@ -841,18 +863,31 @@ function drawHybridBroll(tLine,isPip=false){
  const cur=L[li];
  const e=eo(cl(tLine/0.25));
  const prog=cur?cl((tm-cur.t0)/Math.max(0.25,cur.d)):0;
- const hasRealVideo=Boolean(det.videoReady&&det.videoEl&&det.videoEl.readyState>=2);
+ const hasFrameSeq=Boolean(det.frameImgs&&det.frameImgs.length>0);
+ const hasRealVideo=Boolean(!hasFrameSeq&&det.videoReady&&det.videoEl&&det.videoEl.readyState>=2);
  const hasRealPhoto=Boolean(det.photoReady&&det.photoEl&&det.photoEl.naturalWidth>0);
 
  X.save();
  X.globalAlpha*=e;
 
- if(hasRealVideo||hasRealPhoto){
-  const mediaEl=hasRealVideo?det.videoEl:det.photoEl;
-  const mw=hasRealVideo?(det.videoEl.videoWidth||1280):det.photoEl.naturalWidth;
-  const mh=hasRealVideo?(det.videoEl.videoHeight||720):det.photoEl.naturalHeight;
-  const kenBurns=(hasRealVideo?1.02:1.05)+prog*0.09;
-  const panX=hasRealVideo?0:(prog-0.5)*36;
+ if(hasFrameSeq||hasRealVideo||hasRealPhoto){
+  let mediaEl,mw,mh;
+  if(hasFrameSeq){
+   const fIdx=Math.floor(Math.max(0,tLine)*(det.videoFps||15))%det.frameImgs.length;
+   mediaEl=det.frameImgs[fIdx];
+   mw=mediaEl.naturalWidth||720;
+   mh=mediaEl.naturalHeight||1280;
+  }else if(hasRealVideo){
+   mediaEl=det.videoEl;
+   mw=det.videoEl.videoWidth||1280;
+   mh=det.videoEl.videoHeight||720;
+  }else{
+   mediaEl=det.photoEl;
+   mw=det.photoEl.naturalWidth;
+   mh=det.photoEl.naturalHeight;
+  }
+  const kenBurns=((hasFrameSeq||hasRealVideo)?1.02:1.05)+prog*0.09;
+  const panX=(hasFrameSeq||hasRealVideo)?0:(prog-0.5)*36;
 
   if(isPip){
    const vw=600,vh=350,vx=60,vy=175;
@@ -886,7 +921,6 @@ function drawHybridBroll(tLine,isPip=false){
    txt(det.title,360,158,fz(det.title,640,42,SERIF),'#ffffff','center',900,8,SERIF);
   }
  }else{
-  // Cadangan terakhir jika seluruh API offline tanpa koneksi
   const cx=360,cy=isPip?340:460,cw=600,ch=isPip?310:360;
   X.fillStyle='#0f172a';rr(cx-cw/2,cy-ch/2,cw,ch,28);X.fill();
   X.strokeStyle=P.a;X.lineWidth=4;rr(cx-cw/2,cy-ch/2,cw,ch,28);X.stroke();
@@ -1203,7 +1237,7 @@ $('apiBtn').onclick=async()=>{
   localStorage.setItem('pixabay_api_key',PIXABAY_KEY);
   showToast('Memuat video asli dari Pixabay...');
   await preloadAllRealVideos();
-  const ok=Object.values(LINE_BROLL_MAP).filter(x=>x&&(x.videoReady||x.photoReady)).length;
+  const ok=Object.values(LINE_BROLL_MAP).filter(x=>x&&(x.videoReady||x.photoReady||(x.frameImgs&&x.frameImgs.length>0))).length;
   showToast(ok>0?`Berhasil memuat ${ok} video asli!`:'Cek kembali API key atau koneksi internet.');
  }
 };
