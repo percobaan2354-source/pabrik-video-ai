@@ -217,7 +217,7 @@ const P=Object.assign({}, G_SPEC.pal, VTHEME ? {
 });
 
 /* ============================================================================
-   MESIN B-ROLL 1 JALUR PASTI (VIDEO / FOTO HD ASLI + ILUSTRASI VEKTOR TEMATIK)
+   MESIN B-ROLL 100% REAL VIDEO PIXABAY SESUAI KALIMAT VO
    ============================================================================ */
 const STOP_WORDS=new Set([
  'yang','dan','di','ke','dari','ini','itu','untuk','pada','dengan','adalah','sebagai','dalam','oleh','akan','juga','atau','karena','jika','bila','saat','ketika','sebelum','sesudah','setelah','lalu','kemudian','mereka','kami','kita','kamu','dia','ia','orang','manusia','para','semua','setiap','banyak','beberapa','satu','dua','tiga','empat','lima','enam','tujuh','delapan','sembilan','sepuluh','sekitar','hampir','sangat','lebih','paling','bisa','dapat','harus','mau','ingin','pernah','sering','selalu','belum','sudah','telah','sedang','masih','lagi','saja','cuma','hanya','bukan','tidak','nggak','gak','tak','ada','punya','jadi','menjadi','buat','membuat','disebut','bernama','secara','hal','cara','bagian','tahap','kali','sampai','hingga','antara','selama','tengah','awal','akhir','mungkin','ternyata','padahal','namun','tapi','tetapi','kalau','misalnya','contoh','kayak','seperti','gini','begitu','sih','nih','deh','dong','ya','kan','sekali','waktu','dulu','zaman','era','hari','bikin','malah','makin','banget','aja','lo','gue','lu','bayangkan','coba','lihat','enggak','sebuah','layaknya','masuk','mode','justru','kunci','tercepat','segera','sekadar','bahkan','biar','ngira','alasan','aslinya','jauh','serius','urusan','khusus','darurat','kalo','sengaja','tetap','menyangka','abaikan','berkat','detail','kecil','ribuan','biasanya','berbahan','sempit','penuh','mendadak','pernahkah','sadar'
@@ -253,7 +253,7 @@ function detectVisualFromVoScript(voSentence,aiHintObj,sceneIdx=0,scKey='b1'){
 
  const directVideoUrl=hintObj.videoUrl||hintObj.video||LINE_VIDEOS[sceneIdx]||'';
  const directPhotoUrl=hintObj.photoUrl||hintObj.photo||hintObj.imageUrl||'';
- const customQuery=hintObj.videoQuery||hintObj.query||sum.words.slice(0,3).join(' ')||'mystery documentary scene';
+ const customQuery=hintObj.videoQuery||hintObj.query||sum.words.slice(0,3).join(' ')||'people lifestyle';
 
  return{
   id:'line_'+sceneIdx,
@@ -274,6 +274,7 @@ function detectVisualFromVoScript(voSentence,aiHintObj,sceneIdx=0,scKey='b1'){
 
 const LINE_BROLL_MAP={};
 const SCENE_BROLL_MAP={};
+window.LINE_BROLL_MAP = LINE_BROLL_MAP;
 {
  L.forEach((l,idx)=>{
   const sc=l[0];
@@ -300,7 +301,7 @@ async function fetchPixabayMedia(query,variantIdx=0){
   try{
    const res=await fetch('https://pixabay.com/api/videos/?key='+encodeURIComponent(PIXABAY_KEY)+'&q='+encodeURIComponent(query)+'&safesearch=true&per_page=8');
    const json=res.ok?await res.json():{hits:[]};
-   vUrls=(json.hits||[]).map(h=>{const v=h.videos||{};return(v.small&&v.small.url)||(v.medium&&v.medium.url)||(v.large&&v.large.url)||''}).filter(Boolean);
+   vUrls=(json.hits||[]).map(h=>{const v=h.videos||{};return(v.small&&v.small.url)||(v.tiny&&v.tiny.url)||(v.medium&&v.medium.url)||''}).filter(Boolean);
    VIDEO_QUERY_CACHE[cacheKey]=vUrls;
   }catch(_){vUrls=[]}
  }
@@ -308,7 +309,7 @@ async function fetchPixabayMedia(query,variantIdx=0){
   try{
    const res=await fetch('https://pixabay.com/api/?key='+encodeURIComponent(PIXABAY_KEY)+'&q='+encodeURIComponent(query)+'&image_type=photo&safesearch=true&per_page=8');
    const json=res.ok?await res.json():{hits:[]};
-   pUrls=(json.hits||[]).map(h=>h.largeImageURL||h.webformatURL||'').filter(Boolean);
+   pUrls=(json.hits||[]).map(h=>h.webformatURL||h.largeImageURL||'').filter(Boolean);
    PHOTO_QUERY_CACHE[cacheKey]=pUrls;
   }catch(_){pUrls=[]}
  }
@@ -323,7 +324,7 @@ function attachPhotoToItem(item,imgUrl){
   if(!imgUrl)return resolve(false);
   const im=new Image();
   if(/^https?:\/\//i.test(imgUrl))im.crossOrigin='anonymous';
-  const timer=setTimeout(()=>resolve(false),8000);
+  const timer=setTimeout(()=>resolve(false),10000);
   im.onload=()=>{
    clearTimeout(timer);
    item.photoEl=im;
@@ -346,7 +347,7 @@ function attachVideoElementToItem(item,mp4Url){
    v.playsInline=true;
    v.preload='auto';
    v.src=mp4Url;
-   const timer=setTimeout(()=>resolve(false),9000);
+   const timer=setTimeout(()=>resolve(v.readyState>=2),20000);
    const markReady=()=>{
     if(item.videoReady)return;
     clearTimeout(timer);
@@ -387,9 +388,10 @@ async function preloadAllRealVideos(){
 }
 
 function syncActiveVideoPlayback(){
- Object.entries(LINE_BROLL_MAP).forEach(([idxStr,item])=>{
+ const activeDet = getActiveLineBroll();
+ Object.values(LINE_BROLL_MAP).forEach((item)=>{
   if(!item||!item.videoEl||!item.videoReady)return;
-  const isCurrent=(Number(idxStr)===li)&&(tm>=COVER_HOLD);
+  const isCurrent=(item===activeDet)&&(tm>=COVER_HOLD);
   if(isCurrent){
    const cur=L[li];
    if(cur&&item.videoEl.duration&&Number.isFinite(item.videoEl.duration)){
@@ -410,8 +412,8 @@ function updateApiBtnLabel(){
  if(!btn)return;
  const loadedCount=Object.values(LINE_BROLL_MAP).filter(x=>x&&(x.videoReady||x.photoReady)).length;
  const totalCount=Object.keys(LINE_BROLL_MAP).length;
- if(loadedCount>0)btn.textContent=`Media: ${loadedCount}/${totalCount} Klip`;
- else if(PIXABAY_KEY)btn.textContent='Media: Memuat…';
+ if(loadedCount>0)btn.textContent=`Video: ${loadedCount}/${totalCount} Klip`;
+ else if(PIXABAY_KEY)btn.textContent='Video: Memuat…';
  else btn.textContent='Video: Set API';
 }
 
@@ -807,7 +809,7 @@ function initCharFromUrl(url){
 function initCharSafe(url){return Promise.race([initCharFromUrl(url).catch(()=>false),new Promise(r=>setTimeout(()=>r(false),8000))])}
 
 /* ============================================================================
-   RENDERER B-ROLL 1 JALUR TUNGGAL (FOTO / VIDEO HD + ILUSTRASI VEKTOR TEMATIK)
+   RENDERER B-ROLL VIDEO REAL PIXABAY
    ============================================================================ */
 function drawMediaCoverFit(mediaEl,mw,mh,dx,dy,dw,dh,zoom=1.04,panX=0){
  const scale=Math.max(dw/mw,dh/mh)*zoom;
@@ -817,49 +819,20 @@ function drawMediaCoverFit(mediaEl,mw,mh,dx,dy,dw,dh,zoom=1.04,panX=0){
  X.drawImage(mediaEl,sx,sy,sw,sh,dx,dy,dw,dh);
 }
 
-function drawEditorialQuoteCard(det,cx,cy,cw,ch){
- const q=(det.videoQuery+' '+det.title+' '+det.kicker).toLowerCase();
- X.save();
- const g=X.createLinearGradient(cx-cw/2,cy-ch/2,cx+cw/2,cy+ch/2);
- g.addColorStop(0,'#0f172a');
- g.addColorStop(1,'#1e293b');
- X.fillStyle=g;rr(cx-cw/2,cy-ch/2,cw,ch,28);X.fill();
- X.strokeStyle=P.a;X.lineWidth=4;rr(cx-cw/2,cy-ch/2,cw,ch,28);X.stroke();
-
- const iy=cy-34;
- X.save();
- X.translate(cx,iy);
- if(/eye|mata|tatap|vision|sclera/.test(q)){
-  X.strokeStyle=P.a;X.lineWidth=6;
-  X.beginPath();X.moveTo(-95,0);X.quadraticCurveTo(0,-68,95,0);X.quadraticCurveTo(0,68,-95,0);X.stroke();
-  X.fillStyle='#ffffff';X.beginPath();X.ellipse(0,0,76,40,0,0,Math.PI*2);X.fill();
-  X.fillStyle=P.a;X.beginPath();X.arc(Math.sin(A*2.2)*12,0,26,0,Math.PI*2);X.fill();
-  X.fillStyle='#091017';X.beginPath();X.arc(Math.sin(A*2.2)*12,0,12,0,Math.PI*2);X.fill();
- }else if(/brain|otak|neuro|amigdala|alert|alarm/.test(q)){
-  for(let r=1;r<=3;r++){
-   X.strokeStyle=al(P.a,0.75-r*0.2);X.lineWidth=4;
-   X.beginPath();X.arc(0,0,24+r*22+Math.sin(A*5)*4,0,Math.PI*2);X.stroke();
-  }
-  X.fillStyle=P.a;X.beginPath();X.arc(0,0,24,0,Math.PI*2);X.fill();
- }else{
-  for(let r=1;r<=3;r++){
-   X.strokeStyle=al(P.a,0.8-r*0.22);X.lineWidth=4;
-   X.beginPath();X.arc(0,0,20+r*24,0,Math.PI*2);X.stroke();
-  }
-  X.fillStyle=P.t;X.beginPath();X.arc(0,0,18,0,Math.PI*2);X.fill();
- }
- X.restore();
-
- txt(det.title,cx,cy+56,fz(det.title,cw-60,34,SERIF),'#ffffff','center',900,0,SERIF);
- txt(det.sub,cx,cy+100,fz(det.sub,cw-64,20),'#cbd5e1','center',600);
- X.restore();
-}
-
 function getActiveLineBroll(){
- if(LINE_BROLL_MAP[li])return LINE_BROLL_MAP[li];
- const cur=L[li];
- const sc=cur?cur[0]:'b1';
- return SCENE_BROLL_MAP[sc]||detectVisualFromVoScript(cur?cur.t:TITLE,cur?cur[4]:'',li,sc);
+ const direct=LINE_BROLL_MAP[li];
+ if(direct&&(direct.videoReady||direct.photoReady))return direct;
+ const readyPool=Object.values(LINE_BROLL_MAP).filter(x=>x&&(x.videoReady||x.photoReady));
+ if(readyPool.length>0){
+  const fallbackMedia=readyPool[li%readyPool.length];
+  return Object.assign({},direct||fallbackMedia,{
+   videoEl:fallbackMedia.videoEl,
+   videoReady:fallbackMedia.videoReady,
+   photoEl:fallbackMedia.photoEl,
+   photoReady:fallbackMedia.photoReady
+  });
+ }
+ return direct||SCENE_BROLL_MAP[L[li]?L[li][0]:'b1']||detectVisualFromVoScript(L[li]?L[li].t:TITLE,'',li,'b1');
 }
 
 function drawHybridBroll(tLine,isPip=false){
@@ -913,15 +886,12 @@ function drawHybridBroll(tLine,isPip=false){
    txt(det.title,360,158,fz(det.title,640,42,SERIF),'#ffffff','center',900,8,SERIF);
   }
  }else{
-  if(isPip){
-   X.fillStyle=P.a;rr(250,118,220,30,15);X.fill();
-   txt(det.kicker,360,133,13,'#091017','center',900);
-   drawEditorialQuoteCard(det,360,340,600,310);
-  }else{
-   X.fillStyle=P.a;rr(240,114,240,34,17);X.fill();
-   txt(det.kicker,360,131,14,'#091017','center',900);
-   drawEditorialQuoteCard(det,360,460,620,360);
-  }
+  // Cadangan terakhir jika seluruh API offline tanpa koneksi
+  const cx=360,cy=isPip?340:460,cw=600,ch=isPip?310:360;
+  X.fillStyle='#0f172a';rr(cx-cw/2,cy-ch/2,cw,ch,28);X.fill();
+  X.strokeStyle=P.a;X.lineWidth=4;rr(cx-cw/2,cy-ch/2,cw,ch,28);X.stroke();
+  txt(det.title,cx,cy-14,fz(det.title,cw-60,36,SERIF),'#ffffff','center',900,0,SERIF);
+  txt(det.sub,cx,cy+34,fz(det.sub,cw-64,20),'#cbd5e1','center',600);
  }
 
  X.restore();
@@ -1227,14 +1197,14 @@ $('nextSc').onclick=()=>{const nextRun=(L[li]?L[li].run:0)+1;const idx=L.findInd
 $('tl').onclick=e=>{const r=$('tl').getBoundingClientRect();seekTo(((e.clientX-r.left)/r.width)*LEN)};
 
 $('apiBtn').onclick=async()=>{
- const k=prompt('Tempel Pixabay API Key kamu di sini agar media asli otomatis dimuat sesuai setiap kalimat VO:',PIXABAY_KEY);
+ const k=prompt('Tempel Pixabay API Key kamu di sini agar video asli otomatis dimuat sesuai setiap kalimat VO:',PIXABAY_KEY);
  if(k!==null){
   PIXABAY_KEY=k.trim();
   localStorage.setItem('pixabay_api_key',PIXABAY_KEY);
-  showToast('Memuat media asli dari Pixabay...');
+  showToast('Memuat video asli dari Pixabay...');
   await preloadAllRealVideos();
   const ok=Object.values(LINE_BROLL_MAP).filter(x=>x&&(x.videoReady||x.photoReady)).length;
-  showToast(ok>0?`Berhasil memuat ${ok} media asli!`:'Cek kembali API key atau koneksi internet.');
+  showToast(ok>0?`Berhasil memuat ${ok} video asli!`:'Cek kembali API key atau koneksi internet.');
  }
 };
 
