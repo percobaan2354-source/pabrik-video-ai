@@ -762,10 +762,25 @@ async function uploadKeYouTube(videoPath, data) {
       viewport: { width: dim.width, height: dim.height },
       deviceScaleFactor: 1
     });
-    page.on('pageerror', err => console.error('Browser PageError:', err.message));
+
+    /* Kumpulkan error browser supaya kalau template rusak, penyebabnya langsung kelihatan (bukan cuma "Timeout") */
+    const pageErrors = [];
+    page.on('pageerror', err => {
+      pageErrors.push(err.message);
+      console.error('Browser PageError:', err.message);
+    });
     await page.goto(`http://127.0.0.1:${port}/index.html?autorender=1`, { waitUntil: 'domcontentloaded' });
 
-    await page.waitForFunction(() => window.__ASSETS_READY === true, { timeout: 60000 });
+    try {
+      await page.waitForFunction(() => window.__ASSETS_READY === true, { timeout: 45000 });
+    } catch (e) {
+      try { await browser.close(); } catch (_) {}
+      try { server.close(); } catch (_) {}
+      if (pageErrors.length > 0) {
+        throw new Error('Template.html error di browser: ' + pageErrors.slice(0, 3).join(' | '));
+      }
+      throw e;
+    }
     const totalLenSec = await page.evaluate(() => window.__VIDEO_LEN);
     const sceneTimes = await page.evaluate(() => window.__SCENE_TIMES || []);
     const fps = 30;
