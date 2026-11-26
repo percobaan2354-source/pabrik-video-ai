@@ -61,7 +61,9 @@ canvas{display:block;width:100%;height:100%}
 
 <script>
 /* ===== DATA DINAMIS DARI OTAK AI (AUTO-INJECT GITHUB) ===== */
-const DATA = __VIDEO_DATA_JSON__;
+var DATA = __VIDEO_DATA_JSON__;
+window.DATA = DATA;
+var c1 = null;
 
 const TITLE = DATA.title || 'FAKTA UNIK';
 const VARIAN = DATA.varian || 'v' + Math.floor(Math.random()*999);
@@ -94,7 +96,7 @@ const PORT = Math.abs(CW / CH - 9 / 16) < 0.02;
 const SX = PORT ? CW / 720 : 1;
 const SY = PORT ? CH / 1280 : 1;
 
-let COVER_HOLD = Number(DATA.coverHold) || 1.35;
+var COVER_HOLD = Number(DATA.coverHold) || 1.35;
 const SHOW_STORY_SEGMENTS = Boolean(DATA.showStorySegments);
 const FX_CAMERA = DATA.fxCamera !== false;
 const FX_LEAK = DATA.fxLeak !== false;
@@ -105,7 +107,14 @@ const CAM_V2 = DATA.camV2 !== false;
 const AMBIENT_ON = DATA.ambientOn !== false;
 const EXPORT_Q_DEFAULT = (DATA.exportQDefault !== undefined) ? Number(DATA.exportQDefault) : 0;
 
-let now=0,A=0,tm=0,playing=false,li=0,spoken=-1,lay=-1,pScene=null,trT=-9,trDir=1,exporting=false,rec=null,chunks=[],voBuf=null,voSrc=null,voStartCtxT=0,voStartOffset=0,voWallT0=0,cap=[],last=0,DT=.016,mNext=0,SYNC=0;
+var now=0,A=0,tm=0,playing=false,li=0,spoken=-1,lay=-1,pScene=null,trT=-9,trDir=1,exporting=false,rec=null,chunks=[],voBuf=null,voSrc=null,voStartCtxT=0,voStartOffset=0,voWallT0=0,cap=[],last=0,DT=.016,mNext=0,SYNC=0;
+var LEN = Number(DATA.duration) || 40;
+window.LEN = LEN;
+function setVideoLen(v){
+ LEN = Math.max(4, Number(v) || 40);
+ window.LEN = LEN;
+ return LEN;
+}
 
 {
  const VALID_SC=['title','b1','a','b2','b3','b4','b5','b6','cta','c','end'];
@@ -286,7 +295,6 @@ function detectVisualFromVoScript(voSentence,aiHintObj,excludeIds=new Set(),excl
  const voLow=voClean.toLowerCase();
  const sum=summarizeVoForBroll(voClean);
 
- /* Pilih 1 dari 6 layout unik per kalimat VO, di-seed dari TITLE_HASH + sceneIdx agar setiap judul & setiap baris VO berbeda */
  const autoLayout=LAYOUT_6_POOL[(TITLE_HASH+sceneIdx*5+hash(voLow)%6)%LAYOUT_6_POOL.length];
  const chosenLayout=(hintObj.layout&&LAYOUT_6_POOL.includes(hintObj.layout))?hintObj.layout:autoLayout;
  const defaultMode=(scKey==='title'||scKey==='a'||scKey==='c')?'pip_broll':'full_broll';
@@ -391,7 +399,6 @@ const SCENE_BROLL_MAP={};
 const RUN_BROLL_MAP={};
 const COVER_IMGS={img1:null,img2:null};
 
-/* Bangun visual B-Roll 1-to-1 untuk SETIAP BARIS VO (kecuali cta & end) agar setiap kalimat VO langsung ganti adegan visual */
 {
  const usedIds=new Set();
  const usedIcons=new Set();
@@ -441,8 +448,6 @@ const COVER_FF=COVER_FONTS[TITLE_HASH%COVER_FONTS.length];
 const COVER_LAYOUT=TITLE_HASH%4;
 const SPD=.96+rnd()*.14;
 const SUBY=1035;
-
-let LEN=40;
 
 const ALL=L.map(l=>l[2]).join(' ')+' '+Object.values(TX).join(' ');
 const RTL=/[\u0590-\u08ff]/.test(ALL);
@@ -817,7 +822,7 @@ function retime(){
    l.ss=COVER_HOLD+l[5][0];
    l.se=COVER_HOLD+l[5][1];
   });
-  LEN=Math.max(LEN,Math.ceil(COVER_HOLD+L[NL-1][5][1])+1);
+  setVideoLen(Math.max(LEN,Math.ceil(COVER_HOLD+L[NL-1][5][1])+1));
  }
  const exactApplied = applyExactElevenLabsTimings();
  if(!exactApplied && voBuf) alignLinesToVoAudio(voBuf);
@@ -830,6 +835,7 @@ function retime(){
  for(let i=NL-1;i>=0;i--){
   L[i].re=(i===NL-1)?LEN:(L[i+1][0]!==L[i][0]?L[i+1].t0:L[i+1].re);
  }
+ window.LEN = LEN;
 }
 retime();
 
@@ -890,7 +896,7 @@ const mixC=(a,b,t)=>{const p=rgb(a),q=rgb(b);return'rgb('+Math.round(p[0]+(q[0]-
 function rr(x,y,w,h,r){X.beginPath();X.moveTo(x+r,y);X.arcTo(x+w,y,x+w,y+h,r);X.arcTo(x+w,y+h,x,y+h,r);X.arcTo(x,y+h,x,y,r);X.arcTo(x,y,x+w,y,r);X.closePath()}
 function txt(s,x,y,sz,col,al2='center',w=800,st=0,ff=SANS){X.font=`${w} ${sz}px ${ff}`;X.direction=RTL?'rtl':'ltr';X.textAlign=al2;X.textBaseline='middle';X.lineJoin='round';if(st){X.lineWidth=st;X.strokeStyle='rgba(8,12,20,.95)';X.strokeText(s,x,y)}X.fillStyle=col;X.fillText(s,x,y)}
 const fz=(t,mw,sz,ff=SANS)=>{X.font=`800 ${sz}px ${ff}`;const w=X.measureText(t).width;return w>0?Math.min(sz,sz*mw/w):sz};
-const tg=(y,f,c1,c2)=>{const g=X.createLinearGradient(0,y-f*.5,0,y+f*.5);g.addColorStop(0,c1);g.addColorStop(1,c2);return g};
+const tg=(y,f,colA,colB)=>{const g=X.createLinearGradient(0,y-f*.5,0,y+f*.5);g.addColorStop(0,colA);g.addColorStop(1,colB);return g};
 
 /* Partikel Bokeh Hidup */
 const DUST=Array.from({length:36},(_,i)=>({x:(i*137+SEED)%720,y:(i*193+SEED)%1280,z:0.45+(i%4)*0.22,sp:24+(i%4)*9,ph:i*0.85,bokeh:i%7===0}));
@@ -1905,7 +1911,6 @@ function draw6LayoutBroll(tLine,forcePip=false){
  X.globalAlpha*=e;
 
  if(lay==='spotlight_card'){
-  /* LAYOUT 1 (PIP SPOTLIGHT CARD): Kartu visual melayang di atas, karakter berbicara di bawah */
   const cardY=318+mot.dy*0.5;
   X.save();
   X.translate(360,cardY);
@@ -1933,16 +1938,13 @@ function draw6LayoutBroll(tLine,forcePip=false){
   return true;
  }
 
- /* 5 LAYOUT FULL-STAGE LAINNYA (TANPA KARAKTER AGAR VISUAL VO 100% JELAS) */
  X.translate(0,88);
 
  if(lay==='split_compare'){
-  /* LAYOUT 2: SPLIT COMPARE (KIRI VS KANAN - DUA KONDISI / SEBAB VS AKIBAT) */
   X.fillStyle=P.a;rr(180,90,360,38,19);X.fill();
   txt(det.kicker,360,109,15,'#091017','center',900);
   txt(det.title,360,170,fz(det.title,620,44,SERIF),'#ffffff','center',900,6,SERIF);
 
-  /* Kartu Kiri */
   X.fillStyle=P.bg1;rr(54,224,292,388,28);X.fill();
   X.strokeStyle=P.a;X.lineWidth=4.5;rr(54,224,292,388,28);X.stroke();
   X.save();X.translate(200+mot.dx*0.5,392+mot.dy);X.scale(mot.sc,mot.sc);
@@ -1951,7 +1953,6 @@ function draw6LayoutBroll(tLine,forcePip=false){
   X.fillStyle=al(P.a,0.22);rr(80,536,240,46,16);X.fill();
   txt(det.badge1||'KONDISI A',200,559,fz(det.badge1||'KONDISI A',210,17),P.text,'center',900);
 
-  /* Kartu Kanan */
   X.fillStyle='#ffffff';rr(374,224,292,388,28);X.fill();
   X.strokeStyle=P.t;X.lineWidth=4.5;rr(374,224,292,388,28);X.stroke();
   X.save();X.translate(520-mot.dx*0.5,392-mot.dy*0.8);X.scale(0.95+0.08*eo(cl((tLine-0.18)/0.35)),0.95+0.08*eo(cl((tLine-0.18)/0.35)));
@@ -1960,7 +1961,6 @@ function draw6LayoutBroll(tLine,forcePip=false){
   X.fillStyle=P.t;rr(400,536,240,46,16);X.fill();
   txt(det.badge2||'KONDISI B',520,559,fz(det.badge2||'KONDISI B',210,17),'#091017','center',900);
 
-  /* Lencana Tengah Pemisah */
   X.fillStyle=P.a;X.beginPath();X.arc(360,418,32,0,Math.PI*2);X.fill();
   X.strokeStyle='#0f172a';X.lineWidth=4;X.stroke();
   txt('VS',360,419,18,'#091017','center',900);
@@ -1970,7 +1970,6 @@ function draw6LayoutBroll(tLine,forcePip=false){
   txt(det.sub,360,680,fz(det.sub,550,22),P.text,'center',800);
 
  }else if(lay==='process_flow'){
-  /* LAYOUT 3: PROCESS FLOW (ALUR MEKANISME 2 TAHAP + PANAH ENERGI) */
   X.fillStyle=P.bg1;rr(54,94,612,638,34);X.fill();
   X.strokeStyle=P.a;X.lineWidth=4.5;rr(54,94,612,638,34);X.stroke();
 
@@ -1978,7 +1977,6 @@ function draw6LayoutBroll(tLine,forcePip=false){
   txt(det.kicker,205,144,14,'#091017','center',900);
   txt(det.title,90,198,fz(det.title,540,40,SERIF),P.text,'left',900,0,SERIF);
 
-  /* Tahap 1 Atas */
   X.fillStyle=P.card;rr(86,242,548,166,24);X.fill();
   X.strokeStyle=al(P.a,0.65);X.lineWidth=3;rr(86,242,548,166,24);X.stroke();
   X.save();X.translate(185,325+mot.dy*0.5);X.scale(mot.sc,mot.sc);
@@ -1987,12 +1985,10 @@ function draw6LayoutBroll(tLine,forcePip=false){
   txt('01 • '+(det.badge1||'PEMICU'),285,295,16,P.a,'left',900);
   txt(det.sub,285,342,fz(det.sub,320,20),P.text,'left',800);
 
-  /* Panah Alur di Tengah */
   const arrowPulse=Math.sin(A*6)*4;
   X.fillStyle=P.t;
   X.beginPath();X.moveTo(348,414);X.lineTo(372,414);X.lineTo(372,436+arrowPulse);X.lineTo(388,436+arrowPulse);X.lineTo(360,460+arrowPulse);X.lineTo(332,436+arrowPulse);X.lineTo(348,436+arrowPulse);X.closePath();X.fill();
 
-  /* Tahap 2 Bawah */
   const s2Pop=eo(cl((tLine-0.22)/0.35));
   X.save();X.globalAlpha*=0.35+0.65*s2Pop;
   X.fillStyle='#ffffff';rr(86,468,548,166,24);X.fill();
@@ -2009,7 +2005,6 @@ function draw6LayoutBroll(tLine,forcePip=false){
   txt('PROGRES ADEGAN • '+Math.round(prog*100)+'%',360,680,15,'#091017','center',900);
 
  }else if(lay==='timeline_meter'){
-  /* LAYOUT 4: TIMELINE METER (INDIKATOR ANGKA / PERSENTASE / SKALA NYATA SESUAI VO) */
   X.fillStyle=P.a;rr(180,92,360,38,19);X.fill();
   txt(det.kicker,360,111,15,'#091017','center',900);
   txt(det.title,360,172,fz(det.title,620,44,SERIF),'#ffffff','center',900,6,SERIF);
@@ -2022,7 +2017,6 @@ function draw6LayoutBroll(tLine,forcePip=false){
   draw3DObject(det.ic1,0,0,102,P.a,det.img1);
   X.restore();
 
-  /* Gauge Lingkaran di Kanan */
   const gx=515,gy=395,gr=96;
   X.strokeStyle='rgba(255,255,255,0.14)';X.lineWidth=18;
   X.beginPath();X.arc(gx,gy,gr,0,Math.PI*2);X.stroke();
@@ -2031,7 +2025,6 @@ function draw6LayoutBroll(tLine,forcePip=false){
   txt(curPct+'%',gx,gy-4,44,P.text,'center',900,0,SERIF);
   txt(det.badge2||'INTENSITAS',gx,gy+34,13,P.a,'center',900);
 
-  /* Bar Skala Bawah Kartu */
   X.fillStyle='rgba(255,255,255,0.12)';rr(92,550,536,22,11);X.fill();
   const barG=X.createLinearGradient(92,0,628,0);
   barG.addColorStop(0,P.a);barG.addColorStop(1,P.t);
@@ -2044,11 +2037,9 @@ function draw6LayoutBroll(tLine,forcePip=false){
   txt(det.sub,360,687,fz(det.sub,540,22),'#0f172a','center',900);
 
  }else if(lay==='diagram_callout'){
-  /* LAYOUT 5: DIAGRAM CALLOUT (ILUSTRASI TENGAH + 2 PIN LABEL PENUNJUK BAGIAN OBJEK) */
   X.fillStyle=P.bg1;rr(56,94,608,638,34);X.fill();
   X.strokeStyle=P.t;X.lineWidth=4.5;rr(56,94,608,638,34);X.stroke();
 
-  /* Grid Teknis Halus */
   X.strokeStyle=al(P.a,0.14);X.lineWidth=1.5;
   for(let gx=96;gx<640;gx+=48){X.beginPath();X.moveTo(gx,120);X.lineTo(gx,700);X.stroke()}
   for(let gy=120;gy<700;gy+=48){X.beginPath();X.moveTo(86,gy);X.lineTo(634,gy);X.stroke()}
@@ -2057,12 +2048,10 @@ function draw6LayoutBroll(tLine,forcePip=false){
   txt(det.kicker,360,140,15,'#091017','center',900);
   txt(det.title,360,192,fz(det.title,560,42,SERIF),P.text,'center',900,0,SERIF);
 
-  /* Objek Utama di Tengah */
   X.save();X.translate(360+mot.dx*0.4,415+mot.dy);X.scale(mot.sc*1.08,mot.sc*1.08);X.rotate(mot.rot);
   draw3DObject(det.ic1,0,0,118,P.a,det.img1);
   X.restore();
 
-  /* Callout Pin 1 (Kiri Atas) */
   X.strokeStyle=P.a;X.lineWidth=3.5;
   X.beginPath();X.moveTo(270,355);X.lineTo(195,295);X.lineTo(86,295);X.stroke();
   X.fillStyle=P.a;X.beginPath();X.arc(270,355,7,0,Math.PI*2);X.fill();
@@ -2070,7 +2059,6 @@ function draw6LayoutBroll(tLine,forcePip=false){
   X.strokeStyle=P.a;X.lineWidth=2.5;rr(82,256,195,38,14);X.stroke();
   txt(det.badge1||'BAGIAN 1',179,275,fz(det.badge1||'BAGIAN 1',170,14),P.text,'center',900);
 
-  /* Callout Pin 2 (Kanan Bawah) */
   X.strokeStyle=P.t;X.lineWidth=3.5;
   X.beginPath();X.moveTo(450,465);X.lineTo(525,525);X.lineTo(634,525);X.stroke();
   X.fillStyle=P.t;X.beginPath();X.arc(450,465,7,0,Math.PI*2);X.fill();
@@ -2082,7 +2070,6 @@ function draw6LayoutBroll(tLine,forcePip=false){
   txt(det.sub,360,658,fz(det.sub,510,21),P.text,'center',800);
 
  }else{
-  /* LAYOUT 6: HERO STAGE (PANGGUNG UTAMA MEGAH + ORBIT BADGE PENDAMPING) */
   X.fillStyle=P.bg1;rr(180,92,360,40,20);X.fill();
   txt(det.kicker,360,112,15,P.a,'center',900);
   txt(det.title,360,174,fz(det.title,620,46,SERIF),'#ffffff','center',900,6,SERIF);
@@ -2801,8 +2788,8 @@ function draw(){
  A+=DT;
 
  li=tm<COVER_HOLD?0:lineAt(tm);
- const curSc=tm<COVER_HOLD?'cover':L[li][0];
- const curMood=tm<COVER_HOLD?'n':L[li][1];
+ const curSc=tm<COVER_HOLD?'cover':(L[li]?L[li][0]:'a');
+ const curMood=tm<COVER_HOLD?'n':(L[li]?L[li][1]:'n');
  if(pScene!==curSc || pLineIdx!==li){
   if(pScene!==null){
    trT=now;
@@ -2813,9 +2800,9 @@ function draw(){
   pLineIdx=li;
  }
 
- if(playing&&spoken!==li&&tm>=COVER_HOLD){
+ if(playing&&spoken!==li&&tm>=COVER_HOLD&&L[li]){
   spoken=li;
-  if(L[li].w.some(w=>w.em))sfxPop();
+  if(L[li].w&&L[li].w.some(w=>w.em))sfxPop();
  }
  if(playing){bgmTick();ambientTick();}else{ambientHush();}
 
@@ -2829,7 +2816,7 @@ function draw(){
  }
  applySceneEnterExit(tm);
  const fn=SCN[curSc]||SCN.a;
- fn(tm<COVER_HOLD?tm:Math.max(0,tm-L[li].t0));
+ fn(tm<COVER_HOLD?tm:Math.max(0,tm-(L[li]?L[li].t0:0)));
  if(FX_PARTICLES)drawAmbientParticles();
  X.restore();
 
@@ -2948,22 +2935,28 @@ $('exp').onclick=()=>{
 
 /* ===== AUTO-INJECT ASSET & BOOTSTRAP ===== */
 (async function boot(){
- if(DATA.audioUrl){
-  try{
-   const AC=window.AudioContext||window.webkitAudioContext;
-   const tmpAc=new AC();
-   const res=await fetch(DATA.audioUrl);
-   const arr=await res.arrayBuffer();
-   voBuf=await tmpAc.decodeAudioData(arr);
-   if(!DATA.duration)LEN=Math.max(LEN,Math.ceil(COVER_HOLD+voBuf.duration+0.6));
-   retime();
-   await tmpAc.close();
-  }catch(e){console.warn('VO decode fail:',e)}
+ try{
+  if(DATA.audioUrl){
+   try{
+    const AC=window.AudioContext||window.webkitAudioContext;
+    const tmpAc=new AC();
+    const res=await fetch(DATA.audioUrl);
+    const arr=await res.arrayBuffer();
+    voBuf=await tmpAc.decodeAudioData(arr);
+    if(!DATA.duration)setVideoLen(Math.max(LEN,Math.ceil(COVER_HOLD+voBuf.duration+0.6)));
+    retime();
+    await tmpAc.close();
+   }catch(e){console.warn('VO decode fail:',e)}
+  }
+  if(DATA.charUrl)await initCharSafe(DATA.charUrl);
+  await preloadAllDynamicSvgs();
+ }catch(err){
+  console.warn('Boot warning:',err);
+ }finally{
+  window.LEN=LEN;
+  window.__READY__=true;
+  requestAnimationFrame(draw);
  }
- if(DATA.charUrl)await initCharSafe(DATA.charUrl);
- await preloadAllDynamicSvgs();
- window.__READY__=true;
- requestAnimationFrame(draw);
 })();
 </script>
 </body>
