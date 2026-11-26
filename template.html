@@ -61,16 +61,14 @@ canvas{display:block;width:100%;height:100%}
 </div>
 
 <script>
-/* ===== DATA DINAMIS DARI OTAK AI (AUTO-INJECT GITHUB) ===== */
+/* ===== DATA DINAMIS DARI OTAK AI ===== */
 var DATA = __VIDEO_DATA_JSON__;
 var INJECTED_PIXABAY_KEY = "__PIXABAY_API_KEY__";
 if (INJECTED_PIXABAY_KEY && !INJECTED_PIXABAY_KEY.startsWith("__PIXABAY")) {
   DATA.pixabayApiKey = INJECTED_PIXABAY_KEY.trim();
 }
 window.DATA = DATA;
-var c1 = null;
 
-/* ===== HELPER MATEMATIKA DASAR ===== */
 const cl=(x,a=0,b=1)=>Math.min(b,Math.max(a,x)),eo=t=>1-Math.pow(1-t,3),bk=t=>{const c=1.70158;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2)},S=Math.sin;
 
 const TITLE = DATA.title || 'FAKTA UNIK';
@@ -78,7 +76,6 @@ const VARIAN = DATA.varian || 'v' + Math.floor(Math.random()*999);
 const LANG = DATA.lang || 'id-ID';
 const DESC = DATA.desc || '';
 const TAGS = DATA.tags || '#faktaunik #storytelling';
-const NOTE = DATA.note || 'Visual berupa animasi karakter dan cuplikan pendukung. Naskah disusun dari sumber terverifikasi.';
 const SRC = DATA.src || ['Sumber terverifikasi'];
 const WATERMARK_TEXT = '@raii.punyacerita';
 const L = Array.isArray(DATA.lines) ? DATA.lines : [];
@@ -129,10 +126,7 @@ function deriveCoverTitleFromScript(){
  const words=sourceText.replace(/[^a-zA-Z0-9\u00C0-\u024F\s?!]/g,' ').trim().split(/\s+/).filter(Boolean);
  if(words.length>=2){
   const mid=Math.ceil(Math.min(words.length,6)/2);
-  return{
-   t1:words.slice(0,mid).join(' ').toUpperCase(),
-   t2:words.slice(mid,6).join(' ').toUpperCase()
-  };
+  return{t1:words.slice(0,mid).join(' ').toUpperCase(),t2:words.slice(mid,6).join(' ').toUpperCase()};
  }
  return{t1:(words[0]||'RAHASIA').toUpperCase(),t2:'TERUNGKAP'};
 }
@@ -161,24 +155,22 @@ const TITLE_SIG = (TITLE+'|'+TX.t1+'|'+TX.t2+'|'+SCRIPT_SIG).toLowerCase().trim(
 const SEED = hash(TITLE_SIG+'|'+VARIAN);
 const TITLE_HASH = hash(TITLE_SIG);
 const rnd = (()=>{let a=SEED;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}})();
-
 const mk=s=>new RegExp(s.split('|').map(w=>(w.length<=4?'\\b'+w+'\\b':'\\b'+w)).join('|'));
 
-/* ===== DATABASE GENRE & PALET WARNA ===== */
 const GENRE_DB={
- kamar_mandi:{pal:{a:'#0284c7',t:'#06b6d4',p:'#38bdf8',g:'#0d9488',b1:'#0c4a6e',b2:'#0369a1',sky:'#e0f2fe'},bgm:[293.66,349.23,440.00,523.25,440.00,349.23]},
- sejarah:{pal:{a:'#d97706',t:'#0284c7',p:'#ea580c',g:'#059669',b1:'#451a03',b2:'#78350f',sky:'#fef3c7'},bgm:[220.00,261.63,293.66,329.63,392.00,329.63]},
- horor:{pal:{a:'#818cf8',t:'#c084fc',p:'#f43f5e',g:'#2dd4bf',b1:'#1e1b4b',b2:'#312e81',sky:'#0f172a'},bgm:[146.83,155.56,174.61,155.56,138.59,146.83]},
- kriminal:{pal:{a:'#f59e0b',t:'#38bdf8',p:'#ef4444',g:'#22d3ee',b1:'#0f172a',b2:'#1e293b',sky:'#1e293b'},bgm:[164.81,196.00,220.00,246.94,220.00,196.00]},
- konspirasi:{pal:{a:'#38bdf8',t:'#34d399',p:'#fb7185',g:'#a78bfa',b1:'#082f49',b2:'#0c4a6e',sky:'#0f172a'},bgm:[130.81,155.56,196.00,233.08,196.00,155.56]},
- bisnis:{pal:{a:'#eab308',t:'#0ea5e9',p:'#f97316',g:'#10b981',b1:'#422006',b2:'#713f12',sky:'#fef9c3'},bgm:[261.63,329.63,392.00,523.25,392.00,329.63]},
- drama:{pal:{a:'#ec4899',t:'#3b82f6',p:'#f43f5e',g:'#f59e0b',b1:'#500724',b2:'#831843',sky:'#ffe4e6'},bgm:[220.00,261.63,329.63,349.23,392.00,261.63]},
- psikologi:{pal:{a:'#0ea5e9',t:'#14b8a6',p:'#f59e0b',g:'#10b981',b1:'#042f2e',b2:'#115e59',sky:'#ccfbf1'},bgm:[246.94,293.66,369.99,440.00,369.99,293.66]},
- mitologi:{pal:{a:'#f59e0b',t:'#10b981',p:'#a855f7',g:'#14b8a6',b1:'#451a03',b2:'#78350f',sky:'#fef3c7'},bgm:[196.00,233.08,293.66,349.23,392.00,329.66]},
- sains:{pal:{a:'#38bdf8',t:'#a78bfa',p:'#22d3ee',g:'#818cf8',b1:'#0c4a6e',b2:'#1e1b4b',sky:'#e0f2fe'},bgm:[261.63,311.13,392.00,466.16,523.25,392.00]},
- bencana:{pal:{a:'#f97316',t:'#64748b',p:'#ef4444',g:'#f59e0b',b1:'#431407',b2:'#7c2d12',sky:'#ffedd5'},bgm:[146.83,174.61,196.00,220.00,174.61,146.83]},
- biografi:{pal:{a:'#f59e0b',t:'#f97316',p:'#ec4899',g:'#10b981',b1:'#451a03',b2:'#78350f',sky:'#fef3c7'},bgm:[261.63,293.66,329.63,392.00,440.00,392.00]},
- fakta:{pal:{a:'#f59e0b',t:'#0284c7',p:'#ec4899',g:'#10b981',b1:'#0f172a',b2:'#1e293b',sky:'#e0f2fe'},bgm:[261.63,329.63,392.00,493.88,392.00,329.63]}
+ kamar_mandi:{pal:{a:'#0284c7',t:'#06b6d4',p:'#38bdf8',g:'#0d9488',b1:'#0c4a6e',b2:'#0369a1'},bgm:[293.66,349.23,440.00,523.25,440.00,349.23]},
+ sejarah:{pal:{a:'#d97706',t:'#0284c7',p:'#ea580c',g:'#059669',b1:'#451a03',b2:'#78350f'},bgm:[220.00,261.63,293.66,329.63,392.00,329.63]},
+ horor:{pal:{a:'#818cf8',t:'#c084fc',p:'#f43f5e',g:'#2dd4bf',b1:'#1e1b4b',b2:'#312e81'},bgm:[146.83,155.56,174.61,155.56,138.59,146.83]},
+ kriminal:{pal:{a:'#f59e0b',t:'#38bdf8',p:'#ef4444',g:'#22d3ee',b1:'#0f172a',b2:'#1e293b'},bgm:[164.81,196.00,220.00,246.94,220.00,196.00]},
+ konspirasi:{pal:{a:'#38bdf8',t:'#34d399',p:'#fb7185',g:'#a78bfa',b1:'#082f49',b2:'#0c4a6e'},bgm:[130.81,155.56,196.00,233.08,196.00,155.56]},
+ bisnis:{pal:{a:'#eab308',t:'#0ea5e9',p:'#f97316',g:'#10b981',b1:'#422006',b2:'#713f12'},bgm:[261.63,329.63,392.00,523.25,392.00,329.63]},
+ drama:{pal:{a:'#ec4899',t:'#3b82f6',p:'#f43f5e',g:'#f59e0b',b1:'#500724',b2:'#831843'},bgm:[220.00,261.63,329.63,349.23,392.00,261.63]},
+ psikologi:{pal:{a:'#0ea5e9',t:'#14b8a6',p:'#f59e0b',g:'#10b981',b1:'#042f2e',b2:'#115e59'},bgm:[246.94,293.66,369.99,440.00,369.99,293.66]},
+ mitologi:{pal:{a:'#f59e0b',t:'#10b981',p:'#a855f7',g:'#14b8a6',b1:'#451a03',b2:'#78350f'},bgm:[196.00,233.08,293.66,349.23,392.00,329.66]},
+ sains:{pal:{a:'#38bdf8',t:'#a78bfa',p:'#22d3ee',g:'#818cf8',b1:'#0c4a6e',b2:'#1e1b4b'},bgm:[261.63,311.13,392.00,466.16,523.25,392.00]},
+ bencana:{pal:{a:'#f97316',t:'#64748b',p:'#ef4444',g:'#f59e0b',b1:'#431407',b2:'#7c2d12'},bgm:[146.83,174.61,196.00,220.00,174.61,146.83]},
+ biografi:{pal:{a:'#f59e0b',t:'#f97316',p:'#ec4899',g:'#10b981',b1:'#451a03',b2:'#78350f'},bgm:[261.63,293.66,329.63,392.00,440.00,392.00]},
+ fakta:{pal:{a:'#f59e0b',t:'#0284c7',p:'#ec4899',g:'#10b981',b1:'#0f172a',b2:'#1e293b'},bgm:[261.63,329.63,392.00,493.88,392.00,329.63]}
 };
 
 const GENRE_RULES=[
@@ -189,7 +181,7 @@ const GENRE_RULES=[
  ['konspirasi',mk('konspirasi|rahasia dunia|bunker|brankas|illuminati|elit|agen|satelit|radar|tersembunyi|terlarang|eksperimen|area 51|kode rahasia')],
  ['bisnis',mk('bisnis|sukses|kaya|miliarder|saham|investasi|uang|ekonomi|perusahaan|ceo|startup|modal|cuan|bank|emas|kekayaan|tiket|kartu|maskapai|merugi|dolar')],
  ['drama',mk('keluarga|hubungan|cinta|putus|rindu|orang tua|ibu|ayah|anak|pernikahan|sedih|menangis|hati|kesepian|drama|rumah tangga')],
- ['psikologi',mk('psikologi|otak|pikiran|tidur|kebiasaan|mental|stres|overthinking|fokus|motivasi|pengembangan diri|mindset|emosi|sadar|bifasik|insomnia|ngantuk|merem|bersin|memori|ingatan|hidung|aroma|reseptor|rasa|lidah|air liur')],
+ ['psikologi',mk('psikologi|otak|pikiran|tidur|kebiasaan|mental|stres|overthinking|fokus|motivasi|pengembangan diri|mindset|emosi|sadar|bifasik|insomnia|ngantuk|merem|bersin|memori|ingatan|hidung|aroma|reseptor|rasa|lidah|air liur|menguap|menutup mulut')],
  ['mitologi',mk('mitologi|legenda|dewa|naga|sihir|pedang|ramalan|makhluk|raksasa|peri|keramat|dongeng|cerita rakyat|jimat|kutukan kuno')],
  ['sains',mk('sains|antariksa|luar angkasa|planet|matahari|bulan|bintang|galaksi|ai|robot|masa depan|kuantum|dna|teknologi|orbit|mars|nasa|gelombang|frekuensi|fisika|sinar|elektron|tabung')],
  ['bencana',mk('bencana|gempa|tsunami|gunung meletus|lava|badai|topan|banjir|kebakaran|bertahan hidup|survival|salju ekstrem|tenggelam|karam|hanyut')],
@@ -225,36 +217,11 @@ const P=Object.assign({}, G_SPEC.pal, VTHEME ? {
 });
 
 /* ============================================================================
-   MESIN HYBRID B-ROLL: PIXABAY VIDEO + PIXABAY PHOTO HD + FALLBACK DIORAMA
+   MESIN B-ROLL 1 JALUR PASTI (VIDEO / FOTO HD ASLI)
    ============================================================================ */
 const STOP_WORDS=new Set([
  'yang','dan','di','ke','dari','ini','itu','untuk','pada','dengan','adalah','sebagai','dalam','oleh','akan','juga','atau','karena','jika','bila','saat','ketika','sebelum','sesudah','setelah','lalu','kemudian','mereka','kami','kita','kamu','dia','ia','orang','manusia','para','semua','setiap','banyak','beberapa','satu','dua','tiga','empat','lima','enam','tujuh','delapan','sembilan','sepuluh','sekitar','hampir','sangat','lebih','paling','bisa','dapat','harus','mau','ingin','pernah','sering','selalu','belum','sudah','telah','sedang','masih','lagi','saja','cuma','hanya','bukan','tidak','nggak','gak','tak','ada','punya','jadi','menjadi','buat','membuat','disebut','bernama','secara','hal','cara','bagian','tahap','kali','sampai','hingga','antara','selama','tengah','awal','akhir','mungkin','ternyata','padahal','namun','tapi','tetapi','kalau','misalnya','contoh','kayak','seperti','gini','begitu','sih','nih','deh','dong','ya','kan','sekali','waktu','dulu','zaman','era','hari','bikin','malah','makin','banget','aja','lo','gue','lu','bayangkan','coba','lihat','enggak','sebuah','layaknya','masuk','mode','justru','kunci','tercepat','segera','sekadar','bahkan','biar','ngira','alasan','aslinya','jauh','serius','urusan','khusus','darurat','kalo','sengaja','tetap','menyangka','abaikan','berkat','detail','kecil','ribuan','biasanya','berbahan','sempit','penuh','mendadak','pernahkah','sadar'
 ]);
-
-const VO_TO_VIDEO_QUERY=[
- {re:mk('mercusuar|laut|ombak|kapal|pulau|pelaut|pantai|badai|samudra|tenggelam|penyelamat'),q:'lighthouse ocean waves sea storm',diorama:'mystery_scene',kicker:'SUASANA LAUT',p1:'kondisi lokasi',p2:'dinamika ombak'},
- {re:mk('ruang makan|meja|pintu|terkunci|kamar|rumah|gedung|bangunan|istana|katedral'),q:'vintage dining room locked door house',diorama:'mystery_scene',kicker:'LOKASI KEJADIAN',p1:'kondisi ruangan',p2:'detail petunjuk'},
- {re:mk('lampu|cahaya|menyala|terang|gelap|malam|sinar'),q:'lighthouse beam light night dark',diorama:'mystery_scene',kicker:'KONTRADISI CAHAYA',p1:'kegelapan luar',p2:'sorot lampu aktif'},
- {re:mk('catatan|log|buku|menulis|membaca|arsip|data|personel|laporan'),q:'old journal writing diary book',diorama:'archive_doc',kicker:'CATATAN TERAKHIR',p1:'arsip tertulis',p2:'fakta lapangan'},
- {re:mk('menangis|sedih|takut|ketakutan|trauma|mental|stres|pusing|pikiran|otak'),q:'stressed sad man thinking dark',diorama:'brain_neural',kicker:'TEKANAN MENTAL',p1:'kondisi psikologis',p2:'reaksi emosional'},
- {re:mk('belajar|ujian|sekolah|kuliah|pelajar|mahasiswa|perpustakaan|murid'),q:'student studying reading book',diorama:'archive_doc',kicker:'AKTIVITAS BELAJAR',p1:'fokus membaca materi',p2:'catatan & referensi'},
- {re:mk('membangun|bata|semen|arsitektur|konstruksi|proyek|tukang|batu|menara|kubah'),q:'construction architecture cathedral building',diorama:'mech_gears',kicker:'KONSTRUKSI & KARYA',p1:'penyusunan struktur',p2:'arsitektur megah'},
- {re:mk('pesawat|terbang|penerbangan|bandara|kelas satu|first class|kursi pesawat|perjalanan'),q:'airplane flying clouds airport travel',diorama:'flight_globe',kicker:'PERJALANAN UDARA',p1:'rute penerbangan',p2:'kabin penumpang'},
- {re:mk('uang|dolar|rupiah|kaya|miliarder|saham|bisnis|kantor|investasi|merugi|bank|emas'),q:'money finance business office',diorama:'finance_ledger',kicker:'FINANSIAL & BISNIS',p1:'arus nilai transaksi',p2:'analisis dampak'},
- {re:mk('makan|makanan|hidangan|masak|dapur|restoran|lezat|mencium|aroma|kopi|minum'),q:'food meal table dining restaurant',diorama:'sensory_olfactory',kicker:'HIDANGAN & MEJA',p1:'sajian di meja',p2:'kondisi ruangan'},
- {re:mk('tidur|kasur|ranjang|bangun|insomnia|mimpi|ngantuk|kamar tidur'),q:'person sleeping bed night bedroom',diorama:'sleep_circadian',kicker:'POLA TIDUR',p1:'fase istirahat',p2:'ritme sirkadian'},
- {re:mk('misteri|detektif|polisi|penyelidikan|kasus|hilang|kaca pembesar|rahasia'),q:'detective mystery dark investigation',diorama:'mystery_scene',kicker:'INVESTIGASI KASUS',p1:'pemeriksaan lokasi',p2:'jejak bukti'},
- {re:mk('olahraga|lari|gym|jantung|napas|paru|sehat|dokter|rumah sakit|medis'),q:'running exercise fitness medical health',diorama:'respiratory_flow',kicker:'KESEHATAN TUBUH',p1:'sirkulasi udara',p2:'detak & energi'},
- {re:mk('komputer|laptop|coding|hp|ponsel|smartphone|teknologi|robot|ai|mesin'),q:'laptop typing technology computer screen',diorama:'mech_gears',kicker:'TEKNOLOGI DIGITAL',p1:'antarmuka sistem',p2:'pemrosesan data'},
- {re:mk('planet|luar angkasa|antariksa|bintang|bulan|matahari|roket|bumi|galaksi'),q:'space earth stars galaxy planet',diorama:'cosmos_orbit',kicker:'ANTARIKSA',p1:'orbit & gravitasi',p2:'skala kosmik'}
-];
-
-const ID_EN_DICT={
- pulau:'island',laut:'ocean',ombak:'waves',kapal:'ship',badai:'storm',cuaca:'weather',langit:'sky',
- orang:'person',pria:'man',wanita:'woman',penjaga:'keeper',hilang:'missing',misteri:'mystery',
- meja:'table',pintu:'door',makanan:'food',lampu:'light',cahaya:'light',gelap:'dark',malam:'night',
- catatan:'diary',buku:'book',menangis:'crying',takut:'scared',waktu:'time',tahun:'years'
-};
 
 function extractMeaningfulWords(sentence){
  const clean=(sentence||'').replace(/[^a-zA-Z0-9\u00C0-\u024F\s]/g,' ').trim();
@@ -268,61 +235,39 @@ function summarizeVoForBroll(voSentence){
  const words=extractMeaningfulWords(clean);
  const titleStr=(words.slice(0,3).join(' ')||TX.t1).toUpperCase();
  let subStr=clean;
- if(subStr.length>52){
-  const cut=subStr.slice(0,50);
+ if(subStr.length>56){
+  const cut=subStr.slice(0,54);
   const lastSp=cut.lastIndexOf(' ');
   subStr=(lastSp>22?cut.slice(0,lastSp):cut).trim()+'…';
  }
  return{titleStr,subStr,words};
 }
 
-function translateVoToEnglishQuery(voClean,words){
- const low=voClean.toLowerCase();
- for(const item of VO_TO_VIDEO_QUERY){
-  if(item.re.test(low))return{query:item.q,matched:item};
- }
- const translated=words.map(w=>ID_EN_DICT[w.toLowerCase()]||w.toLowerCase()).slice(0,3).join(' ');
- return{query:translated||'mystery ocean night',matched:null};
-}
-
 function detectVisualFromVoScript(voSentence,aiHintObj,sceneIdx=0,scKey='b1'){
  const voClean=(voSentence||'').replace(/\*/g,'').trim();
  const hintObj=(aiHintObj&&typeof aiHintObj==='object')?aiHintObj:{};
- const voLow=voClean.toLowerCase();
  const sum=summarizeVoForBroll(voClean);
- const tr=translateVoToEnglishQuery(voClean,sum.words);
 
  const defaultMode=(scKey==='title'||scKey==='a'||scKey==='c')?'pip_broll':'full_broll';
  const chosenMode=hintObj.mode||defaultMode;
 
  const directVideoUrl=hintObj.videoUrl||hintObj.video||LINE_VIDEOS[sceneIdx]||'';
- const customQuery=hintObj.videoQuery||hintObj.query||tr.query;
-
- const numMatch=voClean.match(/(\$\s*[\d.,]+|\d[\d.,]*\s*(?:%|persen|dolar|rupiah|juta|miliar|ribu|kali|tahun|jam|detik))/i);
- const numBadge=numMatch?numMatch[1].toUpperCase():'';
-
- const m=tr.matched;
- const isNegative=/mencabut|cabut|dihentikan|merugi|rugi|gagal|hilang|terkunci|bahaya|larang|mati|berhenti|roboh|hancur|menangis|ketakutan/.test(voLow);
+ const directPhotoUrl=hintObj.photoUrl||hintObj.photo||hintObj.imageUrl||'';
+ const customQuery=hintObj.videoQuery||hintObj.query||sum.words.slice(0,3).join(' ')||'mystery documentary scene';
 
  return{
   id:'line_'+sceneIdx,
   mode:chosenMode,
-  diorama:m?m.diorama:'archive_doc',
-  isNegative,
-  numBadge,
   videoQuery:customQuery,
   videoUrl:directVideoUrl,
   videoEl:null,
   videoReady:false,
-  photoUrl:'',
+  photoUrl:directPhotoUrl,
   photoEl:null,
   photoReady:false,
-  kicker:(hintObj.kicker||(m?m.kicker:'ADEGAN VISUAL')).toUpperCase(),
+  kicker:(hintObj.kicker||'FAKTA VISUAL').toUpperCase(),
   title:(hintObj.title||sum.titleStr).toUpperCase(),
   sub:hintObj.sub||sum.subStr,
-  p1:(hintObj.badge1||(m?m.p1:(sum.words[0]||'detail utama'))).toLowerCase(),
-  p2:(hintObj.badge2||(m?m.p2:(sum.words[1]||'konteks adegan'))).toLowerCase(),
-  strip:hintObj.badge||numBadge||sum.subStr,
   voQuote:voClean
  };
 }
@@ -341,7 +286,6 @@ const SCENE_BROLL_MAP={};
  });
 }
 
-/* ===== LOADER MEDIA NYATA (PIXABAY VIDEO + PIXABAY PHOTO HD FALLBACK) ===== */
 let PIXABAY_KEY=(DATA.pixabayApiKey||DATA.pexelsApiKey||localStorage.getItem('pixabay_api_key')||'').trim();
 const VIDEO_QUERY_CACHE={};
 const PHOTO_QUERY_CACHE={};
@@ -354,36 +298,20 @@ async function fetchPixabayMedia(query,variantIdx=0){
 
  if(!vUrls){
   try{
-   const runVid=async(qStr)=>{
-    const res=await fetch('https://pixabay.com/api/videos/?key='+encodeURIComponent(PIXABAY_KEY)+'&q='+encodeURIComponent(qStr)+'&safesearch=true&per_page=8');
-    if(!res.ok)return[];
-    const json=await res.json();
-    return(json.hits||[]).map(h=>{
-     const v=h.videos||{};
-     return(v.medium&&v.medium.url)||(v.small&&v.small.url)||(v.large&&v.large.url)||'';
-    }).filter(Boolean);
-   };
-   vUrls=await runVid(query);
-   if(!vUrls.length&&query.includes(' '))vUrls=await runVid(query.split(/\s+/).slice(0,2).join(' '));
+   const res=await fetch('https://pixabay.com/api/videos/?key='+encodeURIComponent(PIXABAY_KEY)+'&q='+encodeURIComponent(query)+'&safesearch=true&per_page=8');
+   const json=res.ok?await res.json():{hits:[]};
+   vUrls=(json.hits||[]).map(h=>{const v=h.videos||{};return(v.small&&v.small.url)||(v.medium&&v.medium.url)||(v.large&&v.large.url)||''}).filter(Boolean);
    VIDEO_QUERY_CACHE[cacheKey]=vUrls;
   }catch(_){vUrls=[]}
  }
-
  if(!pUrls){
   try{
-   const runImg=async(qStr)=>{
-    const res=await fetch('https://pixabay.com/api/?key='+encodeURIComponent(PIXABAY_KEY)+'&q='+encodeURIComponent(qStr)+'&image_type=photo&safesearch=true&per_page=8');
-    if(!res.ok)return[];
-    const json=await res.json();
-    return(json.hits||[]).map(h=>h.largeImageURL||h.webformatURL||'').filter(Boolean);
-   };
-   pUrls=await runImg(query);
-   if(!pUrls.length&&query.includes(' '))pUrls=await runImg(query.split(/\s+/).slice(0,2).join(' '));
-   if(!pUrls.length)pUrls=await runImg('ocean mystery night');
+   const res=await fetch('https://pixabay.com/api/?key='+encodeURIComponent(PIXABAY_KEY)+'&q='+encodeURIComponent(query)+'&image_type=photo&safesearch=true&per_page=8');
+   const json=res.ok?await res.json():{hits:[]};
+   pUrls=(json.hits||[]).map(h=>h.largeImageURL||h.webformatURL||'').filter(Boolean);
    PHOTO_QUERY_CACHE[cacheKey]=pUrls;
   }catch(_){pUrls=[]}
  }
-
  return{
   videoUrl:vUrls.length?vUrls[variantIdx%vUrls.length]:'',
   photoUrl:pUrls.length?pUrls[variantIdx%pUrls.length]:''
@@ -442,17 +370,19 @@ async function preloadAllRealVideos(){
   const idx=Number(idxStr);
   let vUrl=item.videoUrl;
   let pUrl=item.photoUrl;
-  if(!vUrl&&PIXABAY_KEY){
+
+  /* Jika dari server Node.js belum ada file lokal & PIXABAY_KEY tersedia di browser, cari langsung */
+  if(!vUrl&&!pUrl&&PIXABAY_KEY){
    const found=await fetchPixabayMedia(item.videoQuery,idx);
    vUrl=found.videoUrl;
    pUrl=found.photoUrl;
    item.videoUrl=vUrl;
    item.photoUrl=pUrl;
   }
-  const vidOk=vUrl?await attachVideoElementToItem(item,vUrl):false;
-  if(!vidOk&&pUrl){
-   await attachPhotoToItem(item,pUrl);
-  }
+
+  let ok=false;
+  if(vUrl)ok=await attachVideoElementToItem(item,vUrl);
+  if(!ok&&pUrl)ok=await attachPhotoToItem(item,pUrl);
   updateApiBtnLabel();
  }
 }
@@ -486,7 +416,6 @@ function updateApiBtnLabel(){
  else btn.textContent='Video: Set API';
 }
 
-/* ===== VISUAL STYLING & HELPER ===== */
 const BG_LIGHT_SCHEMES=[
  {top:'#fffbeb',mid:'#fef3c7',bot:'#fde68a',sunX:180},
  {top:'#f0f9ff',mid:'#e0f2fe',bot:'#bae6fd',sunX:540},
@@ -651,7 +580,6 @@ function retime(){
 }
 retime();
 
-/* ===== ENGINE HD & RENDER CANVAS ===== */
 const $=id=>document.getElementById(id),cv=$('cv'),Y=cv.getContext('2d'),W=720,H=1280;
 cv.width=CW;cv.height=CH;
 const rcv=PORT?cv:document.createElement('canvas');
@@ -700,7 +628,6 @@ function txt(s,x,y,sz,col,al2='center',w=800,st=0,ff=SANS){X.font=`${w} ${sz}px 
 const fz=(t,mw,sz,ff=SANS)=>{X.font=`800 ${sz}px ${ff}`;const w=X.measureText(t).width;return w>0?Math.min(sz,sz*mw/w):sz};
 const tg=(y,f,colA,colB)=>{const g=X.createLinearGradient(0,y-f*.5,0,y+f*.5);g.addColorStop(0,colA);g.addColorStop(1,colB);return g};
 
-/* ===== WORLD BACKGROUND ===== */
 function drawBrightVariedBg(mode,accent){
  const pan=Math.sin(A*0.42)*24;
  const cur=L[li];
@@ -735,7 +662,7 @@ function drawWatermark(){
 
 /* ===== KARAKTER & MODE REACTION SAAT B-ROLL ===== */
 let cim=null,cimStroke=null,an=null,anBuf=null;
-const CS={li:-1,pid:0,pt:-9,dir:1,mv:0,ev:0,tilt:0,sway:0,bounce:0,nod:0,breath:0,speaking:false,energy:0,reactMode:false,reactSide:1};
+const CS={li:-1,pid:0,pt:-9,dir:1,mv:0,ev:0,tilt:0,sway:0,bounce:0,nod:0,breath:0,speaking:false,energy:0,reactSide:1};
 const POSES={s:[0,0,1,2],n:[0,1,0,2,0],e:[5,1,2,5],d:[3,0,2,3]};
 
 function vol(){const l=L[li];
@@ -796,13 +723,8 @@ function drawReactionBadge(cx,cy,mood,u){
  X.fillStyle='#ffffff';
  X.strokeStyle='#0f172a';
  X.lineWidth=3.5;
- X.beginPath();
- X.arc(0,0,28,0,Math.PI*2);
- X.fill();X.stroke();
- /* Ekor gelembung pikiran ke arah kepala karakter */
- X.beginPath();
- X.arc(-22,26,8,0,Math.PI*2);
- X.fill();X.stroke();
+ X.beginPath();X.arc(0,0,28,0,Math.PI*2);X.fill();X.stroke();
+ X.beginPath();X.arc(-22,26,8,0,Math.PI*2);X.fill();X.stroke();
  txt(icon,0,1,24,'#0f172a','center',900);
  X.restore();
 }
@@ -815,7 +737,6 @@ function char(o={}){
  const mood=l?l[1]:'n';
  const p=poseXf(CS.pid,u,CS.dir);
 
- /* Mode Reaction: karakter bergeser agak ke samping & mendongak melirik layar B-Roll di atas */
  const targetX=isReact?(360+CS.reactSide*95+(o.ox||0)):(p.x+(o.ox||0));
  const targetY=isReact?(1320+(o.oy||0)):(p.y+(o.oy||0));
  const targetS=p.s*(o.sc||1);
@@ -844,7 +765,6 @@ function char(o={}){
  X.save();
  X.globalAlpha*=(o.a==null?1:o.a);
  X.translate(x,y);X.rotate(r);
- /* Flip halus menghadap ke arah kartu B-Roll bila di sisi kanan */
  const flipX=(isReact&&CS.reactSide>0)?-1:1;
  X.scale(sx*flipX,sy);
  const q=DW/cim.width;
@@ -852,7 +772,6 @@ function char(o={}){
  X.drawImage(cim,-DW/2,-DH,DW,DH);
  X.restore();
 
- /* Gelembung ekspresi reaction di samping kepala karakter saat B-Roll kecil aktif */
  if(isReact){
   const bx=x+(-CS.reactSide*145);
   const by=y-DH*char._s*0.74;
@@ -888,7 +807,7 @@ function initCharFromUrl(url){
 function initCharSafe(url){return Promise.race([initCharFromUrl(url).catch(()=>false),new Promise(r=>setTimeout(()=>r(false),8000))])}
 
 /* ============================================================================
-   RENDERER VIDEO ASLI + PHOTO HD KEN BURNS + FALLBACK DIORAMA
+   RENDERER B-ROLL 1 JALUR TUNGGAL (TANPA DIAGRAM 01 - 02)
    ============================================================================ */
 function drawMediaCoverFit(mediaEl,mw,mh,dx,dy,dw,dh,zoom=1.04,panX=0){
  const scale=Math.max(dw/mw,dh/mh)*zoom;
@@ -898,44 +817,15 @@ function drawMediaCoverFit(mediaEl,mw,mh,dx,dy,dw,dh,zoom=1.04,panX=0){
  X.drawImage(mediaEl,sx,sy,sw,sh,dx,dy,dw,dh);
 }
 
-function drawSmartCallout(xTarget,yTarget,xPill,yPill,label,dotCol,alpha=1){
- if(alpha<=0.02)return;
- X.save();X.globalAlpha*=alpha;
- X.font='700 17px Poppins,sans-serif';
- const tw=X.measureText(label).width;
- const pw=Math.min(280,tw+46),ph=34,px=xPill-pw/2,py=yPill-ph/2;
- X.strokeStyle='rgba(255,255,255,0.75)';X.lineWidth=2.5;
- X.beginPath();X.moveTo(xTarget,yTarget);X.lineTo(xTarget+(xPill-xTarget)*0.45,yPill);X.lineTo(xPill,yPill);X.stroke();
- X.fillStyle=dotCol;X.beginPath();X.arc(xTarget,yTarget,6.5,0,Math.PI*2);X.fill();
- X.strokeStyle='#0f172a';X.lineWidth=2;X.stroke();
- X.fillStyle='#ffffff';rr(px,py,pw,ph,ph/2);X.fill();
- X.strokeStyle='#0f172a';X.lineWidth=2.2;rr(px,py,pw,ph,ph/2);X.stroke();
- X.fillStyle=dotCol;X.beginPath();X.arc(px+16,yPill,5.5,0,Math.PI*2);X.fill();
- X.fillStyle='#0f172a';X.textAlign='left';X.textBaseline='middle';
- X.fillText(label,px+28,yPill+0.5,pw-38);
- X.restore();
-}
-
-function drawFallbackDiorama(det,cx,cy,scale,prog){
+function drawEditorialQuoteCard(det,cx,cy,cw,ch){
  X.save();
- X.translate(cx,cy);X.scale(scale,scale);
- X.fillStyle='rgba(15,23,42,0.88)';rr(-235,-135,470,270,26);X.fill();
- X.strokeStyle=P.a;X.lineWidth=3.5;X.stroke();
-
- X.strokeStyle='rgba(255,255,255,0.28)';X.lineWidth=5;X.setLineDash([12,10]);
- X.beginPath();X.moveTo(-115,0);X.lineTo(115,0);X.stroke();X.setLineDash([]);
- const pulseX=-115+((A*0.9)%1)*230;
- X.fillStyle='#fde047';X.beginPath();X.arc(pulseX,0,10,0,Math.PI*2);X.fill();
-
- [-125,125].forEach((nx,i)=>{
-  const col=i===0?P.a:P.t;
-  X.fillStyle=al(col,0.22);X.beginPath();X.arc(nx,0,68,0,Math.PI*2);X.fill();
-  X.strokeStyle=col;X.lineWidth=3.5;X.stroke();
-  txt(i===0?'01':'02',nx,2,32,'#ffffff','center',900);
- });
-
- drawSmartCallout(-125,-45,-175,-168,det.p1,P.a,eo(cl(prog/0.25)));
- if(prog>0.28)drawSmartCallout(125,45,175,168,det.p2,P.t,eo(cl((prog-0.28)/0.25)));
+ const g=X.createLinearGradient(cx-cw/2,cy-ch/2,cx+cw/2,cy+ch/2);
+ g.addColorStop(0,'#0f172a');
+ g.addColorStop(1,'#1e293b');
+ X.fillStyle=g;rr(cx-cw/2,cy-ch/2,cw,ch,28);X.fill();
+ X.strokeStyle=P.a;X.lineWidth=4;rr(cx-cw/2,cy-ch/2,cw,ch,28);X.stroke();
+ txt(det.title,cx,cy-28,fz(det.title,cw-60,38,SERIF),'#ffffff','center',900,0,SERIF);
+ txt(det.sub,cx,cy+28,fz(det.sub,cw-64,22),'#cbd5e1','center',600);
  X.restore();
 }
 
@@ -966,7 +856,6 @@ function drawHybridBroll(tLine,isPip=false){
   const panX=hasRealVideo?0:(prog-0.5)*36;
 
   if(isPip){
-   /* Kartu B-Roll PIP Lebar di Atas Kepala Karakter yang Sedang Nge-Reaction */
    const vw=600,vh=350,vx=60,vy=175;
    X.save();
    X.shadowColor='rgba(2,6,23,0.65)';X.shadowBlur=28;X.shadowOffsetY=12;
@@ -980,7 +869,6 @@ function drawHybridBroll(tLine,isPip=false){
    X.fillStyle=P.a;rr(250,118,220,30,15);X.fill();
    txt(det.kicker,360,133,13,'#091017','center',900);
   }else{
-   /* B-Roll Layar Penuh */
    drawMediaCoverFit(mediaEl,mw,mh,0,0,W,H,kenBurns,panX);
 
    const topG=X.createLinearGradient(0,0,0,340);
@@ -1002,13 +890,11 @@ function drawHybridBroll(tLine,isPip=false){
   if(isPip){
    X.fillStyle=P.a;rr(250,118,220,30,15);X.fill();
    txt(det.kicker,360,133,13,'#091017','center',900);
-   txt(det.title,360,174,fz(det.title,620,36,SERIF),'#ffffff','center',900,8,SERIF);
-   drawFallbackDiorama(det,360,350,0.75,prog);
+   drawEditorialQuoteCard(det,360,340,600,310);
   }else{
    X.fillStyle=P.a;rr(240,114,240,34,17);X.fill();
    txt(det.kicker,360,131,14,'#091017','center',900);
-   txt(det.title,360,186,fz(det.title,640,46,SERIF),'#ffffff','center',900,10,SERIF);
-   drawFallbackDiorama(det,360,475,1.02,prog);
+   drawEditorialQuoteCard(det,360,460,620,360);
   }
  }
 
@@ -1016,7 +902,6 @@ function drawHybridBroll(tLine,isPip=false){
  return true;
 }
 
-/* ===== KARTU VISUAL CTA KHUSUS ===== */
 function drawCtaCard(t){
  const e=bk(cl(t/.38));
  const pulse=1+Math.sin(A*6)*0.035;
@@ -1036,14 +921,12 @@ function drawCtaCard(t){
  X.restore();
 }
 
-/* ===== SCENE DEFINITIONS ===== */
 function renderDynamicVoStage(t,preferPip){
  const det=getActiveLineBroll();
  const isPip=preferPip||(det&&det.mode==='pip_broll');
  if(isPip){
   drawBrightVariedBg('studio',P.a);
   drawHybridBroll(t,true);
-  /* Karakter utama muncul nge-reaction di bawah kartu B-Roll kecil */
   char({oy:115,sc:0.86,react:true});
  }else{
   drawBrightVariedBg('broll_full',P.t);
@@ -1098,7 +981,6 @@ const SCN={
  }
 };
 
-/* ===== SUBTITLE RENDERING ===== */
 function activeWordIdx(l){
  if(!l||!l.w||!l.w.length)return-1;
  if(tm<l.ss)return-1;
@@ -1175,7 +1057,6 @@ function drawSubs(){
  X.restore();
 }
 
-/* ===== AUDIO & PREVIEW ENGINE ===== */
 let ac=null,dest=null,gainM=null,gainBgm=null,gainVo=null,gainSfx=null,noiseBuf=null;
 function initAudio(){
  if(ac){if(ac.state==='suspended')ac.resume().catch(()=>{});return}
@@ -1358,7 +1239,6 @@ $('exp').onclick=()=>{
  seekTo(0);playing=true;playVoiceAt(0);updatePlayIcon();rec.start();
 };
 
-/* ===== BOOTSTRAP ===== */
 (async function boot(){
  try{
   if(DATA.audioUrl){
