@@ -97,12 +97,77 @@ function deteksiPrimeTimeHariIni() {
   return { jamWib, targetJamRamai };
 }
 
+function pilihTemaVisualDariJudul(judul) {
+  const q = (judul || '').toLowerCase();
+  const presets = [
+    {
+      re: /tidur|bangun|mimpi|alarm|malam|sirkadian|insomnia|otak|saraf/,
+      theme: { name: 'night_neuro', bg1: '#0b132b', bg2: '#1c2541', card: '#141e38', accent: '#38bdf8', accent2: '#f59e0b', text: '#f8fafc' }
+    },
+    {
+      re: /sains|fisika|kimia|atom|listrik|energi|cahaya|gelombang|teknologi|robot|ai\b|kuantum/,
+      theme: { name: 'cyber_lab', bg1: '#071921', bg2: '#0f2e3d', card: '#0d2633', accent: '#06b6d4', accent2: '#22c55e', text: '#ecfeff' }
+    },
+    {
+      re: /sejarah|kuno|kerajaan|romawi|mesir|abad|dinasti|piramida|perang|nusantara/,
+      theme: { name: 'ancient_gold', bg1: '#1c140d', bg2: '#332214', card: '#291b10', accent: '#f59e0b', accent2: '#ef4444', text: '#fef3c7' }
+    },
+    {
+      re: /alam|hewan|laut|hutan|gunung|bumi|samudra|tumbuhan|ikan|burung|cuaca/,
+      theme: { name: 'emerald_wild', bg1: '#062019', bg2: '#0e3b2e', card: '#0a2e24', accent: '#10b981', accent2: '#eab308', text: '#ecfdf5' }
+    },
+    {
+      re: /horor|misteri|hantu|mistis|angker|rahasia|gelap|hilang|konspirasi/,
+      theme: { name: 'crimson_mystery', bg1: '#180912', bg2: '#2e1022', card: '#240c1a', accent: '#f43f5e', accent2: '#a855f7', text: '#fff1f2' }
+    },
+    {
+      re: /bisnis|uang|kaya|sukses|ekonomi|saham|emas|kerja|kaya|miliarder/,
+      theme: { name: 'royal_wealth', bg1: '#0f172a', bg2: '#1e293b', card: '#162033', accent: '#eab308', accent2: '#38bdf8', text: '#f8fafc' }
+    }
+  ];
+  for (const p of presets) {
+    if (p.re.test(q)) return p.theme;
+  }
+  const hash = Array.from(q).reduce((a, c) => a + c.charCodeAt(0), 0);
+  const fallbacks = [
+    { name: 'indigo_spark', bg1: '#111029', bg2: '#221f4d', card: '#19173b', accent: '#818cf8', accent2: '#fb7185', text: '#eef2ff' },
+    { name: 'teal_prism', bg1: '#091e24', bg2: '#133842', card: '#0e2b33', accent: '#2dd4bf', accent2: '#fb923c', text: '#f0fdfa' },
+    { name: 'amber_studio', bg1: '#1f150c', bg2: '#382514', card: '#2b1c0f', accent: '#fb923c', accent2: '#38bdf8', text: '#fff7ed' }
+  ];
+  return fallbacks[hash % fallbacks.length];
+}
+
 function rapikanNaskah(data, dim, ttsInfo) {
   if (!data || typeof data !== 'object') throw new Error('Naskah dari Gemini bukan objek JSON yang valid.');
   if (!Array.isArray(data.lines)) throw new Error('Naskah dari Gemini tidak punya array "lines".');
 
   data.lines = data.lines.filter(l => Array.isArray(l) && l.length >= 3 && typeof l[2] === 'string' && l[2].trim() !== '');
   if (data.lines.length < 4) throw new Error('Naskah dari Gemini terlalu pendek / format "lines" rusak.');
+
+  const layouts = ['hero_stage', 'split_compare', 'process_flow', 'spotlight_card', 'timeline_meter', 'diagram_callout'];
+  const anims = ['pulse', 'flow', 'rise', 'orbit', 'scan', 'bounce'];
+  const seed = Array.from(JUDUL).reduce((a, c) => a + c.charCodeAt(0), 0);
+
+  data.lines = data.lines.map((l, idx) => {
+    const sc = l[0] || 'b1';
+    const mood = l[1] || 'n';
+    const text = l[2].trim();
+    const fx = l[3] || '';
+    let meta = (l[4] && typeof l[4] === 'object') ? l[4] : null;
+
+    if (meta) {
+      if (!meta.layout || !layouts.includes(meta.layout)) {
+        meta.layout = layouts[(seed + idx * 3) % layouts.length];
+      }
+      if (!meta.anim || !anims.includes(meta.anim)) {
+        meta.anim = anims[(seed + idx * 5) % anims.length];
+      }
+      if (!meta.mode) {
+        meta.mode = (sc === 'title' || sc === 'a' || sc === 'c') ? 'pip_broll' : 'full_broll';
+      }
+    }
+    return [sc, mood, text, fx, meta];
+  });
 
   const defaultTx = {
     kicker: 'FAKTA UNIK',
@@ -128,6 +193,10 @@ function rapikanNaskah(data, dim, ttsInfo) {
     if (!data.tags.toLowerCase().includes('#shorts')) data.tags += ' #Shorts';
   }
 
+  data.visualTheme = (data.visualTheme && typeof data.visualTheme === 'object' && data.visualTheme.accent)
+    ? Object.assign(pilihTemaVisualDariJudul(JUDUL), data.visualTheme)
+    : pilihTemaVisualDariJudul(JUDUL);
+
   data.lang      = ttsInfo.langCode;
   data.width     = dim.width;
   data.height    = dim.height;
@@ -137,31 +206,46 @@ function rapikanNaskah(data, dim, ttsInfo) {
 
 async function buatNaskahJSON(dim, ttsInfo) {
   const jumlahKalimat = dim.isVertical
-    ? '9-10 kalimat storytelling santai & mengalir (maksimal 10-12 kata per kalimat agar total durasi baca 38-50 detik)'
+    ? '9-10 kalimat storytelling santai & mengalir (maksimal 9-12 kata per kalimat agar total durasi baca 38-50 detik)'
     : '12-15 kalimat padat dan informatif (untuk video landscape 16:9)';
 
-  const prompt = `Kamu adalah penulis skrip, sutradara visual & ilustrator vektor SVG untuk video animasi storytelling 3D V43.0.
-Buatkan data lengkap dalam format JSON MURNI (tanpa teks pembuka/penutup) untuk video berikut:
+  const prompt = `Kamu adalah sutradara animasi explainer & ilustrator vektor SVG kelas dunia.
+Buatkan data video lengkap dalam format JSON MURNI (tanpa markdown/teks pembuka) untuk topik:
 - Judul: "${JUDUL}"
 - Bahasa Video: ${BAHASA} (kode BCP-47: ${ttsInfo.langCode})
 - Ukuran: ${UKURAN} (${dim.width}x${dim.height})
 
-ATURAN KETAT V43.0:
-1. Gaya bahasa wajib bercerita santai (*storytelling*) dalam bahasa ${BAHASA}.
-2. Buat ${jumlahKalimat} di dalam array "lines".
+PRINSIP UTAMA SINKRONISASI VISUAL-VO (WAJIB DIPATUHI):
+1. SETIAP kalimat VO yang menjelaskan objek, proses, sebab-akibat, angka, atau bagian tubuh/benda WAJIB langsung menampilkan visual B-Roll yang menggambarkan PERSIS apa yang sedang diucapkan di kalimat itu!
+   - Contoh: Jika VO menyebut "jantung memompa darah", SVG harus menggambar ilustrasi jantung berdetak + panah aliran darah (BUKAN lingkaran/ikon abstrak polos!).
+   - Contoh: Jika VO menyebut "baterai HP cepat habis saat dingin", SVG harus menggambar ikon baterai merah menurun + kristal es/termometer!
+2. DILARANG memakai tata letak B-Roll yang sama terus-menerus! Variasikan "layout" pada setiap adegan dari 6 pilihan unik ini:
+   - "hero_stage": 1 panggung visual besar di tengah dengan ilustrasi utama + lencana status bergerak.
+   - "split_compare": perbandingan 2 sisi (Kiri vs Kanan, misal Sebelum vs Sesudah atau Penyebab vs Dampak) dengan 2 ilustrasi berbeda.
+   - "process_flow": diagram alur 2 tahap (svg -> panah proses -> svg2) yang menunjukkan mekanisme kerja.
+   - "spotlight_card": kartu sorotan melayang di bagian atas layar sementara karakter tetap berbicara di bawah ("mode": "pip_broll").
+   - "timeline_meter": visual dengan indikator progres/persentase/skala ukur nyata sesuai angka/tingkatan di VO.
+   - "diagram_callout": ilustrasi utama di tengah dengan 2 label penunjuk (callout badge) yang menunjuk bagian penting dari objek di VO.
+3. Buat ${jumlahKalimat} di dalam array "lines".
    Format tiap elemen: ["kunci_adegan", "mood", "Kalimat VO dengan *kata* ditekankan.", "fx_opsional", META_VISUAL]
-   - Kunci adegan: "title", "b1", "a", "b2", "b3", "cta", "c", "b4", "end".
-   - Format META_VISUAL pada "b1", "b2", "b3", "b4" WAJIB 100% menggambarkan apa yang diucapkan pada kalimat VO di baris itu sendiri:
+   - Kunci adegan: gunakan urutan dinamis seperti "title", "b1", "b2", "a", "b3", "b4", "cta", "cta", "b5", "end".
+   - Semua baris kecuali "cta" dan "end" BOLEH dan SANGAT DISARANKAN memiliki objek META_VISUAL agar visual terus berubah mengikuti ucapan VO!
+   - Struktur META_VISUAL:
      {
-       "kicker": "KATEGORI 1-2 KATA SESUAI VO",
-       "title": "JUDUL 2 KATA SESUAI VO",
-       "sub": "Keterangan singkat 3-5 kata sesuai VO",
-       "svg": "<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>",
-       "svg2": "<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"
+       "mode": "full_broll" atau "pip_broll",
+       "layout": "hero_stage" | "split_compare" | "process_flow" | "spotlight_card" | "timeline_meter" | "diagram_callout",
+       "anim": "pulse" | "flow" | "rise" | "orbit" | "scan" | "bounce",
+       "kicker": "LABEL KONTEKS 1-2 KATA SESUAI VO",
+       "title": "JUDUL SINGKAT 2-3 KATA SESUAI VO",
+       "sub": "Penjelasan ringkas 3-6 kata sesuai kalimat VO",
+       "badge1": "Label bagian 1 (singkat)",
+       "badge2": "Label bagian 2 (singkat)",
+       "meterPct": 75,
+       "svg": "<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...MINIMAL 6 ELEMEN VEKTOR KAYA WARNA & DETAIL YANG MENGGAMBARKAN ISI KALIMAT VO INI...</svg>",
+       "svg2": "<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...ILUSTRASI PENDAMPING/HASIL AKHIR YANG BERBEDA DARI svg...</svg>"
      }
-3. "tx": kicker, t1, t2, watch, ctaA, ctaB, ctaSub, ctaBio, src.
-4. "coverSvg1" & "coverSvg2": SVG stiker sampul sesuai judul "${JUDUL}".
-5. "src": 2 sumber riset nyata.
+4. "visualTheme": pilih palet warna unik yang paling cocok dengan suasana judul "${JUDUL}" (hex color gelap untuk bg1/bg2/card dan cerah kontras untuk accent/accent2).
+5. "coverSvg1" & "coverSvg2": SVG ikon utama sesuai judul "${JUDUL}".
 
 KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
 {
@@ -172,7 +256,16 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
   "height": ${dim.height},
   "desc": "Deskripsi singkat 2 kalimat + ajakan diskusi di komentar.",
   "tags": "#faktaunik #edukasi #storytelling",
-  "src": ["Sumber 1", "Sumber 2"],
+  "src": ["Sumber Riset 1", "Sumber Riset 2"],
+  "visualTheme": {
+    "name": "tema_unik",
+    "bg1": "#0b132b",
+    "bg2": "#1c2541",
+    "card": "#141e38",
+    "accent": "#38bdf8",
+    "accent2": "#f59e0b",
+    "text": "#f8fafc"
+  },
   "coverSvg1": "<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>",
   "coverSvg2": "<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>",
   "tx": {
@@ -187,15 +280,15 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
     "src": "Sumber"
   },
   "lines": [
-    ["title", "d", "Kalimat pembuka pertama dengan *penekanan*.", "", null],
-    ["b1", "n", "Kalimat visual pertama sesuai naskah.", "p", {"kicker":"FAKTA UTAMA","title":"JUDUL B1","sub":"Keterangan B1","svg":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>","svg2":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"}],
-    ["a", "n", "Kalimat fakta utama dari karakter.", "", null],
-    ["b2", "e", "Kalimat detail mikro sesuai naskah.", "p", {"kicker":"DETAIL MIKRO","title":"JUDUL B2","sub":"Keterangan B2","svg":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>","svg2":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"}],
-    ["b3", "d", "Kalimat mekanisme sesuai naskah.", "", {"kicker":"MEKANISME","title":"JUDUL B3","sub":"Keterangan B3","svg":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>","svg2":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"}],
+    ["title", "d", "Kalimat pembuka dengan *kata kunci* sesuai judul.", "", {"mode":"pip_broll","layout":"spotlight_card","anim":"bounce","kicker":"HOOK","title":"TOPIK UTAMA","sub":"Keterangan singkat sesuai kalimat pembuka","badge1":"Fakta 1","badge2":"Fakta 2","meterPct":50,"svg":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>","svg2":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"}],
+    ["b1", "n", "Kalimat kedua menjelaskan bagian/objek pertama.", "p", {"mode":"full_broll","layout":"diagram_callout","anim":"pulse","kicker":"BAGIAN 1","title":"OBJEK PERTAMA","sub":"Keterangan sesuai kalimat kedua","badge1":"Komponen A","badge2":"Komponen B","meterPct":40,"svg":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>","svg2":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"}],
+    ["b2", "e", "Kalimat ketiga menjelaskan proses atau perbandingan.", "p", {"mode":"full_broll","layout":"split_compare","anim":"flow","kicker":"PERBANDINGAN","title":"DUA KONDISI","sub":"Keterangan sesuai kalimat ketiga","badge1":"Kondisi Awal","badge2":"Kondisi Akhir","meterPct":70,"svg":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>","svg2":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"}],
+    ["a", "n", "Kalimat keempat memperkuat penjelasan dari karakter.", "", {"mode":"pip_broll","layout":"spotlight_card","anim":"orbit","kicker":"MEKANISME","title":"CARA KERJA","sub":"Keterangan sesuai kalimat keempat","badge1":"Tahap 1","badge2":"Tahap 2","meterPct":65,"svg":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>","svg2":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"}],
+    ["b3", "d", "Kalimat kelima menjelaskan tahapan sebab-akibat.", "p", {"mode":"full_broll","layout":"process_flow","anim":"flow","kicker":"PROSES","title":"ALUR TERJADI","sub":"Keterangan sesuai kalimat kelima","badge1":"Pemicu","badge2":"Hasil","meterPct":85,"svg":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>","svg2":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"}],
+    ["b4", "e", "Kalimat keenam menjelaskan lonjakan/dampak terukur.", "p", {"mode":"full_broll","layout":"timeline_meter","anim":"rise","kicker":"DAMPAK NYATA","title":"TINGKAT EFEK","sub":"Keterangan sesuai kalimat keenam","badge1":"Normal","badge2":"Puncak","meterPct":92,"svg":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>","svg2":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"}],
     ["cta", "n", "Mau bikin video kayak gini juga?", "", null],
     ["cta", "e", "Langsung aja cek *link di bio*.", "c", null],
-    ["c", "n", "Kalimat sudut pandang dan refleksi.", "", null],
-    ["b4", "d", "Kalimat puncak bukti sesuai naskah.", "", {"kicker":"BUKTI NYATA","title":"JUDUL B4","sub":"Keterangan B4","svg":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>","svg2":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"}],
+    ["b5", "d", "Kalimat kesembilan memberi kesimpulan visual utama.", "p", {"mode":"full_broll","layout":"hero_stage","anim":"scan","kicker":"KESIMPULAN","title":"INTI FAKTA","sub":"Keterangan sesuai kalimat kesembilan","badge1":"Bukti Utama","badge2":"Fakta Akhir","meterPct":100,"svg":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>","svg2":"<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'>...</svg>"}],
     ["end", "s", "Kalimat penutup yang meninggalkan *kesan*.", "", null]
   ]
 }`;
@@ -221,7 +314,7 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(55000),
+          signal: AbortSignal.timeout(65000),
           body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
         });
         const json = await res.json();
@@ -345,10 +438,10 @@ function pilihBgmSkalaDariJudul(judul, seedNum) {
   const q = (judul || '').toLowerCase();
   const genreScales = [
     { re: /kamar mandi|mandi|keramik|gema|reverb|akustik|nyanyi|air|laut/, notes: [293.66, 349.23, 440.00, 523.25], tempo: 1.35, lp: 1350 },
-    { re: /horor|hantu|mistis|angker|kuburan|kutukan|misteri|gelap|malam/, notes: [146.83, 155.56, 174.61, 220.00], tempo: 0.75, lp: 680 },
+    { re: /horor|hantu|mistis|angker|kuburan|kutukan|misteri|gelap|malam|tidur|alarm/, notes: [146.83, 174.61, 220.00, 261.63], tempo: 0.85, lp: 780 },
     { re: /sejarah|kuno|kerajaan|romawi|mesir|abad|dinasti|piramida/, notes: [220.00, 261.63, 293.66, 392.00], tempo: 0.95, lp: 920 },
     { re: /sains|antariksa|planet|teknologi|robot|ai\b|kuantum|listrik|lampu/, notes: [261.63, 311.13, 392.00, 466.16], tempo: 1.50, lp: 1500 },
-    { re: /psikologi|otak|tidur|pikiran|mental|stres|mimpi|kebiasaan/, notes: [246.94, 293.66, 369.99, 440.00], tempo: 0.90, lp: 850 },
+    { re: /psikologi|otak|pikiran|mental|stres|mimpi|kebiasaan/, notes: [246.94, 293.66, 369.99, 440.00], tempo: 0.90, lp: 850 },
     { re: /bisnis|sukses|kaya|miliarder|saham|uang|ekonomi|emas/, notes: [261.63, 329.63, 392.00, 523.25], tempo: 1.40, lp: 1250 },
     { re: /perang|bencana|gempa|tsunami|api|bahaya|bertahan/, notes: [164.81, 196.00, 220.00, 246.94], tempo: 1.25, lp: 800 }
   ];
@@ -466,7 +559,7 @@ function cariFileKarakter() {
 async function kirimVideoTelegram(videoPath, data) {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
   console.log('Mengirim hasil video ke Telegram...');
-  const caption = `🎬 *VIDEO 3D V43.0 SELESAI DIRENDER!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
+  const caption = `🎬 *VIDEO 3D V44.0 SELESAI DIRENDER!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
 
   try {
     const form = new FormData();
@@ -558,7 +651,7 @@ async function uploadKeYouTube(videoPath, data) {
     const ttsInfo = getBahasaConfig(BAHASA);
     const { jamWib, targetJamRamai } = deteksiPrimeTimeHariIni();
 
-    console.log(`=== MEMULAI PRODUKSI VIDEO V43.0 (${UKURAN} | ${BAHASA}) ===`);
+    console.log(`=== MEMULAI PRODUKSI VIDEO V44.0 (${UKURAN} | ${BAHASA}) ===`);
     console.log(`Jam saat ini: ${jamWib}:00 WIB | Target Jam Ramai Hari Ini: ${targetJamRamai}:00 WIB`);
 
     // Logika Pintar: Cek apakah terlambat dari jam ramai hari ini
@@ -568,14 +661,13 @@ async function uploadKeYouTube(videoPath, data) {
       await kirimPesanTelegram(`🔔 *INFO PRA-RAMAI*\n\nJam ramai hari ini terdeteksi pukul *${targetJamRamai}:00 WIB*. Video sedang diproses tepat waktu!`);
     }
 
-    console.log('1. Menyusun naskah & ilustrasi B-Roll SVG otomatis dari Gemini...');
+    console.log('1. Menyusun naskah & ilustrasi B-Roll dinamis per kalimat VO dari Gemini...');
     const videoData = await buatNaskahJSON(dim, ttsInfo);
 
     console.log('2. Membuat suara Voice Over...');
     const exactTimings = await buatAudioTTS(videoData.lines, 'vo.mp3', ttsInfo);
     if (exactTimings) videoData.lineTimings = exactTimings;
 
-    /* Inject path aset audio & karakter lokal agar template.html langsung sinkron durasi + bibir */
     videoData.audioUrl = 'vo.mp3';
     const charFile = cariFileKarakter();
     if (charFile) videoData.charUrl = charFile;
@@ -595,7 +687,7 @@ async function uploadKeYouTube(videoPath, data) {
     </style></head>`;
     tpl = tpl.replace('</head>', serverCleanCss);
 
-    /* Bridge otomatis agar semua nama fungsi/flag render (V33 maupun V43) selalu dikenali */
+    /* Bridge otomatis agar semua nama fungsi/flag render selalu dikenali */
     const renderBridgeScript = `<script>
       window.__ASSETS_READY = false;
       window.__VIDEO_LEN = typeof LEN !== 'undefined' ? LEN : 40;
