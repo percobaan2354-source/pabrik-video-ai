@@ -1,4 +1,4 @@
-/* ===== SCRIPT UTAMA: buat_video.js (Versi V46: Multi-Source B-Roll Pixabay + Wikimedia + AI Image Fallback) ===== */
+/* ===== SCRIPT UTAMA: buat_video.js (Versi V47.0: 1-Jalur B-Roll Tunggal + Karakter Reaction) ===== */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -151,7 +151,7 @@ function rapikanNaskah(data, dim, ttsInfo) {
   return data;
 }
 
-/* ===== MULTI-SOURCE MEDIA DOWNLOADER: PIXABAY + WIKIMEDIA + AI VISUAL ===== */
+/* ===== 1-JALUR B-ROLL MEDIA DOWNLOADER: PIXABAY -> WIKIMEDIA -> AI SCENE -> FFMPEG ===== */
 async function unduhFileAman(url, outFile) {
   try {
     const res = await fetch(url, { headers: HTTP_HEADERS, signal: AbortSignal.timeout(22000) });
@@ -222,7 +222,7 @@ async function cariWikimediaPhoto(qClean) {
 
 async function siapkanMediaPixabayLokal(videoData) {
   fs.mkdirSync('media', { recursive: true });
-  console.log(`Status PIXABAY_API_KEY: ${PIXABAY_API_KEY ? 'TERDETEKSI (' + PIXABAY_API_KEY.slice(0, 6) + '...)' : 'KOSONG (Pakai Wikimedia + AI Visual)'}`);
+  console.log(`Status PIXABAY_API_KEY: ${PIXABAY_API_KEY ? 'TERDETEKSI (' + PIXABAY_API_KEY.slice(0, 6) + '...)' : 'KOSONG'}`);
 
   const usedUrls = new Set();
   let berhasil = 0;
@@ -233,11 +233,11 @@ async function siapkanMediaPixabayLokal(videoData) {
     if (sc === 'cta' || sc === 'end') continue;
 
     const meta = (l[4] && typeof l[4] === 'object') ? l[4] : (l[4] = {});
-    const rawQ = meta.videoQuery || 'cathedral architecture stone building';
+    const rawQ = meta.videoQuery || 'person yawning covering mouth';
     const qClean = rawQ.replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
     console.log(`   [Baris ${i + 1}] Mencari visual: "${qClean}"...`);
 
-    // 1. Coba Pixabay Video & Photo jika API key tersedia
+    // 1. Coba Pixabay Video & Photo
     let { videos, photos } = await cariPixabay(qClean);
     if (!videos.length && !photos.length && qClean.includes(' ')) {
       const retry = await cariPixabay(qClean.split(/\s+/).slice(0, 2).join(' '));
@@ -269,7 +269,7 @@ async function siapkanMediaPixabayLokal(videoData) {
       }
     }
 
-    // 2. Fallback Bebas API Key: Wikimedia Commons Foto HD Asli
+    // 2. Coba Wikimedia Commons Foto HD
     const wikiPhotos = await cariWikimediaPhoto(qClean);
     const chosenWiki = wikiPhotos.find(u => !usedUrls.has(u)) || wikiPhotos[0] || '';
     if (chosenWiki) {
@@ -283,7 +283,7 @@ async function siapkanMediaPixabayLokal(videoData) {
       }
     }
 
-    // 3. Fallback Terakhir: AI Cinematic Scene Generator (Pollinations, tanpa API key)
+    // 3. Coba AI Cinematic Scene (Pollinations)
     const aiPrompt = encodeURIComponent(`cinematic documentary photography of ${qClean}, realistic lighting, 4k detailed, no text`);
     const aiUrl = `https://image.pollinations.ai/prompt/${aiPrompt}?width=768&height=1024&seed=${100 + i * 17}&nologo=true`;
     const localAiJpg = `media/photo_${i}.jpg`;
@@ -291,9 +291,23 @@ async function siapkanMediaPixabayLokal(videoData) {
       meta.photoUrl = localAiJpg;
       berhasil++;
       console.log(`   [Baris ${i + 1}] OK AI Scene Visual -> ${localAiJpg}`);
+      continue;
     }
+
+    // 4. Jaminan Lokal 100% Tanpa Internet: Render latar sinematik bertekstur via FFmpeg
+    const localFallbackJpg = `media/photo_${i}.jpg`;
+    const colors = ['0x0f172a', '0x1e1b4b', '0x042f2e', '0x451a03', '0x172554'];
+    const cHex = colors[i % colors.length];
+    try {
+      execSync(`ffmpeg -y -f lavfi -i "color=c=${cHex}:s=720x1280:d=1,noise=alls=18:allf=t+u" -frames:v 1 "${localFallbackJpg}"`, { stdio: 'pipe' });
+      if (fs.existsSync(localFallbackJpg)) {
+        meta.photoUrl = localFallbackJpg;
+        berhasil++;
+        console.log(`   [Baris ${i + 1}] OK Local Backdrop -> ${localFallbackJpg}`);
+      }
+    } catch (_) {}
   }
-  console.log(`Total media visual terunduh: ${berhasil} klip.`);
+  console.log(`Total media visual siap: ${berhasil} klip.`);
 }
 
 async function buatNaskahJSON(dim, ttsInfo) {
@@ -309,8 +323,8 @@ Buatkan data video lengkap dalam format JSON MURNI (tanpa markdown/teks pembuka)
 
 PRINSIP UTAMA VISUAL B-ROLL (WAJIB DIPATUHI):
 1. SETIAP kalimat VO yang menjelaskan lokasi, benda, peristiwa, emosi, atau aksi WAJIB dilengkapi "videoQuery" dalam BAHASA INGGRIS (2-4 kata kunci sederhana yang konkret & visual)!
-   - Contoh: Jika VO membahas orang membangun katedral sendirian -> "videoQuery": "cathedral construction stone building"
-   - Contoh: Jika VO membahas menyusun batu bata & barang bekas -> "videoQuery": "brick wall masonry construction"
+   - Contoh: Jika VO membahas orang menutupi mulut saat menguap -> "videoQuery": "person yawning covering mouth"
+   - Contoh: Jika VO membahas etiket sosial di rapat -> "videoQuery": "business meeting people talking"
 2. Variasikan mode visual antara "pip_broll" (B-Roll kecil di atas sementara karakter utama ikut nge-reaction di bawah) dan "full_broll" (B-Roll layar penuh sinematik):
    - Gunakan "pip_broll" pada adegan "title", "a", dan "c".
    - Gunakan "full_broll" pada adegan "b1", "b2", "b3", "b4", "b5".
@@ -359,15 +373,15 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR PERSIS INI:
     "src": "Sumber"
   },
   "lines": [
-    ["title", "d", "Kalimat pembuka dengan *kata kunci* sesuai judul.", "", {"mode":"pip_broll","videoQuery":"cathedral building architecture","kicker":"DEDIKASI","title":"AWAL KISAH","sub":"Keterangan singkat sesuai kalimat pembuka","badge1":"Lokasi","badge2":"Kisah"}],
-    ["b1", "n", "Kalimat kedua menjelaskan lokasi atau objek pertama.", "p", {"mode":"full_broll","videoQuery":"brick construction worker manual","kicker":"PROSES","title":"KERJA KERAS","sub":"Keterangan sesuai kalimat kedua","badge1":"Manual","badge2":"Detail"}],
-    ["b2", "e", "Kalimat ketiga menjelaskan kejadian unik.", "p", {"mode":"full_broll","videoQuery":"recycled materials bricks cement","kicker":"MATERIAL","title":"BAHAN SEDERHANA","sub":"Keterangan sesuai kalimat ketiga","badge1":"Kreatif","badge2":"Mandiri"}],
-    ["a", "n", "Kalimat keempat memperkuat penjelasan dari karakter.", "", {"mode":"pip_broll","videoQuery":"church dome interior sunlight","kicker":"ALASAN","title":"NIAT KUAT","sub":"Keterangan sesuai kalimat keempat","badge1":"Keyakinan","badge2":"Motivasi"}],
-    ["b3", "d", "Kalimat kelima menjelaskan tahapan pembangunan.", "p", {"mode":"full_broll","videoQuery":"tower architecture spire sky","kicker":"DESAIN","title":"TANPA SKETSA","sub":"Keterangan sesuai kalimat kelima","badge1":"Spontan","badge2":"Megah"}],
-    ["b4", "e", "Kalimat keenam menjelaskan reaksi dunia.", "p", {"mode":"full_broll","videoQuery":"crowd tourists looking cathedral","kicker":"REAKSI","title":"PANDANGAN DUNIA","sub":"Keterangan sesuai kalimat keenam","badge1":"Terkejut","badge2":"Kagum"}],
+    ["title", "d", "Kalimat pembuka dengan *kata kunci* sesuai judul.", "", {"mode":"pip_broll","videoQuery":"person yawning covering mouth","kicker":"KEBIASAAN","title":"AWAL KISAH","sub":"Keterangan singkat sesuai kalimat pembuka","badge1":"Refleks","badge2":"Etika"}],
+    ["b1", "n", "Kalimat kedua menjelaskan lokasi atau objek pertama.", "p", {"mode":"full_broll","videoQuery":"business meeting people talking","kicker":"ETIKA","title":"TANDA BOSAN","sub":"Keterangan sesuai kalimat kedua","badge1":"Sosial","badge2":"Sopan"}],
+    ["b2", "e", "Kalimat ketiga menjelaskan kejadian unik.", "p", {"mode":"full_broll","videoQuery":"medieval knight helmet history","kicker":"SEJARAH","title":"ASAL USUL","sub":"Keterangan sesuai kalimat ketiga","badge1":"Kuno","badge2":"Tradisi"}],
+    ["a", "n", "Kalimat keempat memperkuat penjelasan dari karakter.", "", {"mode":"pip_broll","videoQuery":"human brain anatomy science","kicker":"BIOLOGI","title":"RESPON TUBUH","sub":"Keterangan sesuai kalimat keempat","badge1":"Otak","badge2":"Otot"}],
+    ["b3", "d", "Kalimat kelima menjelaskan tahapan proses.", "p", {"mode":"full_broll","videoQuery":"mouth open portrait closeup","kicker":"ANATOMI","title":"REFLEKS ALAMI","sub":"Keterangan sesuai kalimat kelima","badge1":"Spontan","badge2":"Cepat"}],
+    ["b4", "e", "Kalimat keenam menjelaskan dampak sosial.", "p", {"mode":"full_broll","videoQuery":"office coworkers conversation","kicker":"KOMUNIKASI","title":"BAHASA TUBUH","sub":"Keterangan sesuai kalimat keenam","badge1":"Sinyal","badge2":"Ekspresi"}],
     ["cta", "n", "Mau bikin video kayak gini juga?", "", null],
     ["cta", "e", "Langsung aja cek *link di bio*.", "c", null],
-    ["b5", "d", "Kalimat kesembilan memberi kesimpulan visual utama.", "p", {"mode":"full_broll","videoQuery":"historic cathedral sunset monument","kicker":"KESIMPULAN","title":"HASIL NYATA","sub":"Keterangan sesuai kalimat kesembilan","badge1":"Legenda","badge2":"Karya"}],
+    ["b5", "d", "Kalimat kesembilan memberi kesimpulan visual utama.", "p", {"mode":"full_broll","videoQuery":"smiling person polite gesture","kicker":"KESIMPULAN","title":"MAKNA SEBENARNYA","sub":"Keterangan sesuai kalimat kesembilan","badge1":"Budaya","badge2":"Kebiasaan"}],
     ["end", "s", "Kalimat penutup yang meninggalkan *kesan*.", "", null]
   ]
 }`;
@@ -520,7 +534,7 @@ function pilihBgmSkalaDariJudul(judul, seedNum) {
     { re: /horor|hantu|mistis|angker|kuburan|kutukan|misteri|gelap|malam|tidur|alarm|hilang|mercusuar/, notes: [146.83, 174.61, 220.00, 261.63], tempo: 0.85, lp: 780 },
     { re: /sejarah|kuno|kerajaan|romawi|mesir|abad|dinasti|piramida|katedral|istana|bangun/, notes: [220.00, 261.63, 293.66, 392.00], tempo: 0.95, lp: 920 },
     { re: /sains|antariksa|planet|teknologi|robot|ai\b|kuantum|listrik|lampu/, notes: [261.63, 311.13, 392.00, 466.16], tempo: 1.50, lp: 1500 },
-    { re: /psikologi|otak|pikiran|mental|stres|mimpi|kebiasaan/, notes: [246.94, 293.66, 369.99, 440.00], tempo: 0.90, lp: 850 },
+    { re: /psikologi|otak|pikiran|mental|stres|mimpi|kebiasaan|menguap|mulut|etika/, notes: [246.94, 293.66, 369.99, 440.00], tempo: 0.90, lp: 850 },
     { re: /bisnis|sukses|kaya|miliarder|saham|uang|ekonomi|emas/, notes: [261.63, 329.63, 392.00, 523.25], tempo: 1.40, lp: 1250 },
     { re: /perang|bencana|gempa|tsunami|api|bahaya|bertahan/, notes: [164.81, 196.00, 220.00, 246.94], tempo: 1.25, lp: 800 }
   ];
@@ -659,7 +673,7 @@ function cariFileKarakter() {
 async function kirimVideoTelegram(videoPath, data) {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
   console.log('Mengirim hasil video ke Telegram...');
-  const caption = `🎬 *VIDEO V46.0 SELESAI DIRENDER!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
+  const caption = `🎬 *VIDEO V47.0 SELESAI DIRENDER!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
 
   try {
     const form = new FormData();
@@ -683,7 +697,7 @@ async function kirimVideoTelegram(videoPath, data) {
     const ttsInfo = getBahasaConfig(BAHASA);
     const { jamWib, targetJamRamai } = deteksiPrimeTimeHariIni();
 
-    console.log(`=== MEMULAI PRODUKSI VIDEO V46.0 (${UKURAN} | ${BAHASA}) ===`);
+    console.log(`=== MEMULAI PRODUKSI VIDEO V47.0 (${UKURAN} | ${BAHASA}) ===`);
     if (jamWib > targetJamRamai) {
       await kirimPesanTelegram(`⚠️ *STATUS: PENDING / ANTREAN GESER*\n\nKamu membuat video pada pukul ${jamWib}:00 WIB (melewati jam ramai ${targetJamRamai}:00 WIB hari ini).\nSistem otomatis menggeser jadwal publikasi ke slot prime time berikutnya!`);
     } else {
@@ -693,7 +707,7 @@ async function kirimVideoTelegram(videoPath, data) {
     console.log('1. Menyusun naskah & kata kunci B-Roll dari Gemini...');
     const videoData = await buatNaskahJSON(dim, ttsInfo);
 
-    console.log('2. Mengunduh klip B-Roll (Pixabay -> Wikimedia -> AI Visual)...');
+    console.log('2. Mengunduh klip B-Roll 1-Jalur (Pixabay -> Wikimedia -> AI Visual -> Local Backdrop)...');
     await siapkanMediaPixabayLokal(videoData);
 
     console.log('3. Membuat suara Voice Over...');
