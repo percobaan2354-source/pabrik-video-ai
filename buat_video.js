@@ -1,4 +1,4 @@
-/* ===== SCRIPT UTAMA: buat_video.js (Versi V53.0: Anti-Pasangan, Anti-Burik/Keramaian/Silau, B-Roll Objek Nyata Ketat) ===== */
+/* ===== SCRIPT UTAMA: buat_video.js (Versi V53.1: Dual-Mode Input Judul/Blueprint, Anti-Pasangan, Anti-Burik/Keramaian/Silau) ===== */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -12,7 +12,22 @@ const PIXABAY_API_KEY = (process.env.PIXABAY_API_KEY || '').trim();
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-const JUDUL = process.env.INPUT_JUDUL || process.env.JUDUL || 'Fakta Unik yang Jarang Diketahui';
+const RAW_INPUT = (process.env.INPUT_JUDUL || process.env.JUDUL || 'Fakta Unik yang Jarang Diketahui').trim();
+const IS_BLUEPRINT = RAW_INPUT.length > 140 || /JUDUL SIAP COPY|BREAKDOWN VISUAL|Keyword Pixabay/i.test(RAW_INPUT);
+
+function ekstrakJudulDariInput(raw) {
+  if (!IS_BLUEPRINT) return raw;
+  const mJudul = raw.match(/JUDUL SIAP COPY[^:\n]*:\s*\n+([^\n]+)/i)
+              || raw.match(/JUDUL[^:\n]*:\s*([^\n]+)/i);
+  if (mJudul && mJudul[1]) {
+    return mJudul[1].replace(/^[\["'*-\s]+|[\]"'*\s]+$/g, '').trim();
+  }
+  const barisPertama = raw.split('\n').map(b => b.trim()).find(b => b.length > 8 && !b.startsWith('🎯'));
+  return (barisPertama || 'Fakta Psikologi Sehari-hari').slice(0, 100);
+}
+
+const JUDUL = ekstrakJudulDariInput(RAW_INPUT);
+const BLUEPRINT_TEKS = IS_BLUEPRINT ? RAW_INPUT : '';
 const BAHASA = process.env.INPUT_BAHASA || process.env.BAHASA || 'Indonesia';
 const UKURAN = process.env.INPUT_UKURAN || process.env.UKURAN || '9:16';
 
@@ -126,7 +141,7 @@ function rapikanNaskah(data, dim, ttsInfo) {
   });
 
   const defaultTx = {
-    kicker: 'FAKTA UNIK',
+    kicker: 'PSIKOLOGI',
     t1: 'FAKTA',
     t2: 'MENGEJUTKAN',
     watch: 'tonton sampai habis',
@@ -134,10 +149,10 @@ function rapikanNaskah(data, dim, ttsInfo) {
   };
 
   data.tx = Object.assign({}, defaultTx, (data.tx && typeof data.tx === 'object') ? data.tx : {});
-  if (/kisah nyata/i.test(data.tx.kicker)) data.tx.kicker = 'CERITA INSPIRATIF';
+  if (/kisah nyata/i.test(data.tx.kicker)) data.tx.kicker = 'PSIKOLOGI';
   if (typeof data.title !== 'string' || !data.title.trim()) data.title = JUDUL;
   if (typeof data.desc  !== 'string' || !data.desc.trim())  data.desc  = `${data.title} - tonton sampai habis dan tulis pendapatmu di komentar!`;
-  if (typeof data.tags  !== 'string' || !data.tags.trim())  data.tags  = '#faktaunik #edukasi #storytelling';
+  if (typeof data.tags  !== 'string' || !data.tags.trim())  data.tags  = '#psikologi #faktaunik #edukasi';
   if (!Array.isArray(data.src) || data.src.length === 0) data.src = ['Sumber Terverifikasi'];
   if (!data.varian) data.varian = 'v' + (Date.now() % 999);
   data.coverQuery = bersihkanQuery(data.coverQuery || '');
@@ -362,8 +377,8 @@ async function siapkanMediaPixabayLokal(videoData) {
       .filter(q => !tahap1.map(x => x.toLowerCase()).includes(q.toLowerCase()));
 
     console.log(`   [Baris ${i + 1}] VO: "${l[2].replace(/\*/g, '')}"`);
-    console.log(`             Tahap 1 (naskah)  : ${tahap1.join(' | ') || '-'}`);
-    console.log(`             Tahap 2 (keyword) : ${tahap2.join(' | ') || '-'}`);
+    console.log(`             Tahap 1 (utama/backup) : ${tahap1.join(' | ') || '-'}`);
+    console.log(`             Tahap 2 (keyword)      : ${tahap2.join(' | ') || '-'}`);
 
     const urutan = [
       ...tahap1.map(q => ({ q, tahap: 1 })),
@@ -429,7 +444,7 @@ async function siapkanMediaPixabayLokal(videoData) {
     }
   }
 
-  console.log(`Ringkasan B-Roll: Tahap 1 (naskah) ${berhasilT1} video | Tahap 2 (keyword) ${berhasilT2} video | Foto ${berhasilFoto} | Tanpa visual ${tanpaMedia.length}${tanpaMedia.length ? ' -> baris ' + tanpaMedia.join(', ') : ''}`);
+  console.log(`Ringkasan B-Roll: Tahap 1 ${berhasilT1} video | Tahap 2 ${berhasilT2} video | Foto ${berhasilFoto} | Tanpa visual ${tanpaMedia.length}${tanpaMedia.length ? ' -> baris ' + tanpaMedia.join(', ') : ''}`);
 }
 
 async function siapkanVisualSampul(videoData) {
@@ -458,60 +473,68 @@ async function buatNaskahJSON(dim, ttsInfo) {
     ? '9-11 kalimat storytelling santai & mengalir (maksimal 9-12 kata per kalimat agar total durasi baca 38-50 detik)'
     : '12-15 kalimat padat dan informatif (untuk video landscape 16:9)';
 
-  const prompt = `Kamu adalah sutradara video dokumenter & editor B-Roll Pixabay profesional.
-Buatkan data video lengkap dalam format JSON MURNI (tanpa markdown/teks pembuka) untuk topik:
+  const instruksiSumber = BLUEPRINT_TEKS
+    ? `PENTING — PENGGUNA SUDAH MENYEDIAKAN BLUEPRINT LENGKAP DI BAWAH INI:
+"""
+${BLUEPRINT_TEKS.slice(0, 6000)}
+"""
+ATURAN EKSEKUSI BLUEPRINT (WAJIB DIIKUTI 100%):
+- Gunakan Judul, Teks Atas Sampul (t1), Teks Bawah Sampul (t2), urutan kalimat VO, dan Sumber Riset PERSIS dari blueprint di atas (poles sedikit saja bila perlu agar natural saat dibacakan TTS).
+- Untuk setiap adegan, masukkan "Keyword Pixabay Utama" ke field "videoQuery", dan masukkan "Keyword Pixabay Backup" ke field "altQuery" serta "keywords" persis seperti tertulis di blueprint!`
+    : `Buatkan data video lengkap untuk topik:
 - Judul: "${JUDUL}"
+- Buat ${jumlahKalimat} di array "lines".`;
+
+  const prompt = `Kamu adalah sutradara video dokumenter & editor B-Roll Pixabay profesional.
+Buatkan data video lengkap dalam format JSON MURNI (tanpa markdown/teks pembuka) dengan spesifikasi:
+- Judul Utama: "${JUDUL}"
 - Bahasa Video: ${BAHASA} (kode BCP-47: ${ttsInfo.langCode})
 - Ukuran: ${UKURAN} (${dim.width}x${dim.height})
 
-ATURAN GAYA & ORIGINALITAS (WAJIB DIPATUHI):
-1. DILARANG KERAS membuat cerita tentang pasangan, pacaran, percintaan, pernikahan, atau romansa (100% bebas tema pasangan). Fokus pada psikologi, sains, sejarah, misteri, kebiasaan manusia, atau kisah perjuangan individu.
-2. Narasi harus punya SUDUT PANDANG dan analisis tajam, bukan rangkuman klise. Sertakan detail konkret yang masuk akal.
-3. Kalimat pertama adalah hook yang kuat dan spesifik. Kalimat terakhir memberi insight tajam atau pertanyaan pemantik diskusi.
-4. DILARANG menulis "KISAH NYATA" di kicker/judul kalau tidak bisa diverifikasi. Gunakan kicker seperti "PERSPEKTIF", "FAKTA MENARIK", atau "PSIKOLOGI".
-5. DILARANG membuat adegan promosi/jualan/CTA.
+${instruksiSumber}
 
-ATURAN KERAS KATA KUNCI B-ROLL PIXABAY (WAJIB OBJEK NYATA & TENANG, BUKAN ABSTRAK/KERAMAIAN):
+ATURAN GAYA & ORIGINALITAS (WAJIB DIPATUHI):
+1. DILARANG KERAS membuat cerita tentang pasangan, pacaran, percintaan, pernikahan, atau romansa (100% bebas tema pasangan).
+2. Narasi harus punya SUDUT PANDANG tajam, bukan rangkuman klise.
+3. Kalimat pertama adalah hook kuat. Kalimat terakhir memberi insight tajam (tanpa tombol subscribe/CTA).
+4. DILARANG menulis "KISAH NYATA" di kicker/judul. Gunakan kicker seperti "PSIKOLOGI", "FAKTA OTAK", atau "PERSPEKTIF".
+
+ATURAN KERAS KATA KUNCI B-ROLL PIXABAY (WAJIB OBJEK NYATA & TENANG):
 Pixabay HANYA paham objek fisik konkret dalam BAHASA INGGRIS (2-3 kata).
-- DILARANG keyword abstrak/ambigu seperti "land", "ground", "dream home", "dignity", "success", "hope", "time", "future" (kata-kata ini sering memunculkan video anjing, ikan, atau keramaian yang tidak nyambung!).
-- Ganti setiap konsep menjadi OBJEK FISIK NYATA yang tenang (1 subjek utama, bukan kerumunan):
-  * Membahas "harga tanah / beli tanah" -> "videoQuery": "empty green field" atau "wooden house construction"
-  * Membahas "menabung uang" -> "videoQuery": "counting paper money" atau "coins jar table"
-  * Membahas "membangun rumah" -> "videoQuery": "bricklayer building wall" atau "wooden house exterior"
-  * Membahas "bekerja keras sendirian" -> "videoQuery": "carpenter working wood" atau "man walking quiet road"
+- DILARANG keyword abstrak/ambigu seperti "land", "ground", "dream", "mind", "thought", "success", "hope", "time", "future", "emotion", "memory".
+- Ganti konsep abstrak menjadi OBJEK FISIK NYATA yang tenang (1 subjek utama, bukan kerumunan), contoh: "dark bedroom clock", "typing laptop night", "raindrops window glass", "hot coffee mug", "desk lamp notebook".
 - DILARANG keyword pasangan ("couple", "romance", "lovers") dan keramaian ("crowd", "festival", "city traffic").
-- "coverQuery" = objek visual tenang & sinematik di malam/sore hari sesuai JUDUL (2-3 kata Inggris konkret).
+- "coverQuery" = objek visual tenang & sinematik sesuai SAMPUL (2-3 kata Inggris konkret).
 - Variasikan mode visual antara "pip_broll" (kotak B-Roll atas + karakter utama reaction di bawah) pada "title", "a", "c", dan "full_broll" (B-Roll layar penuh) pada "b1" sampai "b6".
-- Buat ${jumlahKalimat} di array "lines":
-  Format: ["kunci_adegan", "mood", "Kalimat VO dengan *kata* ditekankan.", "fx_opsional", META_VISUAL]
+- Format array "lines": ["kunci_adegan", "mood", "Kalimat VO dengan *kata* ditekankan.", "fx_opsional", META_VISUAL]
   Kunci adegan: "title" (pertama), "b1", "b2", "a", "b3", "b4", "b5", "b6", "c", lalu "end" (terakhir, META_VISUAL null).
 
 KELUARKAN HANYA JSON DENGAN STRUKTUR INI:
 {
-  "title": "Judul Menarik Sesuai Bahasa",
+  "title": "${JUDUL.replace(/"/g, '\\"')}",
   "varian": "v${Date.now() % 999}",
   "lang": "${ttsInfo.langCode}",
   "width": ${dim.width},
   "height": ${dim.height},
   "desc": "Deskripsi singkat 2 kalimat + ajakan diskusi di komentar.",
-  "tags": "#faktaunik #edukasi #storytelling",
+  "tags": "#psikologi #faktaunik #edukasi",
   "src": ["Sumber Riset 1", "Sumber Riset 2"],
-  "coverQuery": "calm cinematic object matching title",
+  "coverQuery": "calm cinematic object matching cover",
   "tx": {
-    "kicker": "PERSPEKTIF",
+    "kicker": "PSIKOLOGI",
     "t1": "KATA ATAS",
     "t2": "KATA BAWAH?",
     "watch": "tonton sampai habis",
     "src": "Sumber"
   },
   "lines": [
-    ["title", "d", "Kalimat pembuka dengan *kata kunci* sesuai judul.", "", {"mode":"pip_broll","videoQuery":"concrete object from VO","altQuery":"same concrete object","keywords":["concrete object 1","concrete object 2","concrete object 3"],"kicker":"FENOMENA","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
-    ["b1", "n", "Kalimat kedua sesuai topik.", "p", {"mode":"full_broll","videoQuery":"concrete object from VO","altQuery":"same concrete object","keywords":["concrete object 1","concrete object 2","concrete object 3"],"kicker":"FAKTA","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
-    ["b2", "e", "Kalimat ketiga sesuai topik.", "p", {"mode":"full_broll","videoQuery":"concrete object from VO","altQuery":"same concrete object","keywords":["concrete object 1","concrete object 2","concrete object 3"],"kicker":"PROSES","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
-    ["a", "n", "Kalimat keempat dari karakter.", "", {"mode":"pip_broll","videoQuery":"concrete object from VO","altQuery":"same concrete object","keywords":["concrete object 1","concrete object 2","concrete object 3"],"kicker":"DETAIL","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
-    ["b3", "d", "Kalimat kelima sesuai topik.", "p", {"mode":"full_broll","videoQuery":"concrete object from VO","altQuery":"same concrete object","keywords":["concrete object 1","concrete object 2","concrete object 3"],"kicker":"ANALISIS","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
-    ["b4", "e", "Kalimat keenam sesuai topik.", "p", {"mode":"full_broll","videoQuery":"concrete object from VO","altQuery":"same concrete object","keywords":["concrete object 1","concrete object 2","concrete object 3"],"kicker":"DAMPAK","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
-    ["b5", "d", "Kalimat ketujuh kesimpulan visual.", "p", {"mode":"full_broll","videoQuery":"concrete object from VO","altQuery":"same concrete object","keywords":["concrete object 1","concrete object 2","concrete object 3"],"kicker":"KESIMPULAN","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
+    ["title", "d", "Kalimat pembuka dengan *kata kunci* sesuai judul.", "", {"mode":"pip_broll","videoQuery":"concrete object 1","altQuery":"backup concrete object 1","keywords":["concrete object 1","backup concrete object 1"],"kicker":"FENOMENA","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
+    ["b1", "n", "Kalimat kedua sesuai topik.", "p", {"mode":"full_broll","videoQuery":"concrete object 2","altQuery":"backup concrete object 2","keywords":["concrete object 2","backup concrete object 2"],"kicker":"FAKTA","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
+    ["b2", "e", "Kalimat ketiga sesuai topik.", "p", {"mode":"full_broll","videoQuery":"concrete object 3","altQuery":"backup concrete object 3","keywords":["concrete object 3","backup concrete object 3"],"kicker":"PROSES","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
+    ["a", "n", "Kalimat keempat dari karakter.", "", {"mode":"pip_broll","videoQuery":"concrete object 4","altQuery":"backup concrete object 4","keywords":["concrete object 4","backup concrete object 4"],"kicker":"PSIKOLOGI","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
+    ["b3", "d", "Kalimat kelima sesuai topik.", "p", {"mode":"full_broll","videoQuery":"concrete object 5","altQuery":"backup concrete object 5","keywords":["concrete object 5","backup concrete object 5"],"kicker":"MEKANISME","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
+    ["b4", "e", "Kalimat keenam sesuai topik.", "p", {"mode":"full_broll","videoQuery":"concrete object 6","altQuery":"backup concrete object 6","keywords":["concrete object 6","backup concrete object 6"],"kicker":"DAMPAK","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
+    ["c", "d", "Kalimat ketujuh insight bermanfaat.", "", {"mode":"pip_broll","videoQuery":"concrete object 7","altQuery":"backup concrete object 7","keywords":["concrete object 7","backup concrete object 7"],"kicker":"INSIGHT","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
     ["end", "s", "Kalimat penutup yang meninggalkan *kesan*.", "", null]
   ]
 }`;
@@ -532,7 +555,7 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR INI:
   for (let putaran = 1; putaran <= 3; putaran++) {
     for (const model of models) {
       try {
-        console.log(`Putaran ${putaran}: mencoba ${model}...`);
+        console.log(`Putaran ${putaran}: mencoba ${model} (${IS_BLUEPRINT ? 'Mode Blueprint Lengkap' : 'Mode Judul Singkat'})...`);
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
         const res = await fetch(url, {
           method: 'POST',
@@ -825,7 +848,7 @@ async function kirimVideoTelegram(videoPath, data) {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
   const readyPath = pastikanUkuranDibawahBatasTelegram(videoPath, 44);
   console.log(`Mengirim hasil video (${readyPath}) ke Telegram...`);
-  const caption = `🎬 *VIDEO V53.0 (HD TAJAM, ADEM DI MATA, ANTI-PASANGAN & B-ROLL OBJEK NYATA) SELESAI!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
+  const caption = `🎬 *VIDEO V53.1 (HD TAJAM, ADEM DI MATA, ANTI-PASANGAN & B-ROLL OBJEK NYATA) SELESAI!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
 
   try {
     const form = new FormData();
@@ -864,14 +887,14 @@ async function kirimVideoTelegram(videoPath, data) {
     FRAME_W = outW;
     FRAME_H = outH;
 
-    console.log(`=== MEMULAI PRODUKSI VIDEO V53.0 (${UKURAN} | ${BAHASA} | output ${outW}x${outH}) ===`);
+    console.log(`=== MEMULAI PRODUKSI VIDEO V53.1 (${UKURAN} | ${BAHASA} | output ${outW}x${outH} | ${IS_BLUEPRINT ? 'Mode Blueprint Lengkap' : 'Mode Judul'}) ===`);
     if (jamWib > targetJamRamai) {
       await kirimPesanTelegram(`⚠️ *STATUS: PENDING / ANTREAN GESER*\n\nKamu membuat video pada pukul ${jamWib}:00 WIB (melewati jam ramai ${targetJamRamai}:00 WIB hari ini).\nSistem otomatis menggeser jadwal publikasi ke slot prime time berikutnya!`);
     } else {
       await kirimPesanTelegram(`🔔 *INFO PRA-RAMAI*\n\nJam ramai hari ini terdeteksi pukul *${targetJamRamai}:00 WIB*. Video sedang diproses tepat waktu!`);
     }
 
-    console.log('1. Menyusun naskah & objek visual nyata sesuai tiap kalimat VO...');
+    console.log('1. Menyusun naskah & objek visual nyata...');
     const videoData = await buatNaskahJSON(dim, ttsInfo);
     videoData.resScale = resScale;
 
