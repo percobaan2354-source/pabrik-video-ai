@@ -1,4 +1,4 @@
-/* ===== SCRIPT UTAMA: buat_video.js (Versi V53.1: Dual-Mode Input Judul/Blueprint, Anti-Pasangan, Anti-Burik/Keramaian/Silau) ===== */
+/* ===== SCRIPT UTAMA: buat_video.js (Versi V55.0: Zero-Revision Self-Healing Quality-Gate + Auto Upload YouTube Shorts) ===== */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -11,6 +11,19 @@ const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgDQGcFm
 const PIXABAY_API_KEY = (process.env.PIXABAY_API_KEY || '').trim();
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+/* Secrets YouTube Data API v3 untuk Auto-Upload Shorts */
+const YT_CLIENT_ID = (process.env.YT_CLIENT_ID || '').trim();
+const YT_CLIENT_SECRET = (process.env.YT_CLIENT_SECRET || '').trim();
+const YT_REFRESH_TOKEN = (process.env.YT_REFRESH_TOKEN || '').trim();
+const YT_PRIVACY = (process.env.YT_PRIVACY || 'public').trim();
+/* Jika skor kualitas di bawah ambang, video TETAP terupload tapi berstatus ini (bukan public) */
+const YT_PRIVACY_FALLBACK = (process.env.YT_PRIVACY_FALLBACK || 'private').trim();
+
+/* ===== PENGATURAN QUALITY-GATE V55 ===== */
+const QC_MIN_SCORE = Number(process.env.QC_MIN_SCORE) || 7;        /* skor minimal (1-10) agar boleh public */
+const MAX_VO_SEC = Number(process.env.MAX_VO_SEC) || 52;           /* batas durasi suara VO agar total video < 59 detik */
+const VISION_QC = (process.env.VISION_QC || '1') !== '0';          /* cek tiap klip & video final pakai Gemini Vision */
 
 const RAW_INPUT = (process.env.INPUT_JUDUL || process.env.JUDUL || 'Fakta Unik yang Jarang Diketahui').trim();
 const IS_BLUEPRINT = RAW_INPUT.length > 140 || /JUDUL SIAP COPY|BREAKDOWN VISUAL|Keyword Pixabay/i.test(RAW_INPUT);
@@ -90,7 +103,6 @@ function deteksiPrimeTimeHariIni() {
   return { jamWib, targetJamRamai };
 }
 
-/* Palet warna gelap-adem (tidak kecerahan / tidak silau) */
 function pilihTemaVisualDariJudul(judul) {
   const q = (judul || '').toLowerCase();
   const presets = [
@@ -105,6 +117,160 @@ function pilihTemaVisualDariJudul(judul) {
     if (p.re.test(q)) return p.theme;
   }
   return { name: 'indigo_spark', bg1: '#090e1a', bg2: '#131c31', card: '#0f172a', accent: '#38bdf8', accent2: '#eab308', text: '#f8fafc' };
+}
+
+/* ===== V55: ATURAN KONTEN OTOMATIS (BLOKIR TOPIK PASANGAN SEBELUM BUANG WAKTU RENDER) ===== */
+function cekAturanKonten(judul, lines) {
+  const re = /\b(pacar|pacaran|pasangan|kekasih|percintaan|romansa|romantis|pernikahan|menikah|suami|istri|mantan|patah hati|selingkuh)\b/i;
+  const teks = [judul, ...(lines || []).map(l => (l && l[2]) || '')].join(' ');
+  const m = teks.match(re);
+  if (m) throw new Error(`Topik melanggar aturan niche (terdeteksi kata "${m[0]}"). Video dibatalkan otomatis, tidak diupload.`);
+}
+
+/* ===== V55: GEMINI HELPER TERPUSAT (naskah, deskripsi, & Vision QC) ===== */
+let MODEL_CACHE = null;
+async function ambilDaftarModel() {
+  if (MODEL_CACHE) return MODEL_CACHE;
+  let models = ["gemini-3-flash-preview", "gemini-flash-latest"];
+  try {
+    const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
+    const listJson = await listRes.json();
+    if (Array.isArray(listJson.models)) {
+      const valid = listJson.models
+        .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+        .map(m => m.name.replace('models/', ''))
+        .filter(n => /flash|pro/i.test(n) && !/embedding|vision|aqa|tts|image|2\.5/i.test(n));
+      if (valid.length > 0) models = [...new Set([...models, ...valid])];
+    }
+  } catch (e) {}
+  MODEL_CACHE = models;
+  return models;
+}
+
+async function geminiGenerate(parts, { timeoutMs = 65000, rounds = 1, maxModels = 99 } = {}) {
+  const models = (await ambilDaftarModel()).slice(0, maxModels);
+  for (let r = 1; r <= rounds; r++) {
+    for (const model of models) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(timeoutMs),
+          body: JSON.stringify({ contents: [{ parts }] })
+        });
+        const json = await res.json();
+        const p = json && json.candidates && json.candidates[0] && json.candidates[0].content && json.candidates[0].content.parts;
+        const teks = Array.isArray(p) ? p.map(x => x.text || '').join('').trim() : '';
+        if (teks) return teks;
+      } catch (_) {}
+    }
+    if (r < rounds) await tunggu(4000);
+  }
+  return null;
+}
+
+function ekstrakJson(raw) {
+  if (!raw) return null;
+  const awal = raw.indexOf('{');
+  const akhir = raw.lastIndexOf('}');
+  if (awal === -1 || akhir === -1) return null;
+  try { return JSON.parse(raw.slice(awal, akhir + 1)); } catch (_) { return null; }
+}
+
+/* ===== V55: PARSER BLUEPRINT LOKAL (100% PERSIS PROMPT, TANPA RISIKO GEMINI MENGARANG ULANG) ===== */
+function bersihBp(s) {
+  return String(s || '').replace(/[\[\]"“”]/g, '').replace(/\*\*/g, '').trim();
+}
+
+function parseBlueprint(raw) {
+  try {
+    const ambil = (re) => { const m = raw.match(re); return m ? bersihBp(m[1]) : ''; };
+    const t1 = ambil(/Teks Atas Sampul\s*:\s*([^\n]+)/i);
+    const t2 = ambil(/Teks Bawah Sampul\s*:\s*([^\n]+)/i);
+    const coverQuery = ambil(/Keyword Pixabay Sampul Utama\s*:\s*([^\n]+)/i);
+    const coverAlt = ambil(/Keyword Pixabay Sampul Backup\s*:\s*([^\n]+)/i);
+
+    const MOOD = { title: 'd', b1: 'n', b2: 'e', a: 'n', b3: 'd', b4: 'e', b5: 'n', b6: 'e', c: 'd', end: 's' };
+    const FX = { b1: 'p', b2: 'p', b3: 'p', b4: 'p', b5: 'p', b6: 'p' };
+    const KICKER = { title: 'FENOMENA', b1: 'FAKTA', b2: 'FAKTA', a: 'PSIKOLOGI', b3: 'MEKANISME', b4: 'CONTOH', b5: 'DAMPAK', b6: 'DAMPAK', c: 'INSIGHT' };
+
+    const blok = raw.split(/\n\s*\d+\.\s*\[/).slice(1);
+    const lines = [];
+    for (const b of blok) {
+      const head = b.match(/^\s*([a-z0-9]+)\s*[-–—]\s*([^\]\n]*)\]/i);
+      if (!head) continue;
+      const sc = head[1].toLowerCase();
+      const label = bersihBp(head[2]).toUpperCase().slice(0, 28) || 'ADEGAN';
+      const vo = bersihBp((b.match(/Kalimat VO\s*:\s*([^\n]+)/i) || [])[1]);
+      if (!vo || vo.split(/\s+/).length < 3) continue;
+      const visual = bersihBp((b.match(/Visual Adegan\s*:\s*([^\n]+)/i) || [])[1]);
+      const utama = bersihBp((b.match(/Keyword Pixabay Utama\s*:\s*([^\n]+)/i) || [])[1]);
+      const backup = bersihBp((b.match(/Keyword Pixabay Backup\s*:\s*([^\n]+)/i) || [])[1]);
+      const sub = visual.length > 64 ? visual.slice(0, 64).replace(/\s+\S*$/, '') : visual;
+
+      if (sc === 'end') {
+        lines.push(['end', MOOD.end, vo, '', null]);
+      } else {
+        lines.push([sc, MOOD[sc] || 'n', vo, FX[sc] || '', {
+          mode: (sc === 'title' || sc === 'a' || sc === 'c') ? 'pip_broll' : 'full_broll',
+          videoQuery: utama,
+          altQuery: backup,
+          keywords: [utama, backup].filter(Boolean),
+          kicker: KICKER[sc] || 'FAKTA',
+          title: label,
+          sub
+        }]);
+      }
+    }
+    if (lines.length < 7 || lines[lines.length - 1][0] !== 'end') return null;
+
+    const mSrc = raw.match(/SUMBER RISET\s*:\s*\n((?:[ \t]*[-•*][^\n]*\n?)+)/i);
+    const src = mSrc ? mSrc[1].split('\n').map(s => bersihBp(s.replace(/^[ \t]*[-•*]\s*/, ''))).filter(Boolean) : [];
+
+    return {
+      coverQuery, coverAlt, src, lines,
+      tx: { kicker: 'PSIKOLOGI', t1: t1 || 'FAKTA', t2: t2 || 'MENGEJUTKAN', watch: 'tonton sampai habis', src: 'Sumber' }
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+async function buatDeskripsiTags(judul, lines) {
+  const vo = lines.map(l => l[2].replace(/\*/g, '')).join(' ');
+  const teks = await geminiGenerate([{ text:
+`Buat deskripsi & tag YouTube Shorts (bahasa Indonesia) untuk video berjudul "${judul}".
+Isi video: ${vo.slice(0, 900)}
+Keluarkan HANYA JSON murni: {"desc":"2 kalimat ringkas + ajakan diskusi di komentar","tags":"#psikologi #faktaunik #edukasi + 2-3 tag relevan lain"}` }], { timeoutMs: 30000, rounds: 2, maxModels: 4 });
+  const j = ekstrakJson(teks);
+  return (j && typeof j === 'object') ? j : {};
+}
+
+/* ===== AUTO QUALITY-GATE: BERSIHKAN KEYWORD & SUMBER RISET OTOMATIS ===== */
+function sanitasiKeywordBroll(q) {
+  let clean = bersihkanQuery(q).toLowerCase();
+  if (!clean) return '';
+  /* Ganti keyword lokasi luas yang sering memunculkan kerumunan orang lewat */
+  if (/\b(empty room|indoors|hall|hallway|lobby|mall|street|corridor|plaza)\b/.test(clean)) {
+    if (/walk|pac|foot|feet|step/.test(clean)) return 'shoes walking floor';
+    if (/phone|call|smart/.test(clean)) return 'hand holding phone';
+    return 'dark bedroom clock';
+  }
+  return clean;
+}
+
+function ringkasSumberRiset(srcList) {
+  if (!Array.isArray(srcList) || !srcList.length) return ['Behavioral Psychology Study'];
+  return srcList.slice(0, 2).map(s => {
+    let clean = String(s || '')
+      .replace(/\([^)]*\)/g, '')            /* Hapus penjelasan panjang di dalam tanda kurung */
+      .replace(/\s+[:–—-]\s+.*$|:.*$/, '')  /* V55: hanya hapus sub-penjelasan (tanda hubung BERSPASI / titik dua), "Self-Determination" aman */
+      .replace(/\.$/, '')
+      .trim();
+    const kata = clean.split(/\s+/).filter(Boolean).slice(0, 4);
+    return kata.length ? kata.join(' ') : 'Behavioral Psychology Study';
+  });
 }
 
 function rapikanNaskah(data, dim, ttsInfo) {
@@ -127,12 +293,12 @@ function rapikanNaskah(data, dim, ttsInfo) {
         meta.mode = (sc === 'title' || sc === 'a' || sc === 'c') ? 'pip_broll' : 'full_broll';
       }
       if (!meta.videoQuery && meta.query) meta.videoQuery = meta.query;
-      meta.videoQuery = String(meta.videoQuery || '').trim();
-      meta.altQuery = String(meta.altQuery || '').trim();
+      meta.videoQuery = sanitasiKeywordBroll(meta.videoQuery || '');
+      meta.altQuery = sanitasiKeywordBroll(meta.altQuery || '');
       let kw = meta.keywords;
       if (typeof kw === 'string') kw = kw.split(',');
       if (!Array.isArray(kw)) kw = [];
-      meta.keywords = [...new Set(kw.map(k => String(k || '').trim()).filter(Boolean))].slice(0, 5);
+      meta.keywords = [...new Set(kw.map(k => sanitasiKeywordBroll(k)).filter(Boolean))].slice(0, 5);
       if (!meta.videoQuery && meta.keywords.length) meta.videoQuery = meta.keywords[0];
     } else {
       meta = null;
@@ -153,18 +319,20 @@ function rapikanNaskah(data, dim, ttsInfo) {
   if (typeof data.title !== 'string' || !data.title.trim()) data.title = JUDUL;
   if (typeof data.desc  !== 'string' || !data.desc.trim())  data.desc  = `${data.title} - tonton sampai habis dan tulis pendapatmu di komentar!`;
   if (typeof data.tags  !== 'string' || !data.tags.trim())  data.tags  = '#psikologi #faktaunik #edukasi';
-  if (!Array.isArray(data.src) || data.src.length === 0) data.src = ['Sumber Terverifikasi'];
+
+  /* Otomatis ringkas sumber riset maksimal 4 kata agar tidak kekecilan di layar */
+  data.src = ringkasSumberRiset(data.src);
+
   if (!data.varian) data.varian = 'v' + (Date.now() % 999);
-  data.coverQuery = bersihkanQuery(data.coverQuery || '');
+  data.coverQuery = sanitasiKeywordBroll(data.coverQuery || '');
+  data.coverAlt = sanitasiKeywordBroll(data.coverAlt || '');
 
   if (dim.aspect === '9/16') {
     if (!data.title.toLowerCase().includes('#shorts')) data.title += ' #Shorts';
     if (!data.tags.toLowerCase().includes('#shorts')) data.tags += ' #Shorts';
   }
 
-  /* Kunci tema gelap-adem agar tidak pernah kecerahan */
   data.visualTheme = pilihTemaVisualDariJudul(JUDUL);
-
   data.lang = ttsInfo.langCode;
   data.width = dim.width;
   data.height = dim.height;
@@ -258,6 +426,41 @@ function downloadPhotoFallback(url, outFile) {
   }
 }
 
+/* ===== V55: CEK KUALITAS KLIP (KECERAHAN LOKAL + GEMINI VISION) ===== */
+function cekKecerahan(mp4) {
+  try {
+    const out = execSync(
+      `ffmpeg -v error -i "${mp4}" -vf "fps=2,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-" -f null -`,
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 5 * 1024 * 1024 }
+    );
+    const nilai = [...out.matchAll(/YAVG=([\d.]+)/g)].map(m => Number(m[1])).filter(n => Number.isFinite(n));
+    if (!nilai.length) return true;
+    const rata = nilai.reduce((a, b) => a + b, 0) / nilai.length;
+    return rata >= 22 && rata <= 195; /* terlalu gelap / terlalu silau = tolak */
+  } catch (_) {
+    return true;
+  }
+}
+
+async function verifikasiKlipVisual(framePath, voText, query) {
+  if (!VISION_QC) return { ok: true, alasan: '' };
+  try {
+    const b64 = fs.readFileSync(framePath).toString('base64');
+    const teks = await geminiGenerate([
+      { text:
+`Kamu quality-control video Shorts psikologi. Nilai 1 gambar B-roll ini untuk narasi: "${voText.replace(/\*/g, '')}" (keyword: ${query}).
+TOLAK (ok=false) jika: ada kerumunan / 3+ orang jelas, pasangan/romansa, green screen, watermark/teks besar, sangat silau/blur/pecah, hewan nyasar, atau objeknya sama sekali tidak nyambung dengan narasi.
+Keluarkan HANYA JSON murni: {"ok":true,"alasan":"singkat"}` },
+      { inline_data: { mime_type: 'image/jpeg', data: b64 } }
+    ], { timeoutMs: 30000, rounds: 1, maxModels: 3 });
+    const j = ekstrakJson(teks);
+    if (!j) return { ok: true, alasan: '' }; /* Gemini gagal -> jangan blokir produksi */
+    return { ok: j.ok !== false, alasan: String(j.alasan || '') };
+  } catch (_) {
+    return { ok: true, alasan: '' };
+  }
+}
+
 /* ===== PENCARIAN PIXABAY: ANTI-PASANGAN, ANTI-KERAMAIAN, ANTI-HEWAN NYASAR, ANTI-GREEN-SCREEN ===== */
 const ALLOW_PHOTO_FALLBACK = true;
 const KATA_UMUM = new Set(['the','a','an','of','in','on','at','and','with','for','to','person','people','man','woman','men','women','human','someone','view','scene','video','background','close','up','slow','motion']);
@@ -265,7 +468,7 @@ const KATA_UMUM = new Set(['the','a','an','of','in','on','at','and','with','for'
 const TAG_TERLARANG_UMUM = [
   'green screen', 'greenscreen', 'chroma key', 'chroma', 'blue screen',
   'couple', 'couples', 'lovers', 'romance', 'romantic', 'kiss', 'kissing', 'wedding', 'bride', 'groom', 'valentine', 'boyfriend', 'girlfriend', 'husband', 'wife', 'dating', 'love story',
-  'crowd', 'crowded', 'festival', 'concert', 'party', 'nightclub', 'rave', 'protest', 'parade', 'stadium', 'audience', 'traffic jam', 'busy street',
+  'crowd', 'crowded', 'festival', 'concert', 'party', 'nightclub', 'rave', 'protest', 'parade', 'stadium', 'audience', 'traffic jam', 'busy street', 'pedestrian', 'commuter', 'airport', 'station', 'mall',
   'blood', 'red blood', 'cell', 'cells', 'virus', 'bacteria', 'molecule', 'dna', 'neuron',
   '3d render', '3d animation', 'abstract', 'particle', 'particles', 'template', 'mockup', 'transition', 'overlay', 'subscribe',
   'bright white', 'overexposed', 'lens flare', 'flash'
@@ -281,8 +484,9 @@ function kataIntiQuery(query) {
   return bersihkanQuery(query).toLowerCase().split(' ').filter(w => w.length >= 3 && !KATA_UMUM.has(w));
 }
 
+/* V55: stem 4 huruf supaya "walking" cocok dengan tag "walk" / "walking" */
 function stem(w) {
-  return w.length > 5 ? w.slice(0, 5) : (w.length > 4 ? w.slice(0, 4) : w);
+  return w.length > 4 ? w.slice(0, 4) : w;
 }
 
 function hitRelevan(hit, query) {
@@ -299,7 +503,6 @@ function hitRelevan(hit, query) {
   return inti.some(w => hay.includes(stem(w)));
 }
 
-/* Prioritaskan video resolusi tinggi (1080p/720p) agar tidak burik */
 function pilihUrlVideoTerbaik(h) {
   const v = h.videos || {};
   const kandidat = ['large', 'medium', 'small'].map(k => v[k]).filter(x => x && x.url && (Number(x.width) || 0) >= 960);
@@ -357,11 +560,11 @@ async function siapkanMediaPixabayLokal(videoData) {
   if (!PIXABAY_API_KEY) {
     console.warn('PERINGATAN: PIXABAY_API_KEY kosong di GitHub Secrets!');
   } else {
-    console.log(`PIXABAY_API_KEY aktif (${PIXABAY_API_KEY.slice(0, 6)}...). Mode ketat: HD >=720p, anti-pasangan, anti-keramaian.`);
+    console.log(`PIXABAY_API_KEY aktif (${PIXABAY_API_KEY.slice(0, 6)}...). Mode ketat: HD >=720p, anti-pasangan, anti-keramaian, Vision-QC ${VISION_QC ? 'ON' : 'OFF'}.`);
   }
 
   const usedUrls = new Set();
-  let berhasilT1 = 0, berhasilT2 = 0, berhasilFoto = 0;
+  let berhasilT1 = 0, berhasilT2 = 0, berhasilFoto = 0, ditolakQC = 0;
   const tanpaMedia = [];
 
   for (let i = 0; i < videoData.lines.length; i++) {
@@ -389,28 +592,39 @@ async function siapkanMediaPixabayLokal(videoData) {
 
     for (const { q: qTry, tahap } of urutan) {
       const hits = cariVideoPixabay(qTry);
-      if (!hits.length) {
-        console.log(`             - "${qTry}" (tahap ${tahap}): tidak ada video HD yang nyambung`);
-        continue;
-      }
+      if (!hits.length) continue;
       const belumDipakai = hits.filter(h => !usedUrls.has(h.url));
 
-      for (const chosen of belumDipakai.slice(0, 3)) {
+      for (const chosen of belumDipakai.slice(0, 4)) {
         const rawFile = `media/raw_${i}.mp4`;
         const finalMp4 = `media/clip_${i}.mp4`;
         const normRes = downloadAndNormalizeVideo(chosen.url, rawFile, finalMp4, i);
-        if (normRes) {
-          usedUrls.add(chosen.url);
-          meta.videoUrl = normRes.mp4;
-          meta.videoFrames = normRes.frames;
-          meta.videoFps = normRes.fps;
-          meta.matchTahap = tahap;
-          meta.matchQuery = qTry;
-          if (tahap === 1) berhasilT1++; else berhasilT2++;
-          videoOk = true;
-          console.log(`   [Baris ${i + 1}] SUKSES Video HD (Tahap ${tahap}, "${qTry}", tag: ${chosen.tags}) -> ${finalMp4} (${normRes.frames.length} frame)`);
-          break;
+        if (!normRes) continue;
+        usedUrls.add(chosen.url);
+
+        /* V55: gerbang kualitas klip (kecerahan + Vision) sebelum dipakai */
+        if (!cekKecerahan(normRes.mp4)) {
+          ditolakQC++;
+          console.log(`   [Baris ${i + 1}] DITOLAK QC (terlalu gelap/silau): ${chosen.tags}`);
+          continue;
         }
+        const tengah = normRes.frames[Math.floor(normRes.frames.length / 2)];
+        const vis = await verifikasiKlipVisual(tengah, l[2], qTry);
+        if (!vis.ok) {
+          ditolakQC++;
+          console.log(`   [Baris ${i + 1}] DITOLAK Vision-QC (${vis.alasan || 'tidak sesuai'}): ${chosen.tags}`);
+          continue;
+        }
+
+        meta.videoUrl = normRes.mp4;
+        meta.videoFrames = normRes.frames;
+        meta.videoFps = normRes.fps;
+        meta.matchTahap = tahap;
+        meta.matchQuery = qTry;
+        if (tahap === 1) berhasilT1++; else berhasilT2++;
+        videoOk = true;
+        console.log(`   [Baris ${i + 1}] SUKSES Video HD (Tahap ${tahap}, "${qTry}", tag: ${chosen.tags}) -> ${finalMp4}`);
+        break;
       }
       if (videoOk) break;
     }
@@ -426,12 +640,18 @@ async function siapkanMediaPixabayLokal(videoData) {
         const localJpg = `media/photo_${i}.jpg`;
         if (downloadPhotoFallback(chosenP.url, localJpg)) {
           usedUrls.add(chosenP.url);
+          const vis = await verifikasiKlipVisual(localJpg, l[2], qTry);
+          if (!vis.ok) {
+            ditolakQC++;
+            console.log(`   [Baris ${i + 1}] Foto DITOLAK Vision-QC (${vis.alasan || 'tidak sesuai'})`);
+            continue;
+          }
           meta.photoUrl = localJpg;
           meta.matchTahap = tahap;
           meta.matchQuery = qTry;
           berhasilFoto++;
           fotoOk = true;
-          console.log(`   [Baris ${i + 1}] SUKSES Foto HD (Tahap ${tahap}, "${qTry}", tag: ${chosenP.tags}) -> ${localJpg}`);
+          console.log(`   [Baris ${i + 1}] SUKSES Foto HD (Tahap ${tahap}, "${qTry}") -> ${localJpg}`);
           break;
         }
       }
@@ -440,37 +660,55 @@ async function siapkanMediaPixabayLokal(videoData) {
     if (!fotoOk) {
       meta.noMedia = true;
       tanpaMedia.push(i + 1);
-      console.log(`   [Baris ${i + 1}] TIDAK ADA visual HD yang pas -> tampilkan kartu kutipan elegan.`);
+      console.log(`   [Baris ${i + 1}] Tanpa klip -> otomatis tampilkan kartu kutipan elegan.`);
     }
   }
 
-  console.log(`Ringkasan B-Roll: Tahap 1 ${berhasilT1} video | Tahap 2 ${berhasilT2} video | Foto ${berhasilFoto} | Tanpa visual ${tanpaMedia.length}${tanpaMedia.length ? ' -> baris ' + tanpaMedia.join(', ') : ''}`);
+  videoData.qcMediaStat = { video: berhasilT1 + berhasilT2, foto: berhasilFoto, tanpa: tanpaMedia.length, ditolak: ditolakQC };
+  console.log(`Ringkasan B-Roll: Tahap 1 ${berhasilT1} video | Tahap 2 ${berhasilT2} video | Foto ${berhasilFoto} | Tanpa visual ${tanpaMedia.length} | Ditolak QC ${ditolakQC}`);
 }
 
 async function siapkanVisualSampul(videoData) {
   if (!PIXABAY_API_KEY || !videoData.coverQuery) return;
   const kandidatQuery = [videoData.coverQuery];
+  if (videoData.coverAlt) kandidatQuery.push(videoData.coverAlt);
   const first = videoData.lines[0] && videoData.lines[0][4];
   if (first && first.videoQuery) kandidatQuery.push(first.videoQuery);
 
   for (const q of kandidatQuery) {
     const hits = cariVideoPixabay(q);
-    for (const chosen of hits.slice(0, 3)) {
+    for (const chosen of hits.slice(0, 4)) {
       const res = downloadAndNormalizeVideo(chosen.url, 'media/raw_cover.mp4', 'media/clip_cover.mp4', 'cover', 3);
-      if (res) {
-        videoData.coverFrames = res.frames;
-        videoData.coverFps = res.fps;
-        console.log(`   [Sampul] SUKSES visual sampul "${q}" (tag: ${chosen.tags}) -> ${res.frames.length} frame`);
-        return;
-      }
+      if (!res) continue;
+      if (!cekKecerahan(res.mp4)) continue;
+      const vis = await verifikasiKlipVisual(res.frames[Math.floor(res.frames.length / 2)], videoData.title, q);
+      if (!vis.ok) continue;
+      videoData.coverFrames = res.frames;
+      videoData.coverFps = res.fps;
+      console.log(`   [Sampul] SUKSES visual sampul "${q}"`);
+      return;
     }
   }
-  console.log('   [Sampul] Tidak ada visual khusus, template memakai latar sinematik gelap.');
 }
 
 async function buatNaskahJSON(dim, ttsInfo) {
+  /* ===== V55: MODE BLUEPRINT = PARSE LOKAL, GEMINI TIDAK MENGARANG ULANG ===== */
+  if (BLUEPRINT_TEKS) {
+    const bp = parseBlueprint(BLUEPRINT_TEKS);
+    if (bp) {
+      console.log(`Blueprint terbaca lokal: ${bp.lines.length} adegan -> persis sesuai prompt, tanpa rekayasa ulang Gemini.`);
+      cekAturanKonten(JUDUL, bp.lines);
+      const extra = await buatDeskripsiTags(JUDUL, bp.lines);
+      bp.title = JUDUL;
+      if (extra.desc) bp.desc = extra.desc;
+      if (extra.tags) bp.tags = extra.tags;
+      return rapikanNaskah(bp, dim, ttsInfo);
+    }
+    console.warn('Blueprint gagal di-parse lokal -> fallback ke Gemini.');
+  }
+
   const jumlahKalimat = dim.isVertical
-    ? '9-11 kalimat storytelling santai & mengalir (maksimal 9-12 kata per kalimat agar total durasi baca 38-50 detik)'
+    ? '8 kalimat storytelling santai & mengalir sesuai kunci adegan di bawah (maksimal 9-12 kata per kalimat agar total durasi baca 38-50 detik)'
     : '12-15 kalimat padat dan informatif (untuk video landscape 16:9)';
 
   const instruksiSumber = BLUEPRINT_TEKS
@@ -498,16 +736,16 @@ ATURAN GAYA & ORIGINALITAS (WAJIB DIPATUHI):
 2. Narasi harus punya SUDUT PANDANG tajam, bukan rangkuman klise.
 3. Kalimat pertama adalah hook kuat. Kalimat terakhir memberi insight tajam (tanpa tombol subscribe/CTA).
 4. DILARANG menulis "KISAH NYATA" di kicker/judul. Gunakan kicker seperti "PSIKOLOGI", "FAKTA OTAK", atau "PERSPEKTIF".
+5. Field "src" berisi maksimal 2 item, masing-masing HANYA nama teori/studi maksimal 4 kata tanpa penjelasan dalam kurung.
 
 ATURAN KERAS KATA KUNCI B-ROLL PIXABAY (WAJIB OBJEK NYATA & TENANG):
 Pixabay HANYA paham objek fisik konkret dalam BAHASA INGGRIS (2-3 kata).
 - DILARANG keyword abstrak/ambigu seperti "land", "ground", "dream", "mind", "thought", "success", "hope", "time", "future", "emotion", "memory".
-- Ganti konsep abstrak menjadi OBJEK FISIK NYATA yang tenang (1 subjek utama, bukan kerumunan), contoh: "dark bedroom clock", "typing laptop night", "raindrops window glass", "hot coffee mug", "desk lamp notebook".
-- DILARANG keyword pasangan ("couple", "romance", "lovers") dan keramaian ("crowd", "festival", "city traffic").
+- DILARANG keyword lokasi luas seperti "empty room", "indoors", "hall", "lobby", "street", "mall". Gunakan close-up atau 1 subjek saja: "shoes walking floor", "dark bedroom clock", "hand holding phone", "person standing window", "typing laptop night", "raindrops window glass", "hot coffee mug".
 - "coverQuery" = objek visual tenang & sinematik sesuai SAMPUL (2-3 kata Inggris konkret).
 - Variasikan mode visual antara "pip_broll" (kotak B-Roll atas + karakter utama reaction di bawah) pada "title", "a", "c", dan "full_broll" (B-Roll layar penuh) pada "b1" sampai "b6".
 - Format array "lines": ["kunci_adegan", "mood", "Kalimat VO dengan *kata* ditekankan.", "fx_opsional", META_VISUAL]
-  Kunci adegan: "title" (pertama), "b1", "b2", "a", "b3", "b4", "b5", "b6", "c", lalu "end" (terakhir, META_VISUAL null).
+  Kunci adegan: "title" (pertama), "b1", "b2", "a", "b3", "b4", "c", lalu "end" (terakhir, META_VISUAL null).
 
 KELUARKAN HANYA JSON DENGAN STRUKTUR INI:
 {
@@ -518,8 +756,9 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR INI:
   "height": ${dim.height},
   "desc": "Deskripsi singkat 2 kalimat + ajakan diskusi di komentar.",
   "tags": "#psikologi #faktaunik #edukasi",
-  "src": ["Sumber Riset 1", "Sumber Riset 2"],
+  "src": ["Embodied Cognition Theory", "Cognitive Load Theory"],
   "coverQuery": "calm cinematic object matching cover",
+  "coverAlt": "backup calm cinematic object",
   "tx": {
     "kicker": "PSIKOLOGI",
     "t1": "KATA ATAS",
@@ -539,42 +778,18 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR INI:
   ]
 }`;
 
-  let models = ["gemini-3-flash-preview", "gemini-flash-latest"];
-  try {
-    const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`);
-    const listJson = await listRes.json();
-    if (Array.isArray(listJson.models)) {
-      const valid = listJson.models
-        .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
-        .map(m => m.name.replace('models/', ''))
-        .filter(n => /flash|pro/i.test(n) && !/embedding|vision|aqa|tts|image|2\.5/i.test(n));
-      if (valid.length > 0) models = [...new Set([...models, ...valid])];
-    }
-  } catch (e) {}
-
   for (let putaran = 1; putaran <= 3; putaran++) {
-    for (const model of models) {
-      try {
-        console.log(`Putaran ${putaran}: mencoba ${model} (${IS_BLUEPRINT ? 'Mode Blueprint Lengkap' : 'Mode Judul Singkat'})...`);
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(65000),
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-        });
-        const json = await res.json();
-        if (json.candidates && json.candidates[0]) {
-          let raw = json.candidates[0].content.parts[0].text.trim();
-          const awal = raw.indexOf('{');
-          const akhir = raw.lastIndexOf('}');
-          if (awal !== -1 && akhir !== -1) raw = raw.slice(awal, akhir + 1);
-          const hasil = JSON.parse(raw);
-          return rapikanNaskah(hasil, dim, ttsInfo);
-        }
-      } catch (err) {}
+    console.log(`Putaran ${putaran}: menyusun naskah via Gemini (${IS_BLUEPRINT ? 'Mode Blueprint Fallback' : 'Mode Judul Singkat'})...`);
+    const raw = await geminiGenerate([{ text: prompt }], { timeoutMs: 65000, rounds: 1 });
+    const hasil = ekstrakJson(raw);
+    if (!hasil) { await tunggu(3000); continue; }
+    try {
+      const rapi = rapikanNaskah(hasil, dim, ttsInfo);
+      cekAturanKonten(JUDUL, rapi.lines);
+      return rapi;
+    } catch (err) {
+      if (/melanggar aturan niche/.test(err.message)) throw err;
     }
-    await tunggu(4000);
   }
   throw new Error('Gagal menghasilkan naskah dari Gemini API.');
 }
@@ -678,6 +893,55 @@ async function buatAudioTTS(lines, outPath, ttsInfo) {
   const pyCmd = `python3 -c "from gtts import gTTS; text=open('naskah_vo.txt').read(); gTTS(text=text, lang='${ttsInfo.gttsLang}').save('${outPath}')"`;
   execSync(pyCmd, { stdio: 'inherit' });
   return null;
+}
+
+/* ===== V55: AUTO-FIT DURASI VO (CEGAH VIDEO > 59 DETIK SEBELUM BUANG WAKTU RENDER) ===== */
+function durasiFile(p) {
+  try {
+    const s = execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${p}"`, { encoding: 'utf8' }).trim();
+    return Number(s) || 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+function percepatVO(timings, faktor) {
+  const f = Math.min(1.3, Math.max(1, faktor));
+  const fStr = f.toFixed(3);
+  console.log(`   VO dipercepat x${fStr} agar total video aman < 59 detik.`);
+  execSync(`ffmpeg -y -i vo.mp3 -filter:a "atempo=${fStr}" -c:a libmp3lame -b:a 128k vo_fast.mp3`, { stdio: 'pipe' });
+  fs.renameSync('vo_fast.mp3', 'vo.mp3');
+  if (Array.isArray(timings)) {
+    timings.forEach(t => {
+      t.ss = Number((t.ss / f).toFixed(3));
+      t.se = Number((t.se / f).toFixed(3));
+      t.wordTimes = (t.wordTimes || []).map(w => [Number((w[0] / f).toFixed(3)), Number((w[1] / f).toFixed(3))]);
+    });
+  }
+  return timings;
+}
+
+async function siapkanVoiceOver(videoData, ttsInfo) {
+  const urutanBuang = ['b4', 'b3', 'b5', 'b6', 'b2'];
+  for (let percobaan = 0; percobaan < 4; percobaan++) {
+    const timings = await buatAudioTTS(videoData.lines, 'vo.mp3', ttsInfo);
+    const dur = durasiFile('vo.mp3');
+    console.log(`   Durasi VO: ${dur.toFixed(1)}s (batas ${MAX_VO_SEC}s)`);
+    if (dur <= MAX_VO_SEC) return timings;
+
+    const faktor = dur / MAX_VO_SEC;
+    if (faktor <= 1.15) return percepatVO(timings, faktor);
+
+    const target = urutanBuang.find(k => videoData.lines.some(l => l[0] === k));
+    if (!target || videoData.lines.length <= 6) {
+      if (faktor <= 1.3) return percepatVO(timings, faktor);
+      throw new Error(`Durasi VO ${dur.toFixed(1)}s terlalu panjang & tidak bisa dipangkas otomatis.`);
+    }
+    const idx = videoData.lines.findIndex(l => l[0] === target);
+    console.log(`   VO terlalu panjang -> adegan "${target}" dibuang otomatis, suara dibuat ulang.`);
+    videoData.lines.splice(idx, 1);
+  }
+  throw new Error('Gagal menyesuaikan durasi VO setelah beberapa percobaan.');
 }
 
 function pilihBgmSkalaDariJudul(judul, seedNum) {
@@ -827,52 +1091,192 @@ function cariFileKarakter() {
   return '';
 }
 
+function validasiVideoFinal(videoPath) {
+  if (!fs.existsSync(videoPath)) throw new Error('File output_final.mp4 tidak terbentuk.');
+  const sizeMb = fs.statSync(videoPath).size / (1024 * 1024);
+  if (sizeMb < 0.8) throw new Error(`Ukuran video terlalu kecil (${sizeMb.toFixed(2)} MB), terindikasi korup.`);
+  const durStr = execSync(
+    `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`,
+    { encoding: 'utf8' }
+  ).trim();
+  const dur = Number(durStr) || 0;
+  if (dur < 10 || dur > 59.5) {
+    throw new Error(`Durasi video (${dur.toFixed(1)}s) di luar batas aman YouTube Shorts (10–59 detik).`);
+  }
+  console.log(`Quality-Gate DASAR LOLOS: durasi ${dur.toFixed(1)}s, ukuran ${sizeMb.toFixed(2)} MB.`);
+  return dur;
+}
+
+/* ===== V55: AUDIT KUALITAS FINAL (HITAM, SUARA, COVERAGE B-ROLL, VISION 6 FRAME) -> SKOR 1-10 ===== */
+async function auditKualitasFinal(videoPath, data, durasi) {
+  let skor = 10;
+  const catatan = [];
+
+  try {
+    const out = execSync(`ffmpeg -hide_banner -i "${videoPath}" -vf blackdetect=d=0.6:pix_th=0.10 -an -f null - 2>&1`, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
+    const totalHitam = [...out.matchAll(/black_duration:([\d.]+)/g)].reduce((a, m) => a + Number(m[1]), 0);
+    if (totalHitam > 1.5) { skor -= 3; catatan.push(`layar hitam ${totalHitam.toFixed(1)}s`); }
+  } catch (_) {}
+
+  try {
+    const out = execSync(`ffmpeg -hide_banner -i "${videoPath}" -af volumedetect -vn -f null - 2>&1`, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
+    const m = out.match(/mean_volume:\s*(-?[\d.]+)\s*dB/);
+    if (m && Number(m[1]) < -45) { skor -= 5; catatan.push(`audio nyaris senyap (${m[1]} dB)`); }
+  } catch (_) {}
+
+  const st = data.qcMediaStat;
+  if (st) {
+    const total = st.video + st.foto + st.tanpa;
+    const rasioTanpa = total ? st.tanpa / total : 0;
+    if (rasioTanpa > 0.3) { skor -= 3; catatan.push(`${st.tanpa} adegan tanpa klip`); }
+    else if (rasioTanpa > 0.15) { skor -= 1; catatan.push(`${st.tanpa} adegan tanpa klip`); }
+  }
+
+  if (VISION_QC && durasi > 0) {
+    try {
+      const posisi = [0.08, 0.25, 0.42, 0.6, 0.78, 0.92];
+      const parts = [{ text:
+`Kamu reviewer akhir video YouTube Shorts psikologi berjudul "${data.title}". Berikut 6 frame berurutan dari video final.
+Beri skor 1-10 (10 = siap tayang tanpa revisi). Kurangi skor untuk: teks terpotong/bertumpuk/tidak terbaca, layar kosong atau hitam, kerumunan, pasangan/romansa, green screen, watermark, visual tidak nyambung dengan judul, tampilan berantakan.
+Keluarkan HANYA JSON murni: {"skor":8,"masalah":["singkat","singkat"]}` }];
+      for (let i = 0; i < posisi.length; i++) {
+        const fp = `qc_frame_${i}.jpg`;
+        execSync(`ffmpeg -y -ss ${(durasi * posisi[i]).toFixed(2)} -i "${videoPath}" -frames:v 1 -vf scale=360:-2 -q:v 4 "${fp}"`, { stdio: 'pipe' });
+        parts.push({ inline_data: { mime_type: 'image/jpeg', data: fs.readFileSync(fp).toString('base64') } });
+      }
+      const teks = await geminiGenerate(parts, { timeoutMs: 45000, rounds: 1, maxModels: 3 });
+      const j = ekstrakJson(teks);
+      if (j && Number.isFinite(Number(j.skor))) {
+        const sv = Math.max(1, Math.min(10, Number(j.skor)));
+        skor = Math.min(skor, sv);
+        if (Array.isArray(j.masalah) && j.masalah.length) catatan.push(...j.masalah.slice(0, 3).map(String));
+      }
+    } catch (e) {
+      console.warn('Vision audit final dilewati:', e.message);
+    }
+  }
+
+  skor = Math.max(1, Math.min(10, skor));
+  console.log(`Audit Kualitas Final: skor ${skor}/10 ${catatan.length ? '| ' + catatan.join('; ') : '| tidak ada masalah'}`);
+  return { skor, catatan };
+}
+
+/* ===== AUTO-UPLOAD LANGSUNG KE YOUTUBE SHORTS (DATA API V3) + RETRY ===== */
+async function uploadKeYouTubeShorts(videoPath, data, privasi) {
+  if (!YT_CLIENT_ID || !YT_CLIENT_SECRET || !YT_REFRESH_TOKEN) {
+    console.log('Info: Secrets YouTube (YT_CLIENT_ID/YT_CLIENT_SECRET/YT_REFRESH_TOKEN) belum diisi -> skip auto-upload YouTube.');
+    return null;
+  }
+
+  console.log(`8. Mengunggah otomatis ke YouTube Shorts (status: ${privasi})...`);
+  const { google } = require('googleapis');
+  const oauth2Client = new google.auth.OAuth2(YT_CLIENT_ID, YT_CLIENT_SECRET);
+  oauth2Client.setCredentials({ refresh_token: YT_REFRESH_TOKEN });
+
+  const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+
+  let judulYt = String(data.title || JUDUL).trim();
+  if (!judulYt.toLowerCase().includes('#shorts')) judulYt += ' #Shorts';
+  judulYt = judulYt.slice(0, 100);
+
+  const sumberTeks = (data.src || []).map(s => `- ${s}`).join('\n');
+  const deskripsiYt = `${data.desc || ''}\n\nSumber Referensi:\n${sumberTeks}\n\n${data.tags || '#psikologi #faktaunik #Shorts'}`.trim();
+  const tagList = (data.tags || '')
+    .split(/\s+/)
+    .map(t => t.replace(/^#/, '').trim())
+    .filter(Boolean)
+    .slice(0, 15);
+  if (!tagList.some(t => t.toLowerCase() === 'shorts')) tagList.push('Shorts');
+
+  const res = await youtube.videos.insert({
+    part: ['snippet', 'status'],
+    requestBody: {
+      snippet: {
+        title: judulYt,
+        description: deskripsiYt,
+        tags: tagList,
+        categoryId: '27' /* Education */
+      },
+      status: {
+        privacyStatus: privasi,
+        selfDeclaredMadeForKids: false
+      }
+    },
+    media: {
+      body: fs.createReadStream(videoPath)
+    }
+  });
+
+  const videoId = res && res.data && res.data.id;
+  if (!videoId) throw new Error('YouTube API tidak mengembalikan Video ID.');
+  const shortsUrl = `https://www.youtube.com/shorts/${videoId}`;
+  console.log(`SUKSES Upload YouTube Shorts: ${shortsUrl}`);
+  return shortsUrl;
+}
+
+async function uploadDenganRetry(videoPath, data, privasi) {
+  let errTerakhir = null;
+  for (let i = 1; i <= 3; i++) {
+    try {
+      return await uploadKeYouTubeShorts(videoPath, data, privasi);
+    } catch (e) {
+      errTerakhir = e;
+      console.error(`Upload percobaan ${i}/3 gagal: ${e.message}`);
+      if (i < 3) await tunggu(i * 15000);
+    }
+  }
+  throw errTerakhir;
+}
+
 function pastikanUkuranDibawahBatasTelegram(videoPath, maxMb = 44) {
   const stat = fs.statSync(videoPath);
   const mb = stat.size / (1024 * 1024);
-  console.log(`Ukuran video final: ${mb.toFixed(2)} MB`);
   if (mb <= maxMb) return videoPath;
 
-  console.log(`Ukuran melebihi ${maxMb} MB, mengompres agar lolos batas upload Telegram (50 MB)...`);
   const compressedPath = 'output_telegram.mp4';
   execSync(
     `ffmpeg -y -i "${videoPath}" -c:v libx264 -preset fast -crf 25 -maxrate 3800k -bufsize 7600k -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart "${compressedPath}"`,
     { stdio: 'pipe' }
   );
-  const newMb = fs.statSync(compressedPath).size / (1024 * 1024);
-  console.log(`Ukuran setelah kompresi: ${newMb.toFixed(2)} MB`);
   return compressedPath;
 }
 
-async function kirimVideoTelegram(videoPath, data) {
+async function kirimVideoTelegram(videoPath, data, info = {}) {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+  const { youtubeUrl = null, audit = null, privasi = '', errUpload = '' } = info;
   const readyPath = pastikanUkuranDibawahBatasTelegram(videoPath, 44);
-  console.log(`Mengirim hasil video (${readyPath}) ke Telegram...`);
-  const caption = `🎬 *VIDEO V53.1 (HD TAJAM, ADEM DI MATA, ANTI-PASANGAN & B-ROLL OBJEK NYATA) SELESAI!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
+  console.log(`Mengirim laporan & arsip video (${readyPath}) ke Telegram...`);
 
-  try {
+  let statusYt = '';
+  if (youtubeUrl) {
+    statusYt = privasi === YT_PRIVACY
+      ? `\n🚀 *AUTO-UPLOAD SUKSES (${privasi.toUpperCase()})*\n🔗 ${youtubeUrl}\n`
+      : `\n⚠️ *TERUPLOAD SEBAGAI ${privasi.toUpperCase()}* (skor kualitas rendah, cek dulu lalu publikasikan manual bila oke)\n🔗 ${youtubeUrl}\n`;
+  } else if (errUpload) {
+    statusYt = `\n❌ *UPLOAD YOUTUBE GAGAL:* ${errUpload}\nVideo tetap aman di arsip ini.\n`;
+  }
+  const statusQc = audit ? `\n🛡️ *Skor Kualitas:* ${audit.skor}/10${audit.catatan.length ? '\n' + audit.catatan.map(c => '- ' + c).join('\n') : ''}\n` : '';
+  const caption = `🎬 *VIDEO V55.0 SELESAI!*\n${statusYt}${statusQc}\n📍 *Judul:*\n${data.title}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
+
+  const kirim = async (pakaiMarkdown) => {
     const form = new FormData();
     form.append('chat_id', TELEGRAM_CHAT_ID);
     form.append('caption', caption.slice(0, 1024));
-    form.append('parse_mode', 'Markdown');
+    if (pakaiMarkdown) form.append('parse_mode', 'Markdown');
     form.append('supports_streaming', 'true');
     form.append('video', new Blob([fs.readFileSync(readyPath)], { type: 'video/mp4' }), 'video_cerita.mp4');
-
     const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVideo`, {
       method: 'POST',
       signal: AbortSignal.timeout(120000),
       body: form
     });
-    const json = await res.json();
-    if (!json.ok) {
-      console.error('Gagal kirim video Telegram:', json);
-      throw new Error(`Telegram API menolak video (${json.error_code}): ${json.description}`);
-    }
-    console.log('Sukses kirim video ke Telegram!');
-  } catch (e) {
-    console.error('Error kirim video Telegram:', e.message);
-    throw e;
-  }
+    return res.json();
+  };
+
+  let json = await kirim(true);
+  if (!json.ok && /parse|entities/i.test(String(json.description || ''))) json = await kirim(false);
+  if (!json.ok) throw new Error(`Telegram API menolak video (${json.error_code}): ${json.description}`);
+  console.log('Sukses kirim laporan video ke Telegram!');
 }
 
 (async () => {
@@ -887,30 +1291,24 @@ async function kirimVideoTelegram(videoPath, data) {
     FRAME_W = outW;
     FRAME_H = outH;
 
-    console.log(`=== MEMULAI PRODUKSI VIDEO V53.1 (${UKURAN} | ${BAHASA} | output ${outW}x${outH} | ${IS_BLUEPRINT ? 'Mode Blueprint Lengkap' : 'Mode Judul'}) ===`);
-    if (jamWib > targetJamRamai) {
-      await kirimPesanTelegram(`⚠️ *STATUS: PENDING / ANTREAN GESER*\n\nKamu membuat video pada pukul ${jamWib}:00 WIB (melewati jam ramai ${targetJamRamai}:00 WIB hari ini).\nSistem otomatis menggeser jadwal publikasi ke slot prime time berikutnya!`);
-    } else {
-      await kirimPesanTelegram(`🔔 *INFO PRA-RAMAI*\n\nJam ramai hari ini terdeteksi pukul *${targetJamRamai}:00 WIB*. Video sedang diproses tepat waktu!`);
-    }
+    console.log(`=== MEMULAI PRODUKSI OTOMATIS V55.0 (${UKURAN} | ${BAHASA} | ${outW}x${outH}) ===`);
+    await kirimPesanTelegram(`⚙️ *MEMPROSES VIDEO OTOMATIS*\n\nJudul: *${JUDUL}*\nMode: ${IS_BLUEPRINT ? 'Blueprint Lengkap' : 'Judul Cepat'}\nTarget Prime Time: ${targetJamRamai}:00 WIB (Sekarang ${jamWib}:00 WIB)`);
 
-    console.log('1. Menyusun naskah & objek visual nyata...');
+    console.log('1. Menyusun & mengaudit naskah...');
     const videoData = await buatNaskahJSON(dim, ttsInfo);
     videoData.resScale = resScale;
 
-    console.log('2. Mengunduh video HD Pixabay (>=720p, anti-pasangan, anti-keramaian, anti-hewan nyasar)...');
+    console.log('2. Membuat suara Voice Over (auto-fit durasi)...');
+    const exactTimings = await siapkanVoiceOver(videoData, ttsInfo);
+    if (exactTimings) videoData.lineTimings = exactTimings;
+
+    console.log('3. Mengunduh & menyaring video HD Pixabay (Vision-QC)...');
     await siapkanMediaPixabayLokal(videoData);
     await siapkanVisualSampul(videoData);
-
-    console.log('3. Membuat suara Voice Over...');
-    const exactTimings = await buatAudioTTS(videoData.lines, 'vo.mp3', ttsInfo);
-    if (exactTimings) videoData.lineTimings = exactTimings;
 
     videoData.audioUrl = 'vo.mp3';
     const charFile = cariFileKarakter();
     if (charFile) videoData.charUrl = charFile;
-
-    await kirimPesanTelegram(`✅ *Naskah, B-Roll HD tajam, & suara VO selesai.*\nSekarang merender video sinematik + karakter hidup...`);
 
     console.log('4. Merakit index.html dari template.html...');
     let tpl = fs.readFileSync('template.html', 'utf8');
@@ -1004,7 +1402,7 @@ async function kirimVideoTelegram(videoPath, data) {
     tpl = tpl.replace('</body>', () => renderBridgeScript);
     fs.writeFileSync('index.html', tpl, 'utf8');
 
-    console.log('5. Menjalankan browser & merekam frame video HD tajam...');
+    console.log('5. Menjalankan browser & merekam frame video HD...');
     const { server, port } = await mulaiServerLokal(process.cwd());
     const browser = await chromium.launch({
       headless: true,
@@ -1033,22 +1431,11 @@ async function kirimVideoTelegram(videoPath, data) {
       throw e;
     }
 
-    const mediaStats = await page.evaluate(() => {
-      const items = Object.values(window.LINE_BROLL_MAP || {});
-      return {
-        total: items.length,
-        vidReady: items.filter(x => x && (x.videoReady || (x.frameImgs && x.frameImgs.length > 0))).length,
-        picReady: items.filter(x => x && x.photoReady).length
-      };
-    });
-    console.log(`Status Browser Media: ${mediaStats.vidReady} video aktif, ${mediaStats.picReady} foto aktif dari ${mediaStats.total} adegan.`);
-
     const totalLenSec = await page.evaluate(() => window.__VIDEO_LEN);
     const sceneTimes = await page.evaluate(() => window.__SCENE_TIMES || []);
     const fps = 30;
     const totalFrames = Math.ceil(totalLenSec * fps);
 
-    console.log(`Total durasi: ${totalLenSec} detik (${totalFrames} frame pada ${fps}fps)...`);
     fs.rmSync('frames', { recursive: true, force: true });
     fs.mkdirSync('frames', { recursive: true });
 
@@ -1068,7 +1455,7 @@ async function kirimVideoTelegram(videoPath, data) {
     await browser.close();
     server.close();
 
-    console.log('6. Menggabungkan BGM + SFX + VO & merender MP4 final...');
+    console.log('6. Menggabungkan audio & merender MP4 final...');
     const seedNum = Array.from(videoData.title).reduce((a, c) => a + c.charCodeAt(0), 0);
     mixAudioWithBgmAndSfx('vo.mp3', sceneTimes, totalLenSec, seedNum, 'mixed_audio.wav', videoData.title);
 
@@ -1079,13 +1466,35 @@ async function kirimVideoTelegram(videoPath, data) {
       { stdio: 'inherit' }
     );
 
-    console.log('7. Mengirim hasil video ke Telegram...');
-    await kirimVideoTelegram('output_final.mp4', videoData);
+    console.log('7. Menjalankan Auto Quality-Gate (dasar + audit skor)...');
+    const durFinal = validasiVideoFinal('output_final.mp4');
+    const audit = await auditKualitasFinal('output_final.mp4', videoData, durFinal);
+    const privasi = audit.skor >= QC_MIN_SCORE ? YT_PRIVACY : YT_PRIVACY_FALLBACK;
 
+    let youtubeUrl = null;
+    let errUpload = '';
+    try {
+      youtubeUrl = await uploadDenganRetry('output_final.mp4', videoData, privasi);
+    } catch (e) {
+      errUpload = e.message;
+      console.error('Upload YouTube gagal total:', e.message);
+    }
+
+    console.log('9. Mengirim laporan & video ke Telegram...');
+    try {
+      await kirimVideoTelegram('output_final.mp4', videoData, { youtubeUrl, audit, privasi, errUpload });
+    } catch (e) {
+      console.error('Telegram gagal (video sudah diproses):', e.message);
+    }
+
+    if (errUpload && !youtubeUrl) {
+      console.error('Proses selesai, tetapi upload YouTube gagal.');
+      process.exit(1);
+    }
     console.log('=== SEMUA PROSES SELESAI 100%! ===');
   } catch (err) {
     console.error('TERJADI ERROR:', err);
-    await kirimPesanTelegram(`❌ *GAGAL RENDER VIDEO!*\n\nError: \`${err.message}\``);
+    await kirimPesanTelegram(`❌ *GAGAL PROSES VIDEO!*\n\nError: \`${err.message}\``);
     process.exit(1);
   }
 })();
