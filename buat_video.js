@@ -1,4 +1,4 @@
-/* ===== SCRIPT UTAMA: buat_video.js (Versi V52.0: Klip HD Terpotong 9:16, Sampul Sesuai Judul, Tanpa CTA, Render Terpadu) ===== */
+/* ===== SCRIPT UTAMA: buat_video.js (Versi V52.1: Klip HD 9:16, B-Roll 2 Tahap Strict VO, Sampul Sesuai Judul, Auto-Kompres <45MB Telegram) ===== */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -16,11 +16,8 @@ const JUDUL = process.env.INPUT_JUDUL || process.env.JUDUL || 'Fakta Unik yang J
 const BAHASA = process.env.INPUT_BAHASA || process.env.BAHASA || 'Indonesia';
 const UKURAN = process.env.INPUT_UKURAN || process.env.UKURAN || '9:16';
 
-// V52: RES_SCALE=1 -> 720x1280 (cepat, uji coba). RES_SCALE=1.5 -> 1080x1920 (HD, lebih berat). Hanya untuk 9:16.
 const RES_SCALE_ENV = Math.min(1.5, Math.max(1, Number(process.env.RES_SCALE) || 1));
-// V52: keterangan transparansi di kartu akhir. Isi kosong ('') untuk menyembunyikan. Contoh: 'Visual ilustrasi (stok) • Narasi suara AI'
 const DISCLOSURE_ENV = process.env.DISCLOSURE;
-
 const COVER_HOLD_SEC = 1.65;
 
 if (!GEMINI_API_KEY) {
@@ -28,7 +25,6 @@ if (!GEMINI_API_KEY) {
   process.exit(1);
 }
 
-// V52: ukuran frame klip hasil ekstraksi (diisi di proses utama sesuai ukuran video + RES_SCALE)
 let FRAME_W = 720;
 let FRAME_H = 1280;
 
@@ -85,9 +81,9 @@ function pilihTemaVisualDariJudul(judul) {
     { re: /tidur|bangun|mimpi|alarm|malam|sirkadian|insomnia|otak|saraf|ditatap|mata/, theme: { name: 'night_neuro', bg1: '#0b132b', bg2: '#1c2541', card: '#141e38', accent: '#38bdf8', accent2: '#f59e0b', text: '#f8fafc' } },
     { re: /sains|fisika|kimia|atom|listrik|energi|cahaya|gelombang|teknologi|robot|ai\b|kuantum/, theme: { name: 'cyber_lab', bg1: '#071921', bg2: '#0f2e3d', card: '#0d2633', accent: '#06b6d4', accent2: '#22c55e', text: '#ecfeff' } },
     { re: /sejarah|kuno|kerajaan|romawi|mesir|abad|dinasti|piramida|perang|nusantara|katedral|istana/, theme: { name: 'ancient_gold', bg1: '#1c140d', bg2: '#332214', card: '#291b10', accent: '#f59e0b', accent2: '#ef4444', text: '#fef3c7' } },
-    { re: /alam|hewan|laut|hutan|gunung|bumi|samudra|tumbuhan|ikan|burung|cuaca|mercusuar|layangan/, theme: { name: 'emerald_wild', bg1: '#062019', bg2: '#0e3b2e', card: '#0a2e24', accent: '#10b981', accent2: '#eab308', text: '#ecfdf5' } },
+    { re: /alam|hewan|laut|hutan|gunung|bumi|samudra|tumbuhan|ikan|burung|cuaca|mercusuar|layangan|berlayar|kapal/, theme: { name: 'emerald_wild', bg1: '#062019', bg2: '#0e3b2e', card: '#0a2e24', accent: '#10b981', accent2: '#eab308', text: '#ecfdf5' } },
     { re: /horor|misteri|hantu|mistis|angker|rahasia|gelap|hilang|konspirasi/, theme: { name: 'crimson_mystery', bg1: '#180912', bg2: '#2e1022', card: '#240c1a', accent: '#f43f5e', accent2: '#a855f7', text: '#fff1f2' } },
-    { re: /bisnis|uang|kaya|sukses|ekonomi|saham|emas|kerja|miliarder|makan|lapar/, theme: { name: 'royal_wealth', bg1: '#0f172a', bg2: '#1e293b', card: '#162033', accent: '#eab308', accent2: '#38bdf8', text: '#f8fafc' } }
+    { re: /bisnis|uang|kaya|sukses|ekonomi|saham|emas|kerja|miliarder|makan|lapar|tukang pos|surat|desa/, theme: { name: 'royal_wealth', bg1: '#0f172a', bg2: '#1e293b', card: '#162033', accent: '#eab308', accent2: '#38bdf8', text: '#f8fafc' } }
   ];
   for (const p of presets) {
     if (p.re.test(q)) return p.theme;
@@ -100,7 +96,6 @@ function rapikanNaskah(data, dim, ttsInfo) {
   if (!Array.isArray(data.lines)) throw new Error('Naskah dari Gemini tidak punya array "lines".');
 
   data.lines = data.lines.filter(l => Array.isArray(l) && l.length >= 3 && typeof l[2] === 'string' && l[2].trim() !== '');
-  // V52: CTA dihapus total. Baris ber-kunci "cta" dibuang supaya VO-nya juga tidak ikut terbaca.
   data.lines = data.lines.filter(l => String(l[0] || '').toLowerCase() !== 'cta');
   if (data.lines.length < 4) throw new Error('Naskah dari Gemini terlalu pendek / format "lines" rusak.');
 
@@ -123,7 +118,6 @@ function rapikanNaskah(data, dim, ttsInfo) {
       if (!Array.isArray(kw)) kw = [];
       meta.keywords = [...new Set(kw.map(k => String(k || '').trim()).filter(Boolean))].slice(0, 5);
       if (!meta.videoQuery && meta.keywords.length) meta.videoQuery = meta.keywords[0];
-      // PENTING: sengaja TIDAK ada query cadangan topik umum / 'nature' (biar visual tidak maksa di luar VO)
     } else {
       meta = null;
     }
@@ -164,7 +158,7 @@ function rapikanNaskah(data, dim, ttsInfo) {
   return data;
 }
 
-/* ===== PIXABAY VIDEO DOWNLOADER + FRAME SEQUENCE EXTRACTOR (V52: HD + potong 9:16 langsung dari sumber) ===== */
+/* ===== PIXABAY VIDEO DOWNLOADER + FRAME SEQUENCE EXTRACTOR ===== */
 function curlGetJson(url) {
   try {
     const out = execSync(
@@ -177,8 +171,6 @@ function curlGetJson(url) {
   }
 }
 
-// Filter ffmpeg: potong tengah sesuai rasio video (dengan sisa 20% lebar supaya Ken Burns masih bisa geser), lalu skala ke tinggi frame.
-// Dikerjakan LANGSUNG dari file asli Pixabay (bukan dari mp4 hasil kompres ulang) supaya tajam.
 function filterFrameKlip() {
   const rasio = FRAME_W / FRAME_H;
   if (rasio < 1) return `crop='min(iw,ih*${rasio.toFixed(5)}*1.2)':ih,scale=-2:${FRAME_H}:flags=lanczos`;
@@ -197,9 +189,8 @@ function downloadAndNormalizeVideo(url, rawFile, finalMp4, idx, maxSec = 6) {
     }
     const vf = filterFrameKlip();
 
-    // mp4 hanya cadangan kalau frame gagal dimuat browser
     execSync(
-      `ffmpeg -y -i "${rawFile}" -an -t ${maxSec} -vf "${vf},fps=30" -c:v libx264 -preset veryfast -crf 22 -pix_fmt yuv420p -movflags +faststart "${finalMp4}"`,
+      `ffmpeg -y -i "${rawFile}" -an -t ${maxSec} -vf "${vf},fps=30" -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -movflags +faststart "${finalMp4}"`,
       { stdio: 'pipe' }
     );
     if (!fs.existsSync(finalMp4) || fs.statSync(finalMp4).size <= 8000) {
@@ -207,12 +198,11 @@ function downloadAndNormalizeVideo(url, rawFile, finalMp4, idx, maxSec = 6) {
       return null;
     }
 
-    // Frame JPEG 15fps dari FILE ASLI (kualitas -q:v 3). Template V52 mem-blend antar frame supaya gerakan halus.
     const frameDir = `media/clip_${idx}_frames`;
     fs.rmSync(frameDir, { recursive: true, force: true });
     fs.mkdirSync(frameDir, { recursive: true });
     execSync(
-      `ffmpeg -y -i "${rawFile}" -an -t ${maxSec} -vf "${vf},fps=15" -q:v 3 "${frameDir}/f_%03d.jpg"`,
+      `ffmpeg -y -i "${rawFile}" -an -t ${maxSec} -vf "${vf},fps=15" -q:v 4 "${frameDir}/f_%03d.jpg"`,
       { stdio: 'pipe' }
     );
     try { fs.unlinkSync(rawFile); } catch (_) {}
@@ -253,14 +243,13 @@ function downloadPhotoFallback(url, outFile) {
 }
 
 /* ===== PENCARIAN PIXABAY 2 TAHAP + CEK KESESUAIAN ===== */
-const ALLOW_PHOTO_FALLBACK = true; // true = kalau video tidak ada tapi FOTO yang sesuai VO ada, pakai foto. false = langsung kartu teks.
+const ALLOW_PHOTO_FALLBACK = true;
 const KATA_UMUM = new Set(['the','a','an','of','in','on','at','and','with','for','to','person','people','man','woman','men','women','human','someone','view','scene','video','background','close','up','slow','motion']);
 
 function bersihkanQuery(query) {
   return (query || '').replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-// Kata inti dari query (tanpa kata umum). Dipakai untuk memastikan hasil Pixabay benar2 nyambung dengan query.
 function kataIntiQuery(query) {
   return bersihkanQuery(query).toLowerCase().split(' ').filter(w => w.length >= 3 && !KATA_UMUM.has(w));
 }
@@ -269,7 +258,6 @@ function stem(w) {
   return w.length > 5 ? w.slice(0, 5) : (w.length > 4 ? w.slice(0, 4) : w);
 }
 
-// Hasil dianggap relevan kalau minimal 1 kata inti query muncul di tag / slug halaman hasil Pixabay.
 function hitRelevan(hit, query) {
   const inti = kataIntiQuery(query);
   if (!inti.length) return true;
@@ -277,15 +265,14 @@ function hitRelevan(hit, query) {
   return inti.some(w => hay.includes(stem(w)));
 }
 
-// V52: pilih versi video yang paling dekat 1080p (dulu selalu 'small' = burik). 4K dihindari karena berat.
 function pilihUrlVideoTerbaik(h) {
   const v = h.videos || {};
-  const kandidat = ['large', 'medium', 'small', 'tiny'].map(k => v[k]).filter(x => x && x.url);
+  const kandidat = ['medium', 'large', 'small', 'tiny'].map(k => v[k]).filter(x => x && x.url);
   if (!kandidat.length) return '';
   const penalti = (x) => {
     const tinggi = Number(x.height) || 0;
     if (!tinggi) return 5000;
-    return tinggi >= 1080 ? (tinggi - 1080) : (1080 - tinggi) * 3;
+    return tinggi >= 1080 ? (tinggi - 1080) : (1080 - tinggi) * 2;
   };
   kandidat.sort((a, b) => penalti(a) - penalti(b));
   return kandidat[0].url;
@@ -301,8 +288,7 @@ function cariVideoPixabay(query) {
 
   const base = `https://pixabay.com/api/videos/?key=${encodeURIComponent(PIXABAY_API_KEY)}&q=${encodeURIComponent(qClean)}&safesearch=true&per_page=20`;
   let hasil = [];
-  // coba resolusi tinggi dulu, turun bertahap kalau hasilnya sedikit
-  for (const extra of ['&min_width=1920&min_height=1080', '&min_width=1280&min_height=720', '']) {
+  for (const extra of ['&min_width=1280&min_height=720', '']) {
     const vJson = curlGetJson(base + extra);
     const hits = (vJson && Array.isArray(vJson.hits)) ? vJson.hits : [];
     hasil = hits
@@ -329,7 +315,6 @@ function cariFotoPixabay(query) {
   let hasil = [];
   for (const extra of ['&min_width=1080', '']) {
     const pJson = curlGetJson(base + extra);
-    // V52: largeImageURL dulu (webformatURL cuma 640px = burik)
     hasil = ((pJson && pJson.hits) || [])
       .map(h => ({ url: h.largeImageURL || h.webformatURL || '', tags: h.tags || '', pageURL: h.pageURL || '' }))
       .filter(h => h.url && hitRelevan(h, qClean));
@@ -360,9 +345,7 @@ async function siapkanMediaPixabayLokal(videoData) {
     const meta = (l[4] && typeof l[4] === 'object') ? l[4] : (l[4] = {});
     meta.noMedia = false;
 
-    // TAHAP 1: deteksi lewat naskah (adegan persis dari kalimat VO)
     const tahap1 = [...new Set([meta.videoQuery, meta.altQuery].map(q => bersihkanQuery(q)).filter(Boolean))];
-    // TAHAP 2: deteksi lewat keyword yang paling mendekati isi VO (BUKAN topik umum / nature)
     const tahap2 = [...new Set((meta.keywords || []).map(q => bersihkanQuery(q)).filter(Boolean))]
       .filter(q => !tahap1.map(x => x.toLowerCase()).includes(q.toLowerCase()));
 
@@ -376,7 +359,6 @@ async function siapkanMediaPixabayLokal(videoData) {
     ];
 
     let videoOk = false;
-    let cadanganPakaiUlang = null; // klip yang relevan tapi sudah dipakai baris lain (dipakai hanya kalau tidak ada yang baru)
 
     for (const { q: qTry, tahap } of urutan) {
       const hits = cariVideoPixabay(qTry);
@@ -385,7 +367,6 @@ async function siapkanMediaPixabayLokal(videoData) {
         continue;
       }
       const belumDipakai = hits.filter(h => !usedUrls.has(h.url));
-      if (!belumDipakai.length && !cadanganPakaiUlang) cadanganPakaiUlang = { hit: hits[0], qTry, tahap };
 
       for (const chosen of belumDipakai.slice(0, 3)) {
         const rawFile = `media/raw_${i}.mp4`;
@@ -407,31 +388,13 @@ async function siapkanMediaPixabayLokal(videoData) {
       if (videoOk) break;
     }
 
-    if (!videoOk && cadanganPakaiUlang) {
-      const { hit, qTry, tahap } = cadanganPakaiUlang;
-      const rawFile = `media/raw_${i}.mp4`;
-      const finalMp4 = `media/clip_${i}.mp4`;
-      const normRes = downloadAndNormalizeVideo(hit.url, rawFile, finalMp4, i);
-      if (normRes) {
-        meta.videoUrl = normRes.mp4;
-        meta.videoFrames = normRes.frames;
-        meta.videoFps = normRes.fps;
-        meta.matchTahap = tahap;
-        meta.matchQuery = qTry;
-        if (tahap === 1) berhasilT1++; else berhasilT2++;
-        videoOk = true;
-        console.log(`   [Baris ${i + 1}] SUKSES Video pakai ulang klip relevan (Tahap ${tahap}, "${qTry}") -> ${finalMp4}`);
-      }
-    }
-
     if (videoOk) continue;
 
-    // Video tidak ada yang pas -> coba FOTO dengan query yang SAMA (tetap sesuai VO, bukan topik acak)
     let fotoOk = false;
     if (ALLOW_PHOTO_FALLBACK) {
       for (const { q: qTry, tahap } of urutan) {
         const pHits = cariFotoPixabay(qTry);
-        const chosenP = pHits.find(h => !usedUrls.has(h.url)) || pHits[0];
+        const chosenP = pHits.find(h => !usedUrls.has(h.url));
         if (!chosenP) continue;
         const localJpg = `media/photo_${i}.jpg`;
         if (downloadPhotoFallback(chosenP.url, localJpg)) {
@@ -448,17 +411,15 @@ async function siapkanMediaPixabayLokal(videoData) {
     }
 
     if (!fotoOk) {
-      // TIDAK MEMAKSA: tidak ada visual yang nyambung -> template V52 melanjutkan klip sebelumnya / kartu teks, bukan klip acak
       meta.noMedia = true;
       tanpaMedia.push(i + 1);
-      console.log(`   [Baris ${i + 1}] TIDAK ADA visual Pixabay yang pas dengan VO -> tidak dipaksa.`);
+      console.log(`   [Baris ${i + 1}] TIDAK ADA visual Pixabay yang pas dengan VO -> tampilkan kartu teks fokus VO.`);
     }
   }
 
   console.log(`Ringkasan B-Roll: Tahap 1 (naskah) ${berhasilT1} video | Tahap 2 (keyword) ${berhasilT2} video | Foto ${berhasilFoto} | Tanpa visual ${tanpaMedia.length}${tanpaMedia.length ? ' -> baris ' + tanpaMedia.join(', ') : ''}`);
 }
 
-// V52: visual sampul khusus yang menyesuaikan JUDUL (coverQuery dari Gemini). Kalau gagal, template memakai klip baris pertama.
 async function siapkanVisualSampul(videoData) {
   if (!PIXABAY_API_KEY || !videoData.coverQuery) return;
   const kandidatQuery = [videoData.coverQuery];
@@ -477,7 +438,7 @@ async function siapkanVisualSampul(videoData) {
       }
     }
   }
-  console.log('   [Sampul] Tidak ada visual khusus, template memakai klip baris pertama.');
+  console.log('   [Sampul] Tidak ada visual khusus, template memakai latar gradasi sampul.');
 }
 
 async function buatNaskahJSON(dim, ttsInfo) {
@@ -509,8 +470,7 @@ Untuk SETIAP kalimat VO, isi 3 field berikut. Visual HARUS menggambarkan isi kal
    - VO: "Ada orang lain yang berlayar" -> "keywords": ["sailing", "steering ship", "boat captain", "sailboat sea"]
    - DILARANG keyword umum/tidak nyambung seperti "nature", "landscape", "people lifestyle", "city", "sky clouds" kalau VO tidak membahasnya.
    - DILARANG istilah abstrak/medis/kimia ("ghrelin hormone", "amygdala", "dopamine molecule"); ganti dengan adegan kamera nyata yang paling dekat artinya.
-   - Kalau kalimat sangat abstrak, tetap tulis keyword konkret terdekat dengan isi kalimat. Kalau Pixabay tidak punya, sistem tidak akan memaksa visual asal-asalan.
-4. "coverQuery" (di level atas JSON) = adegan visual sinematik untuk SAMPUL yang paling mewakili JUDUL, 2-3 kata Inggris konkret (contoh judul tentang ayah yang berjalan jauh demi anak -> "father walking road").
+4. "coverQuery" (di level atas JSON) = adegan visual sinematik untuk SAMPUL yang paling mewakili JUDUL, 2-3 kata Inggris konkret (contoh judul tentang tukang pos di desa -> "postman delivering letter").
 5. Variasikan mode visual antara "pip_broll" (video B-Roll di kotak atas + karakter utama reaction di bawah) pada "title", "a", "c", dan "full_broll" (video B-Roll layar penuh) pada "b1" sampai "b6".
 6. Buat ${jumlahKalimat} di array "lines":
    Format: ["kunci_adegan", "mood", "Kalimat VO dengan *kata* ditekankan.", "fx_opsional", META_VISUAL]
@@ -701,7 +661,7 @@ function pilihBgmSkalaDariJudul(judul, seedNum) {
   const genreScales = [
     { re: /kamar mandi|mandi|keramik|gema|reverb|akustik|nyanyi|air|laut/, notes: [293.66, 349.23, 440.00, 523.25], tempo: 1.35, lp: 1350 },
     { re: /horor|hantu|mistis|angker|kuburan|kutukan|misteri|gelap|malam|tidur|alarm|hilang|mercusuar/, notes: [146.83, 174.61, 220.00, 261.63], tempo: 0.85, lp: 780 },
-    { re: /sejarah|kuno|kerajaan|romawi|mesir|abad|dinasti|piramida|perang|nusantara|katedral|istana|bangun/, notes: [220.00, 261.63, 293.66, 392.00], tempo: 0.95, lp: 920 },
+    { re: /sejarah|kuno|kerajaan|romawi|mesir|abad|dinasti|piramida|perang|nusantara|katedral|istana|bangun|tukang pos|surat|desa/, notes: [220.00, 261.63, 293.66, 392.00], tempo: 0.95, lp: 920 },
     { re: /sains|antariksa|planet|teknologi|robot|ai\b|kuantum|listrik|lampu/, notes: [261.63, 311.13, 392.00, 466.16], tempo: 1.50, lp: 1500 },
     { re: /psikologi|otak|pikiran|mental|stres|mimpi|kebiasaan|menguap|mulut|etika|ditatap|mata/, notes: [246.94, 293.66, 369.99, 440.00], tempo: 0.90, lp: 850 },
     { re: /bisnis|sukses|kaya|miliarder|saham|uang|ekonomi|emas/, notes: [261.63, 329.63, 392.00, 523.25], tempo: 1.40, lp: 1250 },
@@ -843,24 +803,51 @@ function cariFileKarakter() {
   return '';
 }
 
+function pastikanUkuranDibawahBatasTelegram(videoPath, maxMb = 44) {
+  const stat = fs.statSync(videoPath);
+  const mb = stat.size / (1024 * 1024);
+  console.log(`Ukuran video final: ${mb.toFixed(2)} MB`);
+  if (mb <= maxMb) return videoPath;
+
+  console.log(`Ukuran melebihi ${maxMb} MB, mengompres agar lolos batas upload Telegram (50 MB)...`);
+  const compressedPath = 'output_telegram.mp4';
+  execSync(
+    `ffmpeg -y -i "${videoPath}" -c:v libx264 -preset fast -crf 26 -maxrate 3500k -bufsize 7000k -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart "${compressedPath}"`,
+    { stdio: 'pipe' }
+  );
+  const newMb = fs.statSync(compressedPath).size / (1024 * 1024);
+  console.log(`Ukuran setelah kompresi: ${newMb.toFixed(2)} MB`);
+  return compressedPath;
+}
+
 async function kirimVideoTelegram(videoPath, data) {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
-  console.log('Mengirim hasil video ke Telegram...');
-  const caption = `🎬 *VIDEO V52.0 (KLIP HD, SAMPUL SESUAI JUDUL, TANPA CTA) SELESAI!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}\n\n⚠️ *Sebelum upload:* cek isi fakta, dan isi pertanyaan "konten ubahan/sintetis" di YouTube Studio sesuai kondisi (misal suara AI).`;
+  const readyPath = pastikanUkuranDibawahBatasTelegram(videoPath, 44);
+  console.log(`Mengirim hasil video (${readyPath}) ke Telegram...`);
+  const caption = `🎬 *VIDEO V52.1 (KLIP HD, B-ROLL 2 TAHAP STRICT VO, TANPA CTA) SELESAI!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
 
   try {
     const form = new FormData();
     form.append('chat_id', TELEGRAM_CHAT_ID);
     form.append('caption', caption.slice(0, 1024));
     form.append('parse_mode', 'Markdown');
-    form.append('video', new Blob([fs.readFileSync(videoPath)], { type: 'video/mp4' }), 'video_cerita.mp4');
+    form.append('supports_streaming', 'true');
+    form.append('video', new Blob([fs.readFileSync(readyPath)], { type: 'video/mp4' }), 'video_cerita.mp4');
 
-    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVideo`, { method: 'POST', body: form });
+    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVideo`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(120000),
+      body: form
+    });
     const json = await res.json();
-    if (!json.ok) console.error('Gagal kirim video Telegram:', json);
-    else console.log('Sukses kirim video ke Telegram!');
+    if (!json.ok) {
+      console.error('Gagal kirim video Telegram:', json);
+      throw new Error(`Telegram API menolak video (${json.error_code}): ${json.description}`);
+    }
+    console.log('Sukses kirim video ke Telegram!');
   } catch (e) {
     console.error('Error kirim video Telegram:', e.message);
+    throw e;
   }
 }
 
@@ -870,14 +857,13 @@ async function kirimVideoTelegram(videoPath, data) {
     const ttsInfo = getBahasaConfig(BAHASA);
     const { jamWib, targetJamRamai } = deteksiPrimeTimeHariIni();
 
-    // V52: skala render (hanya 9:16). Canvas template, viewport browser, frame klip, dan output ffmpeg semuanya ikut skala ini.
     const resScale = (dim.aspect === '9/16') ? RES_SCALE_ENV : 1;
     const outW = Math.round(dim.width * resScale);
     const outH = Math.round(dim.height * resScale);
     FRAME_W = outW;
     FRAME_H = outH;
 
-    console.log(`=== MEMULAI PRODUKSI VIDEO V52.0 (${UKURAN} | ${BAHASA} | output ${outW}x${outH}) ===`);
+    console.log(`=== MEMULAI PRODUKSI VIDEO V52.1 (${UKURAN} | ${BAHASA} | output ${outW}x${outH}) ===`);
     if (jamWib > targetJamRamai) {
       await kirimPesanTelegram(`⚠️ *STATUS: PENDING / ANTREAN GESER*\n\nKamu membuat video pada pukul ${jamWib}:00 WIB (melewati jam ramai ${targetJamRamai}:00 WIB hari ini).\nSistem otomatis menggeser jadwal publikasi ke slot prime time berikutnya!`);
     } else {
@@ -888,7 +874,7 @@ async function kirimVideoTelegram(videoPath, data) {
     const videoData = await buatNaskahJSON(dim, ttsInfo);
     videoData.resScale = resScale;
 
-    console.log('2. Mengunduh video asli Pixabay (HD) & memotong sesuai rasio video...');
+    console.log('2. Mengunduh video asli Pixabay (2 Tahap Strict VO) & memotong sesuai rasio video...');
     await siapkanMediaPixabayLokal(videoData);
     await siapkanVisualSampul(videoData);
 
@@ -900,7 +886,7 @@ async function kirimVideoTelegram(videoPath, data) {
     const charFile = cariFileKarakter();
     if (charFile) videoData.charUrl = charFile;
 
-    await kirimPesanTelegram(`✅ *Naskah, video B-Roll Pixabay, & suara VO selesai.*\nSekarang merender video HD + karakter reaction...`);
+    await kirimPesanTelegram(`✅ *Naskah, B-Roll 2 Tahap terverifikasi VO, & suara VO selesai.*\nSekarang merender video HD + karakter reaction...`);
 
     console.log('4. Merakit index.html dari template.html...');
     let tpl = fs.readFileSync('template.html', 'utf8');
@@ -926,7 +912,6 @@ async function kirimVideoTelegram(videoPath, data) {
       let __bridgePrevLine = -1;
 
       window.__renderFrameAt = async function(tSec) {
-        // V52: bekukan loop animasi bawaan supaya tidak menimpa frame yang sedang dirender
         window.__FREEZE = true;
         if (typeof playing !== 'undefined') playing = false;
         if (typeof LEN !== 'undefined') window.__VIDEO_LEN = LEN;
@@ -965,7 +950,6 @@ async function kirimVideoTelegram(videoPath, data) {
 
         if (typeof now !== 'undefined') now = t;
         if (typeof charTick === 'function') charTick();
-        // V52: skala canvas (resScale) — wajib sama seperti loop bawaan template
         if (typeof PORT !== 'undefined' && PORT) X.setTransform(CW / W, 0, 0, CH / H, 0, 0);
         X.save();
         X.clearRect(0, 0, W, H);
@@ -1050,7 +1034,7 @@ async function kirimVideoTelegram(videoPath, data) {
       await page.screenshot({
         path: framePath,
         type: 'jpeg',
-        quality: 95,
+        quality: 93,
         clip: { x: 0, y: 0, width: outW, height: outH }
       });
       if (f % 150 === 0) console.log(`Render progress: ${f}/${totalFrames} frame...`);
@@ -1066,7 +1050,7 @@ async function kirimVideoTelegram(videoPath, data) {
     execSync(
       `ffmpeg -y -framerate ${fps} -i frames/f_%05d.jpg -i mixed_audio.wav ` +
       `-vf "scale=${outW}:${outH}:flags=lanczos,setsar=1" ` +
-      `-c:v libx264 -preset fast -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k -shortest output_final.mp4`,
+      `-c:v libx264 -preset fast -crf 21 -maxrate 4500k -bufsize 9000k -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart -shortest output_final.mp4`,
       { stdio: 'inherit' }
     );
 
