@@ -1,4 +1,4 @@
-/* ===== SCRIPT UTAMA: buat_video.js (Versi V55.0: Zero-Revision Self-Healing Quality-Gate + Auto Upload YouTube Shorts) ===== */
+/* ===== SCRIPT UTAMA: buat_video.js (Versi V55.1: Self-Healing Quality-Gate, Fallback Habitat Satwa/Alam, Parser Blueprint V2 & Auto Upload YouTube Shorts) ===== */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -17,13 +17,12 @@ const YT_CLIENT_ID = (process.env.YT_CLIENT_ID || '').trim();
 const YT_CLIENT_SECRET = (process.env.YT_CLIENT_SECRET || '').trim();
 const YT_REFRESH_TOKEN = (process.env.YT_REFRESH_TOKEN || '').trim();
 const YT_PRIVACY = (process.env.YT_PRIVACY || 'public').trim();
-/* Jika skor kualitas di bawah ambang, video TETAP terupload tapi berstatus ini (bukan public) */
 const YT_PRIVACY_FALLBACK = (process.env.YT_PRIVACY_FALLBACK || 'private').trim();
 
-/* ===== PENGATURAN QUALITY-GATE V55 ===== */
-const QC_MIN_SCORE = Number(process.env.QC_MIN_SCORE) || 7;        /* skor minimal (1-10) agar boleh public */
-const MAX_VO_SEC = Number(process.env.MAX_VO_SEC) || 52;           /* batas durasi suara VO agar total video < 59 detik */
-const VISION_QC = (process.env.VISION_QC || '1') !== '0';          /* cek tiap klip & video final pakai Gemini Vision */
+/* ===== PENGATURAN QUALITY-GATE V55.1 ===== */
+const QC_MIN_SCORE = Number(process.env.QC_MIN_SCORE) || 7;
+const MAX_VO_SEC = Number(process.env.MAX_VO_SEC) || 52;
+const VISION_QC = (process.env.VISION_QC || '1') !== '0';
 
 const RAW_INPUT = (process.env.INPUT_JUDUL || process.env.JUDUL || 'Fakta Unik yang Jarang Diketahui').trim();
 const IS_BLUEPRINT = RAW_INPUT.length > 140 || /JUDUL SIAP COPY|BREAKDOWN VISUAL|Keyword Pixabay/i.test(RAW_INPUT);
@@ -36,7 +35,7 @@ function ekstrakJudulDariInput(raw) {
     return mJudul[1].replace(/^[\["'*-\s]+|[\]"'*\s]+$/g, '').trim();
   }
   const barisPertama = raw.split('\n').map(b => b.trim()).find(b => b.length > 8 && !b.startsWith('🎯'));
-  return (barisPertama || 'Fakta Psikologi Sehari-hari').slice(0, 100);
+  return (barisPertama || 'Fakta Dunia Alam & Satwa').slice(0, 100);
 }
 
 const JUDUL = ekstrakJudulDariInput(RAW_INPUT);
@@ -109,17 +108,16 @@ function pilihTemaVisualDariJudul(judul) {
     { re: /tidur|bangun|mimpi|alarm|malam|sirkadian|insomnia|otak|saraf|ditatap|mata/, theme: { name: 'night_neuro', bg1: '#070c18', bg2: '#111b30', card: '#0d1526', accent: '#38bdf8', accent2: '#eab308', text: '#f1f5f9' } },
     { re: /sains|fisika|kimia|atom|listrik|energi|cahaya|gelombang|teknologi|robot|ai\b|kuantum/, theme: { name: 'cyber_lab', bg1: '#051117', bg2: '#0b212b', card: '#091b24', accent: '#22d3ee', accent2: '#34d399', text: '#ecfeff' } },
     { re: /sejarah|kuno|kerajaan|romawi|mesir|abad|dinasti|piramida|perang|nusantara|katedral|istana/, theme: { name: 'ancient_gold', bg1: '#120d08', bg2: '#21170e', card: '#1a120b', accent: '#f59e0b', accent2: '#fb923c', text: '#fef3c7' } },
-    { re: /alam|hewan|laut|hutan|gunung|bumi|samudra|tumbuhan|ikan|burung|cuaca|mercusuar|layangan|berlayar|kapal/, theme: { name: 'emerald_wild', bg1: '#051410', bg2: '#0b261f', card: '#081e18', accent: '#10b981', accent2: '#eab308', text: '#ecfdf5' } },
+    { re: /alam|hewan|laut|hutan|gunung|bumi|samudra|tumbuhan|ikan|burung|cuaca|gurita|hiu|paus|ubur|lebah|kupu|serigala|elang|hantu|bunglon|katak/, theme: { name: 'emerald_wild', bg1: '#051410', bg2: '#0b261f', card: '#081e18', accent: '#10b981', accent2: '#eab308', text: '#ecfdf5' } },
     { re: /horor|misteri|hantu|mistis|angker|rahasia|gelap|hilang|konspirasi/, theme: { name: 'crimson_mystery', bg1: '#11060d', bg2: '#210b18', card: '#190812', accent: '#fb7185', accent2: '#c084fc', text: '#fff1f2' } },
     { re: /bisnis|uang|kaya|sukses|ekonomi|saham|emas|kerja|miliarder|makan|lapar|tukang pos|surat|desa|tabung|rumah/, theme: { name: 'royal_wealth', bg1: '#090e1a', bg2: '#131c31', card: '#0f172a', accent: '#eab308', accent2: '#38bdf8', text: '#f8fafc' } }
   ];
   for (const p of presets) {
     if (p.re.test(q)) return p.theme;
   }
-  return { name: 'indigo_spark', bg1: '#090e1a', bg2: '#131c31', card: '#0f172a', accent: '#38bdf8', accent2: '#eab308', text: '#f8fafc' };
+  return { name: 'emerald_wild', bg1: '#051410', bg2: '#0b261f', card: '#081e18', accent: '#10b981', accent2: '#eab308', text: '#ecfdf5' };
 }
 
-/* ===== V55: ATURAN KONTEN OTOMATIS (BLOKIR TOPIK PASANGAN SEBELUM BUANG WAKTU RENDER) ===== */
 function cekAturanKonten(judul, lines) {
   const re = /\b(pacar|pacaran|pasangan|kekasih|percintaan|romansa|romantis|pernikahan|menikah|suami|istri|mantan|patah hati|selingkuh)\b/i;
   const teks = [judul, ...(lines || []).map(l => (l && l[2]) || '')].join(' ');
@@ -127,7 +125,6 @@ function cekAturanKonten(judul, lines) {
   if (m) throw new Error(`Topik melanggar aturan niche (terdeteksi kata "${m[0]}"). Video dibatalkan otomatis, tidak diupload.`);
 }
 
-/* ===== V55: GEMINI HELPER TERPUSAT (naskah, deskripsi, & Vision QC) ===== */
 let MODEL_CACHE = null;
 async function ambilDaftarModel() {
   if (MODEL_CACHE) return MODEL_CACHE;
@@ -178,7 +175,7 @@ function ekstrakJson(raw) {
   try { return JSON.parse(raw.slice(awal, akhir + 1)); } catch (_) { return null; }
 }
 
-/* ===== V55: PARSER BLUEPRINT LOKAL (100% PERSIS PROMPT, TANPA RISIKO GEMINI MENGARANG ULANG) ===== */
+/* ===== V55.1: PARSER BLUEPRINT LOKAL (MENDUKUNG FORMAT V1 MAUPUN V2 SATWA LIAR) ===== */
 function bersihBp(s) {
   return String(s || '').replace(/[\[\]"“”]/g, '').replace(/\*\*/g, '').trim();
 }
@@ -193,15 +190,17 @@ function parseBlueprint(raw) {
 
     const MOOD = { title: 'd', b1: 'n', b2: 'e', a: 'n', b3: 'd', b4: 'e', b5: 'n', b6: 'e', c: 'd', end: 's' };
     const FX = { b1: 'p', b2: 'p', b3: 'p', b4: 'p', b5: 'p', b6: 'p' };
-    const KICKER = { title: 'FENOMENA', b1: 'FAKTA', b2: 'FAKTA', a: 'PSIKOLOGI', b3: 'MEKANISME', b4: 'CONTOH', b5: 'DAMPAK', b6: 'DAMPAK', c: 'INSIGHT' };
+    const KICKER = { title: 'FENOMENA', b1: 'FAKTA', b2: 'FAKTA', a: 'SAINS ALAM', b3: 'MEKANISME', b4: 'DETAIL', b5: 'DAMPAK', b6: 'DAMPAK', c: 'INSIGHT' };
 
     const blok = raw.split(/\n\s*\d+\.\s*\[/).slice(1);
     const lines = [];
     for (const b of blok) {
-      const head = b.match(/^\s*([a-z0-9]+)\s*[-–—]\s*([^\]\n]*)\]/i);
+      /* Mendukung baik "1. [title]" maupun "1. [title - Label]" */
+      const head = b.match(/^\s*([a-z0-9]+)(?:\s*[-–—]\s*([^\]\n]*))?\]/i);
       if (!head) continue;
       const sc = head[1].toLowerCase();
-      const label = bersihBp(head[2]).toUpperCase().slice(0, 28) || 'ADEGAN';
+      const judulLayarField = bersihBp((b.match(/Judul Layar\s*:\s*([^\n]+)/i) || [])[1]);
+      const label = (judulLayarField || bersihBp(head[2]) || KICKER[sc] || 'FAKTA ALAM').toUpperCase().slice(0, 28);
       const vo = bersihBp((b.match(/Kalimat VO\s*:\s*([^\n]+)/i) || [])[1]);
       if (!vo || vo.split(/\s+/).length < 3) continue;
       const visual = bersihBp((b.match(/Visual Adegan\s*:\s*([^\n]+)/i) || [])[1]);
@@ -227,10 +226,17 @@ function parseBlueprint(raw) {
 
     const mSrc = raw.match(/SUMBER RISET\s*:\s*\n((?:[ \t]*[-•*][^\n]*\n?)+)/i);
     const src = mSrc ? mSrc[1].split('\n').map(s => bersihBp(s.replace(/^[ \t]*[-•*]\s*/, ''))).filter(Boolean) : [];
+    const isAlam = /laut|gurita|hiu|paus|ubur|ikan|penyu|kuda laut|burung|elang|hantu|lebah|kupu|serigala|bunglon|katak|hewan|satwa|gunung|petir|bintang|bulan|palung/i.test(JUDUL + ' ' + raw);
 
     return {
       coverQuery, coverAlt, src, lines,
-      tx: { kicker: 'PSIKOLOGI', t1: t1 || 'FAKTA', t2: t2 || 'MENGEJUTKAN', watch: 'tonton sampai habis', src: 'Sumber' }
+      tx: {
+        kicker: isAlam ? 'FAKTA ALAM' : 'PSIKOLOGI',
+        t1: t1 || 'FAKTA',
+        t2: t2 || 'MENGEJUTKAN',
+        watch: 'tonton sampai habis',
+        src: 'Sumber'
+      }
     };
   } catch (_) {
     return null;
@@ -242,7 +248,7 @@ async function buatDeskripsiTags(judul, lines) {
   const teks = await geminiGenerate([{ text:
 `Buat deskripsi & tag YouTube Shorts (bahasa Indonesia) untuk video berjudul "${judul}".
 Isi video: ${vo.slice(0, 900)}
-Keluarkan HANYA JSON murni: {"desc":"2 kalimat ringkas + ajakan diskusi di komentar","tags":"#psikologi #faktaunik #edukasi + 2-3 tag relevan lain"}` }], { timeoutMs: 30000, rounds: 2, maxModels: 4 });
+Keluarkan HANYA JSON murni: {"desc":"2 kalimat ringkas + ajakan diskusi di komentar","tags":"#faktaunik #sains #edukasi + 2-3 tag relevan lain"}` }], { timeoutMs: 30000, rounds: 2, maxModels: 4 });
   const j = ekstrakJson(teks);
   return (j && typeof j === 'object') ? j : {};
 }
@@ -251,7 +257,6 @@ Keluarkan HANYA JSON murni: {"desc":"2 kalimat ringkas + ajakan diskusi di komen
 function sanitasiKeywordBroll(q) {
   let clean = bersihkanQuery(q).toLowerCase();
   if (!clean) return '';
-  /* Ganti keyword lokasi luas yang sering memunculkan kerumunan orang lewat */
   if (/\b(empty room|indoors|hall|hallway|lobby|mall|street|corridor|plaza)\b/.test(clean)) {
     if (/walk|pac|foot|feet|step/.test(clean)) return 'shoes walking floor';
     if (/phone|call|smart/.test(clean)) return 'hand holding phone';
@@ -260,16 +265,34 @@ function sanitasiKeywordBroll(q) {
   return clean;
 }
 
+/* ===== V55.1: FALLBACK HABITAT ALAM/SATWA AGAR TIDAK PERNAH JATUH KE KOTAK TEKS KOSONG ===== */
+function tentukanFallbackHabitat(judul) {
+  const q = (judul || '').toLowerCase();
+  if (/laut|gurita|hiu|paus|ubur|ikan|penyu|kuda laut|samudra|terumbu|palung/.test(q)) {
+    return ['deep ocean dark', 'underwater light rays', 'ocean waves dark'];
+  }
+  if (/burung|elang|hantu|gagak|sayap|terbang|langit|kolibri/.test(q)) {
+    return ['dark forest night', 'misty mountains dark', 'night sky clouds'];
+  }
+  if (/lebah|kupu|serangga|laba|capung|semut|kunang/.test(q)) {
+    return ['forest leaves macro', 'water droplets slow', 'dark nature macro'];
+  }
+  if (/bintang|bulan|angkasa|planet|galaksi|gerhana|meteor/.test(q)) {
+    return ['milky way stars', 'full moon night', 'nebula galaxy space'];
+  }
+  return ['dark forest night', 'foggy forest mist', 'water droplets slow'];
+}
+
 function ringkasSumberRiset(srcList) {
-  if (!Array.isArray(srcList) || !srcList.length) return ['Behavioral Psychology Study'];
+  if (!Array.isArray(srcList) || !srcList.length) return ['National Geographic Wildlife'];
   return srcList.slice(0, 2).map(s => {
     let clean = String(s || '')
-      .replace(/\([^)]*\)/g, '')            /* Hapus penjelasan panjang di dalam tanda kurung */
-      .replace(/\s+[:–—-]\s+.*$|:.*$/, '')  /* V55: hanya hapus sub-penjelasan (tanda hubung BERSPASI / titik dua), "Self-Determination" aman */
+      .replace(/\([^)]*\)/g, '')
+      .replace(/\s+[:–—-]\s+.*$|:.*$/, '')
       .replace(/\.$/, '')
       .trim();
     const kata = clean.split(/\s+/).filter(Boolean).slice(0, 4);
-    return kata.length ? kata.join(' ') : 'Behavioral Psychology Study';
+    return kata.length ? kata.join(' ') : 'National Geographic Wildlife';
   });
 }
 
@@ -306,8 +329,9 @@ function rapikanNaskah(data, dim, ttsInfo) {
     return [sc, mood, text, fx, meta];
   });
 
+  const isAlam = /laut|gurita|hiu|paus|ubur|ikan|penyu|kuda laut|burung|elang|hantu|lebah|kupu|serigala|bunglon|katak|hewan|satwa|gunung|petir|bintang|bulan|palung/i.test(JUDUL);
   const defaultTx = {
-    kicker: 'PSIKOLOGI',
+    kicker: isAlam ? 'FAKTA ALAM' : 'PSIKOLOGI',
     t1: 'FAKTA',
     t2: 'MENGEJUTKAN',
     watch: 'tonton sampai habis',
@@ -315,12 +339,11 @@ function rapikanNaskah(data, dim, ttsInfo) {
   };
 
   data.tx = Object.assign({}, defaultTx, (data.tx && typeof data.tx === 'object') ? data.tx : {});
-  if (/kisah nyata/i.test(data.tx.kicker)) data.tx.kicker = 'PSIKOLOGI';
+  if (/kisah nyata/i.test(data.tx.kicker)) data.tx.kicker = defaultTx.kicker;
   if (typeof data.title !== 'string' || !data.title.trim()) data.title = JUDUL;
   if (typeof data.desc  !== 'string' || !data.desc.trim())  data.desc  = `${data.title} - tonton sampai habis dan tulis pendapatmu di komentar!`;
-  if (typeof data.tags  !== 'string' || !data.tags.trim())  data.tags  = '#psikologi #faktaunik #edukasi';
+  if (typeof data.tags  !== 'string' || !data.tags.trim())  data.tags  = '#faktaunik #sains #edukasi';
 
-  /* Otomatis ringkas sumber riset maksimal 4 kata agar tidak kekecilan di layar */
   data.src = ringkasSumberRiset(data.src);
 
   if (!data.varian) data.varian = 'v' + (Date.now() % 999);
@@ -426,7 +449,6 @@ function downloadPhotoFallback(url, outFile) {
   }
 }
 
-/* ===== V55: CEK KUALITAS KLIP (KECERAHAN LOKAL + GEMINI VISION) ===== */
 function cekKecerahan(mp4) {
   try {
     const out = execSync(
@@ -436,7 +458,7 @@ function cekKecerahan(mp4) {
     const nilai = [...out.matchAll(/YAVG=([\d.]+)/g)].map(m => Number(m[1])).filter(n => Number.isFinite(n));
     if (!nilai.length) return true;
     const rata = nilai.reduce((a, b) => a + b, 0) / nilai.length;
-    return rata >= 22 && rata <= 195; /* terlalu gelap / terlalu silau = tolak */
+    return rata >= 18 && rata <= 198;
   } catch (_) {
     return true;
   }
@@ -448,20 +470,19 @@ async function verifikasiKlipVisual(framePath, voText, query) {
     const b64 = fs.readFileSync(framePath).toString('base64');
     const teks = await geminiGenerate([
       { text:
-`Kamu quality-control video Shorts psikologi. Nilai 1 gambar B-roll ini untuk narasi: "${voText.replace(/\*/g, '')}" (keyword: ${query}).
-TOLAK (ok=false) jika: ada kerumunan / 3+ orang jelas, pasangan/romansa, green screen, watermark/teks besar, sangat silau/blur/pecah, hewan nyasar, atau objeknya sama sekali tidak nyambung dengan narasi.
+`Kamu quality-control video Shorts dokumenter alam/sains. Nilai 1 gambar B-roll ini untuk narasi: "${voText.replace(/\*/g, '')}" (keyword: ${query}).
+TOLAK (ok=false) jika: ada kerumunan / 3+ orang jelas, pasangan/romansa, green screen, watermark/teks besar, sangat silau/blur/pecah, atau sama sekali bertolak belakang dengan narasi (catatan: klip habitat seperti lautan dalam, langit malam, hutan gelap, atau elemen alam terkait TETAP DITERIMA).
 Keluarkan HANYA JSON murni: {"ok":true,"alasan":"singkat"}` },
       { inline_data: { mime_type: 'image/jpeg', data: b64 } }
     ], { timeoutMs: 30000, rounds: 1, maxModels: 3 });
     const j = ekstrakJson(teks);
-    if (!j) return { ok: true, alasan: '' }; /* Gemini gagal -> jangan blokir produksi */
+    if (!j) return { ok: true, alasan: '' };
     return { ok: j.ok !== false, alasan: String(j.alasan || '') };
   } catch (_) {
     return { ok: true, alasan: '' };
   }
 }
 
-/* ===== PENCARIAN PIXABAY: ANTI-PASANGAN, ANTI-KERAMAIAN, ANTI-HEWAN NYASAR, ANTI-GREEN-SCREEN ===== */
 const ALLOW_PHOTO_FALLBACK = true;
 const KATA_UMUM = new Set(['the','a','an','of','in','on','at','and','with','for','to','person','people','man','woman','men','women','human','someone','view','scene','video','background','close','up','slow','motion']);
 
@@ -469,7 +490,6 @@ const TAG_TERLARANG_UMUM = [
   'green screen', 'greenscreen', 'chroma key', 'chroma', 'blue screen',
   'couple', 'couples', 'lovers', 'romance', 'romantic', 'kiss', 'kissing', 'wedding', 'bride', 'groom', 'valentine', 'boyfriend', 'girlfriend', 'husband', 'wife', 'dating', 'love story',
   'crowd', 'crowded', 'festival', 'concert', 'party', 'nightclub', 'rave', 'protest', 'parade', 'stadium', 'audience', 'traffic jam', 'busy street', 'pedestrian', 'commuter', 'airport', 'station', 'mall',
-  'blood', 'red blood', 'cell', 'cells', 'virus', 'bacteria', 'molecule', 'dna', 'neuron',
   '3d render', '3d animation', 'abstract', 'particle', 'particles', 'template', 'mockup', 'transition', 'overlay', 'subscribe',
   'bright white', 'overexposed', 'lens flare', 'flash'
 ];
@@ -484,7 +504,6 @@ function kataIntiQuery(query) {
   return bersihkanQuery(query).toLowerCase().split(' ').filter(w => w.length >= 3 && !KATA_UMUM.has(w));
 }
 
-/* V55: stem 4 huruf supaya "walking" cocok dengan tag "walk" / "walking" */
 function stem(w) {
   return w.length > 4 ? w.slice(0, 4) : w;
 }
@@ -495,7 +514,7 @@ function hitRelevan(hit, query) {
 
   if (TAG_TERLARANG_UMUM.some(bad => hay.includes(bad))) return false;
 
-  const queryMemangHewan = TAG_HEWAN_NYASAR.some(h => qLow.includes(h));
+  const queryMemangHewan = TAG_HEWAN_NYASAR.some(h => qLow.includes(h)) || /\b(octopus|shark|whale|jellyfish|turtle|seahorse|owl|eagle|hummingbird|crow|kingfisher|bee|butterfly|spider|dragonfly|ants|fireflies|wolf|chameleon|snake|frog|fox|leopard|ocean|sea|forest|wildlife|animal)\b/.test(qLow);
   if (!queryMemangHewan && TAG_HEWAN_NYASAR.some(h => hay.includes(h))) return false;
 
   const inti = kataIntiQuery(query);
@@ -560,11 +579,12 @@ async function siapkanMediaPixabayLokal(videoData) {
   if (!PIXABAY_API_KEY) {
     console.warn('PERINGATAN: PIXABAY_API_KEY kosong di GitHub Secrets!');
   } else {
-    console.log(`PIXABAY_API_KEY aktif (${PIXABAY_API_KEY.slice(0, 6)}...). Mode ketat: HD >=720p, anti-pasangan, anti-keramaian, Vision-QC ${VISION_QC ? 'ON' : 'OFF'}.`);
+    console.log(`PIXABAY_API_KEY aktif (${PIXABAY_API_KEY.slice(0, 6)}...). Mode ketat: HD >=720p, Fallback Habitat Otomatis, Vision-QC ${VISION_QC ? 'ON' : 'OFF'}.`);
   }
 
   const usedUrls = new Set();
-  let berhasilT1 = 0, berhasilT2 = 0, berhasilFoto = 0, ditolakQC = 0;
+  const habitatCadangan = tentukanFallbackHabitat(JUDUL);
+  let berhasilT1 = 0, berhasilT2 = 0, berhasilT3 = 0, berhasilFoto = 0, ditolakQC = 0;
   const tanpaMedia = [];
 
   for (let i = 0; i < videoData.lines.length; i++) {
@@ -578,14 +598,18 @@ async function siapkanMediaPixabayLokal(videoData) {
     const tahap1 = [...new Set([meta.videoQuery, meta.altQuery].map(q => bersihkanQuery(q)).filter(Boolean))];
     const tahap2 = [...new Set((meta.keywords || []).map(q => bersihkanQuery(q)).filter(Boolean))]
       .filter(q => !tahap1.map(x => x.toLowerCase()).includes(q.toLowerCase()));
+    const tahap3 = habitatCadangan
+      .map(q => bersihkanQuery(q))
+      .filter(q => q && ![...tahap1, ...tahap2].map(x => x.toLowerCase()).includes(q.toLowerCase()));
 
     console.log(`   [Baris ${i + 1}] VO: "${l[2].replace(/\*/g, '')}"`);
-    console.log(`             Tahap 1 (utama/backup) : ${tahap1.join(' | ') || '-'}`);
-    console.log(`             Tahap 2 (keyword)      : ${tahap2.join(' | ') || '-'}`);
+    console.log(`             Tahap 1 (utama/backup)   : ${tahap1.join(' | ') || '-'}`);
+    console.log(`             Tahap 3 (habitat cadang) : ${tahap3.join(' | ') || '-'}`);
 
     const urutan = [
       ...tahap1.map(q => ({ q, tahap: 1 })),
-      ...tahap2.map(q => ({ q, tahap: 2 }))
+      ...tahap2.map(q => ({ q, tahap: 2 })),
+      ...tahap3.map(q => ({ q, tahap: 3 }))
     ];
 
     let videoOk = false;
@@ -602,7 +626,6 @@ async function siapkanMediaPixabayLokal(videoData) {
         if (!normRes) continue;
         usedUrls.add(chosen.url);
 
-        /* V55: gerbang kualitas klip (kecerahan + Vision) sebelum dipakai */
         if (!cekKecerahan(normRes.mp4)) {
           ditolakQC++;
           console.log(`   [Baris ${i + 1}] DITOLAK QC (terlalu gelap/silau): ${chosen.tags}`);
@@ -621,7 +644,9 @@ async function siapkanMediaPixabayLokal(videoData) {
         meta.videoFps = normRes.fps;
         meta.matchTahap = tahap;
         meta.matchQuery = qTry;
-        if (tahap === 1) berhasilT1++; else berhasilT2++;
+        if (tahap === 1) berhasilT1++;
+        else if (tahap === 2) berhasilT2++;
+        else berhasilT3++;
         videoOk = true;
         console.log(`   [Baris ${i + 1}] SUKSES Video HD (Tahap ${tahap}, "${qTry}", tag: ${chosen.tags}) -> ${finalMp4}`);
         break;
@@ -664,8 +689,8 @@ async function siapkanMediaPixabayLokal(videoData) {
     }
   }
 
-  videoData.qcMediaStat = { video: berhasilT1 + berhasilT2, foto: berhasilFoto, tanpa: tanpaMedia.length, ditolak: ditolakQC };
-  console.log(`Ringkasan B-Roll: Tahap 1 ${berhasilT1} video | Tahap 2 ${berhasilT2} video | Foto ${berhasilFoto} | Tanpa visual ${tanpaMedia.length} | Ditolak QC ${ditolakQC}`);
+  videoData.qcMediaStat = { video: berhasilT1 + berhasilT2 + berhasilT3, foto: berhasilFoto, tanpa: tanpaMedia.length, ditolak: ditolakQC };
+  console.log(`Ringkasan B-Roll: Tahap 1 ${berhasilT1} | Tahap 2 ${berhasilT2} | Habitat ${berhasilT3} | Foto ${berhasilFoto} | Tanpa visual ${tanpaMedia.length} | Ditolak QC ${ditolakQC}`);
 }
 
 async function siapkanVisualSampul(videoData) {
@@ -692,7 +717,6 @@ async function siapkanVisualSampul(videoData) {
 }
 
 async function buatNaskahJSON(dim, ttsInfo) {
-  /* ===== V55: MODE BLUEPRINT = PARSE LOKAL, GEMINI TIDAK MENGARANG ULANG ===== */
   if (BLUEPRINT_TEKS) {
     const bp = parseBlueprint(BLUEPRINT_TEKS);
     if (bp) {
@@ -717,7 +741,7 @@ async function buatNaskahJSON(dim, ttsInfo) {
 ${BLUEPRINT_TEKS.slice(0, 6000)}
 """
 ATURAN EKSEKUSI BLUEPRINT (WAJIB DIIKUTI 100%):
-- Gunakan Judul, Teks Atas Sampul (t1), Teks Bawah Sampul (t2), urutan kalimat VO, dan Sumber Riset PERSIS dari blueprint di atas (poles sedikit saja bila perlu agar natural saat dibacakan TTS).
+- Gunakan Judul, Teks Atas Sampul (t1), Teks Bawah Sampul (t2), urutan kalimat VO, dan Sumber Riset PERSIS dari blueprint di atas.
 - Untuk setiap adegan, masukkan "Keyword Pixabay Utama" ke field "videoQuery", dan masukkan "Keyword Pixabay Backup" ke field "altQuery" serta "keywords" persis seperti tertulis di blueprint!`
     : `Buatkan data video lengkap untuk topik:
 - Judul: "${JUDUL}"
@@ -735,15 +759,14 @@ ATURAN GAYA & ORIGINALITAS (WAJIB DIPATUHI):
 1. DILARANG KERAS membuat cerita tentang pasangan, pacaran, percintaan, pernikahan, atau romansa (100% bebas tema pasangan).
 2. Narasi harus punya SUDUT PANDANG tajam, bukan rangkuman klise.
 3. Kalimat pertama adalah hook kuat. Kalimat terakhir memberi insight tajam (tanpa tombol subscribe/CTA).
-4. DILARANG menulis "KISAH NYATA" di kicker/judul. Gunakan kicker seperti "PSIKOLOGI", "FAKTA OTAK", atau "PERSPEKTIF".
-5. Field "src" berisi maksimal 2 item, masing-masing HANYA nama teori/studi maksimal 4 kata tanpa penjelasan dalam kurung.
+4. DILARANG menulis "KISAH NYATA" di kicker/judul. Gunakan kicker seperti "FAKTA ALAM", "SAINS ALAM", atau "PERSPEKTIF".
+5. Field "src" berisi maksimal 2 item, masing-masing HANYA nama lembaga/studi maksimal 4 kata tanpa penjelasan dalam kurung.
 
 ATURAN KERAS KATA KUNCI B-ROLL PIXABAY (WAJIB OBJEK NYATA & TENANG):
 Pixabay HANYA paham objek fisik konkret dalam BAHASA INGGRIS (2-3 kata).
 - DILARANG keyword abstrak/ambigu seperti "land", "ground", "dream", "mind", "thought", "success", "hope", "time", "future", "emotion", "memory".
-- DILARANG keyword lokasi luas seperti "empty room", "indoors", "hall", "lobby", "street", "mall". Gunakan close-up atau 1 subjek saja: "shoes walking floor", "dark bedroom clock", "hand holding phone", "person standing window", "typing laptop night", "raindrops window glass", "hot coffee mug".
 - "coverQuery" = objek visual tenang & sinematik sesuai SAMPUL (2-3 kata Inggris konkret).
-- Variasikan mode visual antara "pip_broll" (kotak B-Roll atas + karakter utama reaction di bawah) pada "title", "a", "c", dan "full_broll" (B-Roll layar penuh) pada "b1" sampai "b6".
+- Variasikan mode visual antara "pip_broll" pada "title", "a", "c", dan "full_broll" pada "b1" sampai "b6".
 - Format array "lines": ["kunci_adegan", "mood", "Kalimat VO dengan *kata* ditekankan.", "fx_opsional", META_VISUAL]
   Kunci adegan: "title" (pertama), "b1", "b2", "a", "b3", "b4", "c", lalu "end" (terakhir, META_VISUAL null).
 
@@ -755,12 +778,12 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR INI:
   "width": ${dim.width},
   "height": ${dim.height},
   "desc": "Deskripsi singkat 2 kalimat + ajakan diskusi di komentar.",
-  "tags": "#psikologi #faktaunik #edukasi",
-  "src": ["Embodied Cognition Theory", "Cognitive Load Theory"],
+  "tags": "#faktaunik #sains #edukasi",
+  "src": ["National Geographic Wildlife", "Journal of Experimental Biology"],
   "coverQuery": "calm cinematic object matching cover",
   "coverAlt": "backup calm cinematic object",
   "tx": {
-    "kicker": "PSIKOLOGI",
+    "kicker": "FAKTA ALAM",
     "t1": "KATA ATAS",
     "t2": "KATA BAWAH?",
     "watch": "tonton sampai habis",
@@ -770,9 +793,9 @@ KELUARKAN HANYA JSON DENGAN STRUKTUR INI:
     ["title", "d", "Kalimat pembuka dengan *kata kunci* sesuai judul.", "", {"mode":"pip_broll","videoQuery":"concrete object 1","altQuery":"backup concrete object 1","keywords":["concrete object 1","backup concrete object 1"],"kicker":"FENOMENA","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
     ["b1", "n", "Kalimat kedua sesuai topik.", "p", {"mode":"full_broll","videoQuery":"concrete object 2","altQuery":"backup concrete object 2","keywords":["concrete object 2","backup concrete object 2"],"kicker":"FAKTA","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
     ["b2", "e", "Kalimat ketiga sesuai topik.", "p", {"mode":"full_broll","videoQuery":"concrete object 3","altQuery":"backup concrete object 3","keywords":["concrete object 3","backup concrete object 3"],"kicker":"PROSES","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
-    ["a", "n", "Kalimat keempat dari karakter.", "", {"mode":"pip_broll","videoQuery":"concrete object 4","altQuery":"backup concrete object 4","keywords":["concrete object 4","backup concrete object 4"],"kicker":"PSIKOLOGI","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
+    ["a", "n", "Kalimat keempat dari karakter.", "", {"mode":"pip_broll","videoQuery":"concrete object 4","altQuery":"backup concrete object 4","keywords":["concrete object 4","backup concrete object 4"],"kicker":"SAINS ALAM","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
     ["b3", "d", "Kalimat kelima sesuai topik.", "p", {"mode":"full_broll","videoQuery":"concrete object 5","altQuery":"backup concrete object 5","keywords":["concrete object 5","backup concrete object 5"],"kicker":"MEKANISME","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
-    ["b4", "e", "Kalimat keenam sesuai topik.", "p", {"mode":"full_broll","videoQuery":"concrete object 6","altQuery":"backup concrete object 6","keywords":["concrete object 6","backup concrete object 6"],"kicker":"DAMPAK","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
+    ["b4", "e", "Kalimat keenam sesuai topik.", "p", {"mode":"full_broll","videoQuery":"concrete object 6","altQuery":"backup concrete object 6","keywords":["concrete object 6","backup concrete object 6"],"kicker":"DETAIL","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
     ["c", "d", "Kalimat ketujuh insight bermanfaat.", "", {"mode":"pip_broll","videoQuery":"concrete object 7","altQuery":"backup concrete object 7","keywords":["concrete object 7","backup concrete object 7"],"kicker":"INSIGHT","title":"JUDUL ADEGAN","sub":"Keterangan singkat sesuai VO"}],
     ["end", "s", "Kalimat penutup yang meninggalkan *kesan*.", "", null]
   ]
@@ -895,7 +918,6 @@ async function buatAudioTTS(lines, outPath, ttsInfo) {
   return null;
 }
 
-/* ===== V55: AUTO-FIT DURASI VO (CEGAH VIDEO > 59 DETIK SEBELUM BUANG WAKTU RENDER) ===== */
 function durasiFile(p) {
   try {
     const s = execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${p}"`, { encoding: 'utf8' }).trim();
@@ -947,10 +969,10 @@ async function siapkanVoiceOver(videoData, ttsInfo) {
 function pilihBgmSkalaDariJudul(judul, seedNum) {
   const q = (judul || '').toLowerCase();
   const genreScales = [
-    { re: /kamar mandi|mandi|keramik|gema|reverb|akustik|nyanyi|air|laut/, notes: [293.66, 349.23, 440.00, 523.25], tempo: 1.35, lp: 1350 },
+    { re: /kamar mandi|mandi|keramik|gema|reverb|akustik|nyanyi|air|laut|gurita|hiu|paus|ubur|ikan|palung/, notes: [293.66, 349.23, 440.00, 523.25], tempo: 1.25, lp: 1200 },
     { re: /horor|hantu|mistis|angker|kuburan|kutukan|misteri|gelap|malam|tidur|alarm|hilang|mercusuar/, notes: [146.83, 174.61, 220.00, 261.63], tempo: 0.85, lp: 780 },
     { re: /sejarah|kuno|kerajaan|romawi|mesir|abad|dinasti|piramida|perang|nusantara|katedral|istana|bangun|tukang pos|surat|desa/, notes: [220.00, 261.63, 293.66, 392.00], tempo: 0.95, lp: 920 },
-    { re: /sains|antariksa|planet|teknologi|robot|ai\b|kuantum|listrik|lampu/, notes: [261.63, 311.13, 392.00, 466.16], tempo: 1.50, lp: 1500 },
+    { re: /sains|antariksa|planet|teknologi|robot|ai\b|kuantum|listrik|lampu|bintang|bulan|angkasa/, notes: [261.63, 311.13, 392.00, 466.16], tempo: 1.40, lp: 1400 },
     { re: /psikologi|otak|pikiran|mental|stres|mimpi|kebiasaan|menguap|mulut|etika|ditatap|mata/, notes: [246.94, 293.66, 369.99, 440.00], tempo: 0.90, lp: 850 },
     { re: /bisnis|sukses|kaya|miliarder|saham|uang|ekonomi|emas|tabung|rumah/, notes: [261.63, 329.63, 392.00, 523.25], tempo: 1.40, lp: 1250 },
     { re: /perang|bencana|gempa|tsunami|api|bahaya|bertahan/, notes: [164.81, 196.00, 220.00, 246.94], tempo: 1.25, lp: 800 }
@@ -1107,7 +1129,6 @@ function validasiVideoFinal(videoPath) {
   return dur;
 }
 
-/* ===== V55: AUDIT KUALITAS FINAL (HITAM, SUARA, COVERAGE B-ROLL, VISION 6 FRAME) -> SKOR 1-10 ===== */
 async function auditKualitasFinal(videoPath, data, durasi) {
   let skor = 10;
   const catatan = [];
@@ -1136,7 +1157,7 @@ async function auditKualitasFinal(videoPath, data, durasi) {
     try {
       const posisi = [0.08, 0.25, 0.42, 0.6, 0.78, 0.92];
       const parts = [{ text:
-`Kamu reviewer akhir video YouTube Shorts psikologi berjudul "${data.title}". Berikut 6 frame berurutan dari video final.
+`Kamu reviewer akhir video YouTube Shorts dokumenter berjudul "${data.title}". Berikut 6 frame berurutan dari video final.
 Beri skor 1-10 (10 = siap tayang tanpa revisi). Kurangi skor untuk: teks terpotong/bertumpuk/tidak terbaca, layar kosong atau hitam, kerumunan, pasangan/romansa, green screen, watermark, visual tidak nyambung dengan judul, tampilan berantakan.
 Keluarkan HANYA JSON murni: {"skor":8,"masalah":["singkat","singkat"]}` }];
       for (let i = 0; i < posisi.length; i++) {
@@ -1161,7 +1182,6 @@ Keluarkan HANYA JSON murni: {"skor":8,"masalah":["singkat","singkat"]}` }];
   return { skor, catatan };
 }
 
-/* ===== AUTO-UPLOAD LANGSUNG KE YOUTUBE SHORTS (DATA API V3) + RETRY ===== */
 async function uploadKeYouTubeShorts(videoPath, data, privasi) {
   if (!YT_CLIENT_ID || !YT_CLIENT_SECRET || !YT_REFRESH_TOKEN) {
     console.log('Info: Secrets YouTube (YT_CLIENT_ID/YT_CLIENT_SECRET/YT_REFRESH_TOKEN) belum diisi -> skip auto-upload YouTube.');
@@ -1180,7 +1200,7 @@ async function uploadKeYouTubeShorts(videoPath, data, privasi) {
   judulYt = judulYt.slice(0, 100);
 
   const sumberTeks = (data.src || []).map(s => `- ${s}`).join('\n');
-  const deskripsiYt = `${data.desc || ''}\n\nSumber Referensi:\n${sumberTeks}\n\n${data.tags || '#psikologi #faktaunik #Shorts'}`.trim();
+  const deskripsiYt = `${data.desc || ''}\n\nSumber Referensi:\n${sumberTeks}\n\n${data.tags || '#faktaunik #sains #Shorts'}`.trim();
   const tagList = (data.tags || '')
     .split(/\s+/)
     .map(t => t.replace(/^#/, '').trim())
@@ -1195,7 +1215,7 @@ async function uploadKeYouTubeShorts(videoPath, data, privasi) {
         title: judulYt,
         description: deskripsiYt,
         tags: tagList,
-        categoryId: '27' /* Education */
+        categoryId: '27'
       },
       status: {
         privacyStatus: privasi,
@@ -1256,7 +1276,7 @@ async function kirimVideoTelegram(videoPath, data, info = {}) {
     statusYt = `\n❌ *UPLOAD YOUTUBE GAGAL:* ${errUpload}\nVideo tetap aman di arsip ini.\n`;
   }
   const statusQc = audit ? `\n🛡️ *Skor Kualitas:* ${audit.skor}/10${audit.catatan.length ? '\n' + audit.catatan.map(c => '- ' + c).join('\n') : ''}\n` : '';
-  const caption = `🎬 *VIDEO V55.0 SELESAI!*\n${statusYt}${statusQc}\n📍 *Judul:*\n${data.title}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
+  const caption = `🎬 *VIDEO V55.1 SELESAI!*\n${statusYt}${statusQc}\n📍 *Judul:*\n${data.title}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
 
   const kirim = async (pakaiMarkdown) => {
     const form = new FormData();
@@ -1291,7 +1311,7 @@ async function kirimVideoTelegram(videoPath, data, info = {}) {
     FRAME_W = outW;
     FRAME_H = outH;
 
-    console.log(`=== MEMULAI PRODUKSI OTOMATIS V55.0 (${UKURAN} | ${BAHASA} | ${outW}x${outH}) ===`);
+    console.log(`=== MEMULAI PRODUKSI OTOMATIS V55.1 (${UKURAN} | ${BAHASA} | ${outW}x${outH}) ===`);
     await kirimPesanTelegram(`⚙️ *MEMPROSES VIDEO OTOMATIS*\n\nJudul: *${JUDUL}*\nMode: ${IS_BLUEPRINT ? 'Blueprint Lengkap' : 'Judul Cepat'}\nTarget Prime Time: ${targetJamRamai}:00 WIB (Sekarang ${jamWib}:00 WIB)`);
 
     console.log('1. Menyusun & mengaudit naskah...');
@@ -1302,7 +1322,7 @@ async function kirimVideoTelegram(videoPath, data, info = {}) {
     const exactTimings = await siapkanVoiceOver(videoData, ttsInfo);
     if (exactTimings) videoData.lineTimings = exactTimings;
 
-    console.log('3. Mengunduh & menyaring video HD Pixabay (Vision-QC)...');
+    console.log('3. Mengunduh & menyaring video HD Pixabay (Vision-QC + Habitat Fallback)...');
     await siapkanMediaPixabayLokal(videoData);
     await siapkanVisualSampul(videoData);
 
@@ -1390,10 +1410,14 @@ async function kirimVideoTelegram(videoPath, data, info = {}) {
         const iv = setInterval(async () => {
           if (window.__READY__ === true || window.__APP_READY__ === true) {
             clearInterval(iv);
-            if (typeof LEN !== 'undefined') window.__VIDEO_LEN = LEN;
-            if (typeof L !== 'undefined') {
+            if (typeof L !== 'undefined' && L.length > 0) {
+              const lastLine = L[L.length - 1];
+              if (lastLine && typeof lastLine.se === 'number' && typeof LEN !== 'undefined') {
+                LEN = Number((lastLine.se + 1.2).toFixed(2));
+              }
               window.__SCENE_TIMES = L.map(x => ({ sc: x[0], t0: x.t0 || 0, fx: x[3] || '' }));
             }
+            if (typeof LEN !== 'undefined') window.__VIDEO_LEN = LEN;
             window.__ASSETS_READY = true;
           }
         }, 50);
