@@ -960,11 +960,11 @@ const SCN={
  c(t){renderDynamicVoStage(t,true)},
  end(t){
   drawBrightVariedBg('studio',P.t);
-  char({ox:115});
+  char({ox:115,oy:65,sc:0.92});
   X.save();
   const boxH=DISCLOSURE?148:120;
   const boxY=DISCLOSURE?1078:1105;
-  X.fillStyle='rgba(15,23,42,0.90)';rr(56,boxY,608,boxH,20);X.fill();
+  X.fillStyle='rgba(15,23,42,0.92)';rr(56,boxY,608,boxH,20);X.fill();
   X.strokeStyle=P.a;X.lineWidth=3;rr(56,boxY,608,boxH,20);X.stroke();
   txt(TX.src,360,boxY+25,17,P.a,'center',900);
   SRC.slice(0,2).forEach((s,i)=>txt(s,360,boxY+56+i*27,fz(s,560,15),'#ffffff','center',700));
@@ -1027,13 +1027,15 @@ function drawSubs(){
  const lineItems=cap.filter(it=>it.pageId===currentPage&&it.idx<=aw);
  if(!lineItems.length)return;
 
+ const targetSubY = (l[0] === 'end') ? 690 : SUBY;
+
  X.save();
  lineItems.forEach(item=>{
   const act=(item.idx===aw);
   const weightStr=act?'900':'700';
   const scWord=act?(1.07*voicePulse):0.97;
   X.save();
-  X.translate(item.x+item.ww*0.5,SUBY-(act?2:0));
+  X.translate(item.x+item.ww*0.5,targetSubY-(act?2:0));
   X.scale(scWord,scWord);
   if(act&&item.em){
    X.fillStyle=P.a;rr(-item.ww*0.5-7,-item.sz*0.62,item.ww+14,item.sz*1.24,11);X.fill();
