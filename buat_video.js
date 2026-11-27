@@ -1,4 +1,4 @@
-/* ===== SCRIPT UTAMA: buat_video.js (Versi V52.1: Klip HD 9:16, B-Roll 2 Tahap Strict VO, Sampul Sesuai Judul, Auto-Kompres <45MB Telegram) ===== */
+/* ===== SCRIPT UTAMA: buat_video.js (Versi V52.2: Blokir Green Screen & Abstrak, Strict VO, Auto-Kompres <45MB Telegram) ===== */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -133,6 +133,7 @@ function rapikanNaskah(data, dim, ttsInfo) {
   };
 
   data.tx = Object.assign({}, defaultTx, (data.tx && typeof data.tx === 'object') ? data.tx : {});
+  if (/kisah nyata/i.test(data.tx.kicker)) data.tx.kicker = 'CERITA INSPIRATIF';
   if (typeof data.title !== 'string' || !data.title.trim()) data.title = JUDUL;
   if (typeof data.desc  !== 'string' || !data.desc.trim())  data.desc  = `${data.title} - tonton sampai habis dan tulis pendapatmu di komentar!`;
   if (typeof data.tags  !== 'string' || !data.tags.trim())  data.tags  = '#faktaunik #edukasi #storytelling';
@@ -242,9 +243,14 @@ function downloadPhotoFallback(url, outFile) {
   }
 }
 
-/* ===== PENCARIAN PIXABAY 2 TAHAP + CEK KESESUAIAN ===== */
+/* ===== PENCARIAN PIXABAY 2 TAHAP + BLOKIR GREEN SCREEN & ABSTRAK ===== */
 const ALLOW_PHOTO_FALLBACK = true;
 const KATA_UMUM = new Set(['the','a','an','of','in','on','at','and','with','for','to','person','people','man','woman','men','women','human','someone','view','scene','video','background','close','up','slow','motion']);
+const TAG_TERLARANG = [
+  'green screen', 'greenscreen', 'chroma key', 'chroma', 'blue screen',
+  'blood', 'red blood', 'cell', 'cells', 'virus', 'bacteria', 'molecule', 'dna', 'neuron',
+  '3d render', '3d animation', 'abstract', 'particle', 'particles', 'template', 'mockup', 'transition', 'overlay', 'subscribe'
+];
 
 function bersihkanQuery(query) {
   return (query || '').replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -259,9 +265,10 @@ function stem(w) {
 }
 
 function hitRelevan(hit, query) {
+  const hay = ((hit.tags || '') + ' ' + (hit.pageURL || '')).toLowerCase();
+  if (TAG_TERLARANG.some(bad => hay.includes(bad))) return false;
   const inti = kataIntiQuery(query);
   if (!inti.length) return true;
-  const hay = ((hit.tags || '') + ' ' + (hit.pageURL || '')).toLowerCase();
   return inti.some(w => hay.includes(stem(w)));
 }
 
@@ -286,7 +293,7 @@ function cariVideoPixabay(query) {
   const key = qClean.toLowerCase();
   if (PIXABAY_VIDEO_CACHE[key]) return PIXABAY_VIDEO_CACHE[key];
 
-  const base = `https://pixabay.com/api/videos/?key=${encodeURIComponent(PIXABAY_API_KEY)}&q=${encodeURIComponent(qClean)}&safesearch=true&per_page=20`;
+  const base = `https://pixabay.com/api/videos/?key=${encodeURIComponent(PIXABAY_API_KEY)}&q=${encodeURIComponent(qClean)}&video_type=film&safesearch=true&per_page=20`;
   let hasil = [];
   for (const extra of ['&min_width=1280&min_height=720', '']) {
     const vJson = curlGetJson(base + extra);
@@ -330,7 +337,7 @@ async function siapkanMediaPixabayLokal(videoData) {
   if (!PIXABAY_API_KEY) {
     console.warn('PERINGATAN: PIXABAY_API_KEY kosong di GitHub Secrets!');
   } else {
-    console.log(`PIXABAY_API_KEY aktif (${PIXABAY_API_KEY.slice(0, 6)}...). Cari video sesuai VO: Tahap 1 (naskah) -> Tahap 2 (keyword terdekat).`);
+    console.log(`PIXABAY_API_KEY aktif (${PIXABAY_API_KEY.slice(0, 6)}...). Cari video asli (anti green-screen/abstrak) sesuai VO.`);
   }
 
   const usedUrls = new Set();
@@ -456,20 +463,19 @@ ATURAN ORIGINALITAS (WAJIB, supaya video layak monetisasi YouTube dan tidak terl
 - Narasi harus punya SUDUT PANDANG dan analisis sendiri, bukan rangkuman generik. Sertakan detail spesifik (nama, angka, tempat, penyebab-akibat) yang masuk akal.
 - Kalimat pertama adalah hook yang kuat dan spesifik, bukan pertanyaan klise. Kalimat terakhir memberi insight atau pertanyaan yang memancing diskusi.
 - Jangan menyalin teks dari sumber mana pun. Jangan mengarang fakta, nama, atau kutipan. Kalau tidak bisa diverifikasi, gunakan frasa seperti "menurut cerita yang beredar".
-- Jangan klaim "kisah nyata" atau "terbukti" kalau tidak yakin. Judul dan isi tidak boleh menyesatkan (tanpa clickbait bohong).
+- DILARANG mengklaim "kisah nyata" atau menulis "KISAH NYATA" di kicker/judul kalau tidak bisa diverifikasi. Gunakan kicker seperti "CERITA INSPIRATIF", "FAKTA MENARIK", atau "PERSPEKTIF".
 - Variasikan struktur dan jumlah adegan antar video. DILARANG membuat adegan ajakan membeli/menjual/promosi apa pun (tidak ada CTA).
 
 ATURAN KERAS PENCARIAN VIDEO PIXABAY (WAJIB DIPATUHI):
-Pixabay HANYA paham kata kunci visual konkret dalam BAHASA INGGRIS (kata benda/aksi nyata yang bisa direkam kamera).
-Untuk SETIAP kalimat VO, isi 3 field berikut. Visual HARUS menggambarkan isi kalimat VO itu, JANGAN pernah visual yang tidak nyambung:
-1. "videoQuery" = TAHAP 1 (deteksi dari naskah): adegan PERSIS yang diucapkan di kalimat VO, 2-3 kata Inggris.
-   - VO: "Ada orang lain yang berlayar" -> "videoQuery": "person sailing boat"
-   - VO: "Orang bermain layangan di lapangan" -> "videoQuery": "flying kite park"
-2. "altQuery" = TAHAP 1 versi lain dari adegan YANG SAMA (sinonim/sudut pandang lain, tetap isi VO yang sama): misal "sailing ship ocean".
+Pixabay HANYA paham kata kunci visual konkret dalam BAHASA INGGRIS (kata benda/aksi nyata yang bisa direkam kamera dunia nyata).
+Untuk SETIAP kalimat VO, isi 3 field berikut. Visual HARUS menggambarkan isi kalimat VO itu secara harfiah:
+1. "videoQuery" = TAHAP 1: adegan PERSIS yang diucapkan di kalimat VO, 2-3 kata Inggris.
+   - VO: "membawakan obat bagi lansia" -> "videoQuery": "helping elderly person" (JANGAN "medicine" karena keluar animasi sel darah!)
+   - VO: "menyelipkan amplop ke pintu rumah" -> "videoQuery": "envelope mailbox letter" (JANGAN "door" karena keluar template green screen!)
+2. "altQuery" = TAHAP 1 versi lain dari adegan YANG SAMA (sinonim/sudut pandang lain): misal "caring senior home".
 3. "keywords" = TAHAP 2 (cadangan kalau tahap 1 tidak ketemu): array 3-5 keyword Inggris pendek (1-2 kata), urut dari yang PALING MENDEKATI suara VO.
-   - VO: "Ada orang lain yang berlayar" -> "keywords": ["sailing", "steering ship", "boat captain", "sailboat sea"]
-   - DILARANG keyword umum/tidak nyambung seperti "nature", "landscape", "people lifestyle", "city", "sky clouds" kalau VO tidak membahasnya.
-   - DILARANG istilah abstrak/medis/kimia ("ghrelin hormone", "amygdala", "dopamine molecule"); ganti dengan adegan kamera nyata yang paling dekat artinya.
+   - DILARANG keyword umum/abstrak seperti "nature", "sunset", "beach", "medicine", "blood", "door", "city", "sky" kalau VO tidak membahasnya.
+   - DILARANG istilah medis/kimia/abstrak ("ghrelin", "amygdala", "dopamine", "dignity"); ganti dengan adegan manusia/benda nyata yang paling dekat artinya.
 4. "coverQuery" (di level atas JSON) = adegan visual sinematik untuk SAMPUL yang paling mewakili JUDUL, 2-3 kata Inggris konkret (contoh judul tentang tukang pos di desa -> "postman delivering letter").
 5. Variasikan mode visual antara "pip_broll" (video B-Roll di kotak atas + karakter utama reaction di bawah) pada "title", "a", "c", dan "full_broll" (video B-Roll layar penuh) pada "b1" sampai "b6".
 6. Buat ${jumlahKalimat} di array "lines":
@@ -824,7 +830,7 @@ async function kirimVideoTelegram(videoPath, data) {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
   const readyPath = pastikanUkuranDibawahBatasTelegram(videoPath, 44);
   console.log(`Mengirim hasil video (${readyPath}) ke Telegram...`);
-  const caption = `🎬 *VIDEO V52.1 (KLIP HD, B-ROLL 2 TAHAP STRICT VO, TANPA CTA) SELESAI!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
+  const caption = `🎬 *VIDEO V52.2 (ANTI GREEN-SCREEN, B-ROLL 2 TAHAP STRICT VO) SELESAI!*\n\n📍 *Judul:*\n${data.title}\n\n📝 *Deskripsi:*\n${data.desc}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
 
   try {
     const form = new FormData();
@@ -863,7 +869,7 @@ async function kirimVideoTelegram(videoPath, data) {
     FRAME_W = outW;
     FRAME_H = outH;
 
-    console.log(`=== MEMULAI PRODUKSI VIDEO V52.1 (${UKURAN} | ${BAHASA} | output ${outW}x${outH}) ===`);
+    console.log(`=== MEMULAI PRODUKSI VIDEO V52.2 (${UKURAN} | ${BAHASA} | output ${outW}x${outH}) ===`);
     if (jamWib > targetJamRamai) {
       await kirimPesanTelegram(`⚠️ *STATUS: PENDING / ANTREAN GESER*\n\nKamu membuat video pada pukul ${jamWib}:00 WIB (melewati jam ramai ${targetJamRamai}:00 WIB hari ini).\nSistem otomatis menggeser jadwal publikasi ke slot prime time berikutnya!`);
     } else {
@@ -874,7 +880,7 @@ async function kirimVideoTelegram(videoPath, data) {
     const videoData = await buatNaskahJSON(dim, ttsInfo);
     videoData.resScale = resScale;
 
-    console.log('2. Mengunduh video asli Pixabay (2 Tahap Strict VO) & memotong sesuai rasio video...');
+    console.log('2. Mengunduh video asli Pixabay (2 Tahap Strict VO, anti green-screen) & memotong sesuai rasio video...');
     await siapkanMediaPixabayLokal(videoData);
     await siapkanVisualSampul(videoData);
 
