@@ -1,4 +1,4 @@
-/* ===== SCRIPT UTAMA: buat_video.js (Versi V55.1: Self-Healing Quality-Gate, Fallback Habitat Satwa/Alam, Parser Blueprint V2 & Auto Upload YouTube Shorts) ===== */
+/* ===== SCRIPT UTAMA: buat_video.js (Versi V55.2: Self-Healing Quality-Gate + Context-Aware Vision Audit + Main-Subject Fallback + Auto Upload YouTube Shorts) ===== */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -19,7 +19,7 @@ const YT_REFRESH_TOKEN = (process.env.YT_REFRESH_TOKEN || '').trim();
 const YT_PRIVACY = (process.env.YT_PRIVACY || 'public').trim();
 const YT_PRIVACY_FALLBACK = (process.env.YT_PRIVACY_FALLBACK || 'private').trim();
 
-/* ===== PENGATURAN QUALITY-GATE V55.1 ===== */
+/* ===== PENGATURAN QUALITY-GATE V55.2 ===== */
 const QC_MIN_SCORE = Number(process.env.QC_MIN_SCORE) || 7;
 const MAX_VO_SEC = Number(process.env.MAX_VO_SEC) || 52;
 const VISION_QC = (process.env.VISION_QC || '1') !== '0';
@@ -175,7 +175,7 @@ function ekstrakJson(raw) {
   try { return JSON.parse(raw.slice(awal, akhir + 1)); } catch (_) { return null; }
 }
 
-/* ===== V55.1: PARSER BLUEPRINT LOKAL (MENDUKUNG FORMAT V1 MAUPUN V2 SATWA LIAR) ===== */
+/* ===== V55.2: PARSER BLUEPRINT LOKAL (MENDUKUNG FORMAT V1 MAUPUN V2 SATWA LIAR) ===== */
 function bersihBp(s) {
   return String(s || '').replace(/[\[\]"“”]/g, '').replace(/\*\*/g, '').trim();
 }
@@ -195,7 +195,6 @@ function parseBlueprint(raw) {
     const blok = raw.split(/\n\s*\d+\.\s*\[/).slice(1);
     const lines = [];
     for (const b of blok) {
-      /* Mendukung baik "1. [title]" maupun "1. [title - Label]" */
       const head = b.match(/^\s*([a-z0-9]+)(?:\s*[-–—]\s*([^\]\n]*))?\]/i);
       if (!head) continue;
       const sc = head[1].toLowerCase();
@@ -265,7 +264,7 @@ function sanitasiKeywordBroll(q) {
   return clean;
 }
 
-/* ===== V55.1: FALLBACK HABITAT ALAM/SATWA AGAR TIDAK PERNAH JATUH KE KOTAK TEKS KOSONG ===== */
+/* ===== V55.2: FALLBACK HABITAT ALAM/SATWA AGAR TIDAK PERNAH JATUH KE KOTAK TEKS KOSONG ===== */
 function tentukanFallbackHabitat(judul) {
   const q = (judul || '').toLowerCase();
   if (/laut|gurita|hiu|paus|ubur|ikan|penyu|kuda laut|samudra|terumbu|palung/.test(q)) {
@@ -471,7 +470,7 @@ async function verifikasiKlipVisual(framePath, voText, query) {
     const teks = await geminiGenerate([
       { text:
 `Kamu quality-control video Shorts dokumenter alam/sains. Nilai 1 gambar B-roll ini untuk narasi: "${voText.replace(/\*/g, '')}" (keyword: ${query}).
-TOLAK (ok=false) jika: ada kerumunan / 3+ orang jelas, pasangan/romansa, green screen, watermark/teks besar, sangat silau/blur/pecah, atau sama sekali bertolak belakang dengan narasi (catatan: klip habitat seperti lautan dalam, langit malam, hutan gelap, atau elemen alam terkait TETAP DITERIMA).
+TOLAK (ok=false) jika: ada kerumunan / 3+ orang jelas, pasangan/romansa, green screen, watermark/teks besar, sangat silau/blur/pecah, atau sama sekali bertolak belakang dengan narasi (catatan: klip subjek utama hewan maupun habitat alami terkait seperti lautan dalam, langit malam, hutan gelap, atau elemen alam terkait TETAP DITERIMA).
 Keluarkan HANYA JSON murni: {"ok":true,"alasan":"singkat"}` },
       { inline_data: { mime_type: 'image/jpeg', data: b64 } }
     ], { timeoutMs: 30000, rounds: 1, maxModels: 3 });
@@ -579,11 +578,12 @@ async function siapkanMediaPixabayLokal(videoData) {
   if (!PIXABAY_API_KEY) {
     console.warn('PERINGATAN: PIXABAY_API_KEY kosong di GitHub Secrets!');
   } else {
-    console.log(`PIXABAY_API_KEY aktif (${PIXABAY_API_KEY.slice(0, 6)}...). Mode ketat: HD >=720p, Fallback Habitat Otomatis, Vision-QC ${VISION_QC ? 'ON' : 'OFF'}.`);
+    console.log(`PIXABAY_API_KEY aktif (${PIXABAY_API_KEY.slice(0, 6)}...). Mode ketat: HD >=720p, Prioritas Subjek Utama + Fallback Habitat, Vision-QC ${VISION_QC ? 'ON' : 'OFF'}.`);
   }
 
   const usedUrls = new Set();
   const habitatCadangan = tentukanFallbackHabitat(JUDUL);
+  const hewanUtama = bersihkanQuery(videoData.coverQuery || '').split(' ')[0] || '';
   let berhasilT1 = 0, berhasilT2 = 0, berhasilT3 = 0, berhasilFoto = 0, ditolakQC = 0;
   const tanpaMedia = [];
 
@@ -598,13 +598,12 @@ async function siapkanMediaPixabayLokal(videoData) {
     const tahap1 = [...new Set([meta.videoQuery, meta.altQuery].map(q => bersihkanQuery(q)).filter(Boolean))];
     const tahap2 = [...new Set((meta.keywords || []).map(q => bersihkanQuery(q)).filter(Boolean))]
       .filter(q => !tahap1.map(x => x.toLowerCase()).includes(q.toLowerCase()));
-    const tahap3 = habitatCadangan
-      .map(q => bersihkanQuery(q))
-      .filter(q => q && ![...tahap1, ...tahap2].map(x => x.toLowerCase()).includes(q.toLowerCase()));
+    const tahap3 = [...new Set([hewanUtama, ...habitatCadangan].map(q => bersihkanQuery(q)).filter(Boolean))]
+      .filter(q => ![...tahap1, ...tahap2].map(x => x.toLowerCase()).includes(q.toLowerCase()));
 
     console.log(`   [Baris ${i + 1}] VO: "${l[2].replace(/\*/g, '')}"`);
     console.log(`             Tahap 1 (utama/backup)   : ${tahap1.join(' | ') || '-'}`);
-    console.log(`             Tahap 3 (habitat cadang) : ${tahap3.join(' | ') || '-'}`);
+    console.log(`             Tahap 3 (subjek/habitat) : ${tahap3.join(' | ') || '-'}`);
 
     const urutan = [
       ...tahap1.map(q => ({ q, tahap: 1 })),
@@ -690,7 +689,7 @@ async function siapkanMediaPixabayLokal(videoData) {
   }
 
   videoData.qcMediaStat = { video: berhasilT1 + berhasilT2 + berhasilT3, foto: berhasilFoto, tanpa: tanpaMedia.length, ditolak: ditolakQC };
-  console.log(`Ringkasan B-Roll: Tahap 1 ${berhasilT1} | Tahap 2 ${berhasilT2} | Habitat ${berhasilT3} | Foto ${berhasilFoto} | Tanpa visual ${tanpaMedia.length} | Ditolak QC ${ditolakQC}`);
+  console.log(`Ringkasan B-Roll: Tahap 1 ${berhasilT1} | Tahap 2 ${berhasilT2} | Cadangan ${berhasilT3} | Foto ${berhasilFoto} | Tanpa visual ${tanpaMedia.length} | Ditolak QC ${ditolakQC}`);
 }
 
 async function siapkanVisualSampul(videoData) {
@@ -1129,6 +1128,7 @@ function validasiVideoFinal(videoPath) {
   return dur;
 }
 
+/* ===== V55.2: AUDIT KUALITAS FINAL DENGAN KONTEKS ALUR NARASI LENGKAP ===== */
 async function auditKualitasFinal(videoPath, data, durasi) {
   let skor = 10;
   const catatan = [];
@@ -1155,11 +1155,21 @@ async function auditKualitasFinal(videoPath, data, durasi) {
 
   if (VISION_QC && durasi > 0) {
     try {
+      const ringkasanAlur = (data.lines || [])
+        .map((l, idx) => `Adegan ${idx + 1}: "${String(l[2] || '').replace(/\*/g, '')}"`)
+        .join(' | ');
+
       const posisi = [0.08, 0.25, 0.42, 0.6, 0.78, 0.92];
       const parts = [{ text:
-`Kamu reviewer akhir video YouTube Shorts dokumenter berjudul "${data.title}". Berikut 6 frame berurutan dari video final.
-Beri skor 1-10 (10 = siap tayang tanpa revisi). Kurangi skor untuk: teks terpotong/bertumpuk/tidak terbaca, layar kosong atau hitam, kerumunan, pasangan/romansa, green screen, watermark, visual tidak nyambung dengan judul, tampilan berantakan.
-Keluarkan HANYA JSON murni: {"skor":8,"masalah":["singkat","singkat"]}` }];
+`Kamu reviewer akhir video YouTube Shorts dokumenter berjudul "${data.title}".
+Alur narasi lengkap video ini dari awal sampai akhir adalah:
+${ringkasanAlur}
+
+Berikut 6 frame berurutan dari video final. Beri skor 1-10 (10 = siap tayang sempurna tanpa revisi).
+ATURAN PENILAIAN PENTING:
+- Visual hewan mangsa (seperti serangga/kupu-kupu), pemangsa, bagian tubuh, atau habitat alami (hutan/laut/langit malam) yang sesuai dengan salah satu kalimat pada alur narasi di atas adalah VALID & RELEVAN PENUH (JANGAN kurangi skor karena hal itu).
+- HANYA kurangi skor jika: teks terpotong/bertumpuk/tidak terbaca, layar kosong/hitam, kerumunan manusia ramai, pasangan/romansa, green screen, watermark, atau tampilan berantakan.
+Keluarkan HANYA JSON murni: {"skor":10,"masalah":[]}` }];
       for (let i = 0; i < posisi.length; i++) {
         const fp = `qc_frame_${i}.jpg`;
         execSync(`ffmpeg -y -ss ${(durasi * posisi[i]).toFixed(2)} -i "${videoPath}" -frames:v 1 -vf scale=360:-2 -q:v 4 "${fp}"`, { stdio: 'pipe' });
@@ -1276,7 +1286,7 @@ async function kirimVideoTelegram(videoPath, data, info = {}) {
     statusYt = `\n❌ *UPLOAD YOUTUBE GAGAL:* ${errUpload}\nVideo tetap aman di arsip ini.\n`;
   }
   const statusQc = audit ? `\n🛡️ *Skor Kualitas:* ${audit.skor}/10${audit.catatan.length ? '\n' + audit.catatan.map(c => '- ' + c).join('\n') : ''}\n` : '';
-  const caption = `🎬 *VIDEO V55.1 SELESAI!*\n${statusYt}${statusQc}\n📍 *Judul:*\n${data.title}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
+  const caption = `🎬 *VIDEO V55.2 SELESAI!*\n${statusYt}${statusQc}\n📍 *Judul:*\n${data.title}\n\n📚 *Sumber:*\n${(data.src || []).map(s => '- ' + s).join('\n')}\n\n🏷️ *Tags:*\n${data.tags}`;
 
   const kirim = async (pakaiMarkdown) => {
     const form = new FormData();
@@ -1311,7 +1321,7 @@ async function kirimVideoTelegram(videoPath, data, info = {}) {
     FRAME_W = outW;
     FRAME_H = outH;
 
-    console.log(`=== MEMULAI PRODUKSI OTOMATIS V55.1 (${UKURAN} | ${BAHASA} | ${outW}x${outH}) ===`);
+    console.log(`=== MEMULAI PRODUKSI OTOMATIS V55.2 (${UKURAN} | ${BAHASA} | ${outW}x${outH}) ===`);
     await kirimPesanTelegram(`⚙️ *MEMPROSES VIDEO OTOMATIS*\n\nJudul: *${JUDUL}*\nMode: ${IS_BLUEPRINT ? 'Blueprint Lengkap' : 'Judul Cepat'}\nTarget Prime Time: ${targetJamRamai}:00 WIB (Sekarang ${jamWib}:00 WIB)`);
 
     console.log('1. Menyusun & mengaudit naskah...');
@@ -1322,7 +1332,7 @@ async function kirimVideoTelegram(videoPath, data, info = {}) {
     const exactTimings = await siapkanVoiceOver(videoData, ttsInfo);
     if (exactTimings) videoData.lineTimings = exactTimings;
 
-    console.log('3. Mengunduh & menyaring video HD Pixabay (Vision-QC + Habitat Fallback)...');
+    console.log('3. Mengunduh & menyaring video HD Pixabay (Vision-QC + Prioritas Subjek/Habitat)...');
     await siapkanMediaPixabayLokal(videoData);
     await siapkanVisualSampul(videoData);
 
@@ -1490,7 +1500,7 @@ async function kirimVideoTelegram(videoPath, data, info = {}) {
       { stdio: 'inherit' }
     );
 
-    console.log('7. Menjalankan Auto Quality-Gate (dasar + audit skor)...');
+    console.log('7. Menjalankan Auto Quality-Gate (dasar + context-aware vision audit)...');
     const durFinal = validasiVideoFinal('output_final.mp4');
     const audit = await auditKualitasFinal('output_final.mp4', videoData, durFinal);
     const privasi = audit.skor >= QC_MIN_SCORE ? YT_PRIVACY : YT_PRIVACY_FALLBACK;
